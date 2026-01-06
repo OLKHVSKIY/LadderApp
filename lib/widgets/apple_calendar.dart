@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import '../models/task.dart';
 
 class AppleCalendar extends StatefulWidget {
   final DateTime initialDate;
   final Function(DateTime) onDateSelected;
   final VoidCallback onClose;
+  final List<Task> tasks;
 
   const AppleCalendar({
     super.key,
     required this.initialDate,
     required this.onDateSelected,
     required this.onClose,
+    this.tasks = const [],
   });
 
   @override
@@ -69,6 +72,94 @@ class _AppleCalendarState extends State<AppleCalendar> {
 
   bool _isCurrentMonth(DateTime date, DateTime month) {
     return date.year == month.year && date.month == month.month;
+  }
+
+  // Проверяет, попадает ли дата в диапазон задачи
+  bool _isDateInTaskRange(DateTime date, Task task) {
+    if (task.endDate != null) {
+      // Для периода проверяем, попадает ли дата в диапазон
+      final normalizedDate = DateTime(date.year, date.month, date.day);
+      final normalizedStart = DateTime(task.date.year, task.date.month, task.date.day);
+      final normalizedEnd = DateTime(task.endDate!.year, task.endDate!.month, task.endDate!.day);
+      return normalizedDate.isAfter(normalizedStart.subtract(const Duration(days: 1))) &&
+          normalizedDate.isBefore(normalizedEnd.add(const Duration(days: 1)));
+    } else {
+      // Для одной даты проверяем точное совпадение
+      return _isSameDay(date, task.date);
+    }
+  }
+
+  // Получает список приоритетов для конкретной даты
+  Set<int> _getPrioritiesForDate(DateTime date) {
+    final priorities = <int>{};
+    for (var task in widget.tasks) {
+      if (_isDateInTaskRange(date, task)) {
+        priorities.add(task.priority);
+      }
+    }
+    return priorities;
+  }
+
+  // Виджет для отображения кружочков приоритетов
+  Widget _buildPriorityIndicators(Set<int> priorities) {
+    if (priorities.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Сортируем приоритеты: 1 (красный), 2 (желтый), 3 (синий)
+    final sortedPriorities = priorities.toList()..sort();
+    
+    // Определяем количество кружочков
+    final count = sortedPriorities.length;
+    
+    // Определяем смещение для наезжания (примерно 1px)
+    const overlap = 1.0;
+    const circleSize = 5.0;
+    
+    // Вычисляем общую ширину всех кружочков с учетом наезжания
+    final totalWidth = circleSize + (count - 1) * (circleSize - overlap);
+    
+    return Center(
+      child: SizedBox(
+        width: totalWidth,
+        height: circleSize,
+        child: Stack(
+          children: List.generate(count, (index) {
+            final priority = sortedPriorities[index];
+            Color color;
+            switch (priority) {
+              case 1:
+                color = Colors.red;
+                break;
+              case 2:
+                color = Colors.yellow;
+                break;
+              case 3:
+                color = const Color(0xFF0066FF); // Синий цвет (не голубой)
+                break;
+              default:
+                color = Colors.grey;
+            }
+            
+            // Позиционируем кружочки так, чтобы они наезжали друг на друга
+            // и вся группа была по центру
+            final leftOffset = index * (circleSize - overlap);
+            
+            return Positioned(
+              left: leftOffset,
+              child: Container(
+                width: circleSize,
+                height: circleSize,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
   }
 
   String _getMonthName(DateTime date) {
@@ -188,29 +279,38 @@ class _AppleCalendarState extends State<AppleCalendar> {
                     widget.onDateSelected(date);
                   }
                 },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFFDC3545)
-                        : Colors.transparent,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${date.day}',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: isSelected || isToday
-                            ? FontWeight.w600
-                            : FontWeight.w400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
                         color: isSelected
-                            ? Colors.white
-                            : isCurrentMonth
-                                ? Colors.black
-                                : const Color(0xFFCCCCCC),
+                            ? const Color(0xFFDC3545)
+                            : Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${date.day}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isSelected || isToday
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: isSelected
+                                ? Colors.white
+                                : isCurrentMonth
+                                    ? Colors.black
+                                    : const Color(0xFFCCCCCC),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    if (isCurrentMonth) ...[
+                      const SizedBox(height: 2),
+                      _buildPriorityIndicators(_getPrioritiesForDate(date)),
+                    ],
+                  ],
                 ),
               );
             },

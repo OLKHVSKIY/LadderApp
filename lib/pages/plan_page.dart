@@ -15,6 +15,7 @@ import 'settings_page.dart';
 import '../data/repositories/plan_repository.dart';
 import '../data/user_session.dart';
 import '../data/database_instance.dart';
+import '../widgets/apple_calendar.dart';
 import '../models/goal_model.dart';
 
 // Функция для правильного склонения слова "дата"
@@ -115,7 +116,11 @@ class _PlanPageState extends State<PlanPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromDb());
   }
 
-  void _toggleSidebar() => setState(() => _isSidebarOpen = !_isSidebarOpen);
+  void _toggleSidebar() {
+    // Скрываем клавиатуру при открытии/закрытии сайдбара
+    FocusScope.of(context).unfocus();
+    setState(() => _isSidebarOpen = !_isSidebarOpen);
+  }
   void _openAiMenu() => setState(() => _isAiMenuOpen = true);
   void _closeAiMenu() => setState(() => _isAiMenuOpen = false);
 
@@ -538,24 +543,29 @@ class _PlanPageState extends State<PlanPage> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
-              CalendarDatePicker(
+              AppleCalendar(
                 initialDate: DateTime.now(),
-                firstDate: DateTime(2020),
-                lastDate: DateTime(2100),
-                onDateChanged: (d) => selected = d,
+                onDateSelected: (d) {
+                  selected = d;
+                },
+                onClose: () {},
+                tasks: const [],
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              SizedBox(
+                width: MediaQuery.of(ctx).size.width * 0.6,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _addDate(selected);
+                  },
+                  child: const Text('Добавить'),
                 ),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _addDate(selected);
-                },
-                child: const Text('Добавить'),
               ),
               const SizedBox(height: 12),
             ],
@@ -695,6 +705,8 @@ class _PlanPageState extends State<PlanPage> {
                     if (titleCtrl.text.trim().isEmpty) return;
                     Navigator.of(ctx).pop();
                     _addTaskToDate(dateId, titleCtrl.text.trim(), priority);
+                    // Скрываем клавиатуру после добавления задачи
+                    FocusScope.of(ctx).unfocus();
                   },
                   child: const Text(
                     'Добавить',

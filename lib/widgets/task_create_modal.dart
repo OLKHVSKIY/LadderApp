@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import 'apple_calendar.dart';
 
 class TaskCreateModal extends StatefulWidget {
   final VoidCallback onClose;
   final Function(Task) onSave;
   final Task? initialTask;
   final bool isEdit;
+  final DateTime? initialDate;
 
   const TaskCreateModal({
     super.key,
@@ -13,6 +15,7 @@ class TaskCreateModal extends StatefulWidget {
     required this.onSave,
     this.initialTask,
     this.isEdit = false,
+    this.initialDate,
   });
 
   @override
@@ -46,6 +49,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       _startDate = t.date;
       _endDate = t.endDate;
       _isDateRange = t.endDate != null;
+    } else if (widget.initialDate != null) {
+      // Если передана начальная дата (выбранная дата из календаря), используем её
+      _selectedDate = widget.initialDate!;
+      _startDate = widget.initialDate!;
     }
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 400),
@@ -595,26 +602,31 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 12),
-                              CalendarDatePicker(
+                              AppleCalendar(
                                 initialDate: _startDate ?? DateTime.now(),
-                                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                                onDateChanged: (d) => selected = d,
+                                onDateSelected: (d) {
+                                  selected = d;
+                                },
+                                onClose: () {},
+                                tasks: const [],
                               ),
                               const SizedBox(height: 12),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.black,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              SizedBox(
+                                width: MediaQuery.of(ctx).size.width * 0.6,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.of(ctx).pop();
+                                    setState(() {
+                                      _startDate = selected;
+                                    });
+                                  },
+                                  child: const Text('Выбрать'),
                                 ),
-                                onPressed: () {
-                                  Navigator.of(ctx).pop();
-                                  setState(() {
-                                    _startDate = selected;
-                                  });
-                                },
-                                child: const Text('Выбрать'),
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -688,26 +700,31 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 12),
-                              CalendarDatePicker(
+                              AppleCalendar(
                                 initialDate: _endDate ?? _startDate!,
-                                firstDate: _startDate!,
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                                onDateChanged: (d) => selected = d,
+                                onDateSelected: (d) {
+                                  selected = d;
+                                },
+                                onClose: () {},
+                                tasks: const [],
                               ),
                               const SizedBox(height: 12),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.black,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              SizedBox(
+                                width: MediaQuery.of(ctx).size.width * 0.6,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.of(ctx).pop();
+                                    setState(() {
+                                      _endDate = selected;
+                                    });
+                                  },
+                                  child: const Text('Выбрать'),
                                 ),
-                                onPressed: () {
-                                  Navigator.of(ctx).pop();
-                                  setState(() {
-                                    _endDate = selected;
-                                  });
-                                },
-                                child: const Text('Выбрать'),
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -792,26 +809,31 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 12),
-                        CalendarDatePicker(
+                        AppleCalendar(
                           initialDate: _selectedDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                          onDateChanged: (d) => selected = d,
+                          onDateSelected: (d) {
+                            selected = d;
+                          },
+                          onClose: () {},
+                          tasks: const [],
                         ),
                         const SizedBox(height: 12),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        SizedBox(
+                          width: MediaQuery.of(ctx).size.width * 0.6,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onPressed: () {
+                              Navigator.of(ctx).pop();
+                              setState(() {
+                                _selectedDate = selected;
+                              });
+                            },
+                            child: const Text('Выбрать'),
                           ),
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            setState(() {
-                              _selectedDate = selected;
-                            });
-                          },
-                          child: const Text('Выбрать'),
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -846,26 +868,31 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 12),
-                          CalendarDatePicker(
+                          AppleCalendar(
                             initialDate: _selectedDate,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                            onDateChanged: (d) => selected = d,
+                            onDateSelected: (d) {
+                              selected = d;
+                            },
+                            onClose: () {},
+                            tasks: const [],
                           ),
                           const SizedBox(height: 12),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          SizedBox(
+                            width: MediaQuery.of(ctx).size.width * 0.6,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.black,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                setState(() {
+                                  _selectedDate = selected;
+                                });
+                              },
+                              child: const Text('Выбрать'),
                             ),
-                            onPressed: () {
-                              Navigator.of(ctx).pop();
-                              setState(() {
-                                _selectedDate = selected;
-                              });
-                            },
-                            child: const Text('Выбрать'),
                           ),
                           const SizedBox(height: 12),
                         ],

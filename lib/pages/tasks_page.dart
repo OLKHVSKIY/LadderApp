@@ -8,6 +8,7 @@ import '../widgets/bottom_navigation.dart';
 import '../widgets/task_create_modal.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ai_menu_modal.dart';
+import '../widgets/apple_calendar.dart';
 import 'plan_page.dart';
 import 'gpt_plan_page.dart';
 import 'chat_page.dart';
@@ -35,6 +36,7 @@ class _TasksPageState extends State<TasksPage> {
   bool _navHidden = false;
   DateTime _selectedDate = DateTime.now();
   List<Task> _tasks = [];
+  List<Task> _weekTasks = []; // Задачи для всей недели
   int _todayTotal = 0;
   int _todayCompleted = 0;
   String? _openMenuTaskId;
@@ -43,6 +45,7 @@ class _TasksPageState extends State<TasksPage> {
   bool _loadedUserName = false;
   bool _userReady = false;
   Task? _editingTask;
+  double _headerDragDistance = 0.0;
 
   @override
   void initState() {
@@ -60,6 +63,7 @@ class _TasksPageState extends State<TasksPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureUserSession().then((_) {
         _loadTasksForDate(_selectedDate);
+        _loadWeekTasks();
         _loadTodayCounts();
         _loadUserNameIfNeeded();
       });
@@ -72,7 +76,65 @@ class _TasksPageState extends State<TasksPage> {
     });
   }
 
+  void _handleHeaderPanUpdate(DragUpdateDetails details) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final totalHeight = screenHeight * 0.45; // 45% экрана
+    final threshold = totalHeight * 0.2; // 20% от высоты панели
+    
+    if (_isGreetingPanelOpen) {
+      // При открытой панели: разрешаем только перетаскивание вниз (закрытие)
+      // delta.dy положительный при перетаскивании вниз
+      if (details.delta.dy > 0) {
+        _headerDragDistance += details.delta.dy;
+        // Если перетащили больше порога, закрываем
+        if (_headerDragDistance > threshold) {
+          _headerDragDistance = 0.0;
+          _toggleGreetingPanel();
+        }
+      }
+    } else {
+      // При закрытой панели: разрешаем только перетаскивание вверх (открытие)
+      // delta.dy отрицательный при перетаскивании вверх
+      if (details.delta.dy < 0) {
+        _headerDragDistance -= details.delta.dy; // Инвертируем, так как delta.dy отрицательный
+        // Если перетащили больше порога, открываем
+        if (_headerDragDistance > threshold) {
+          _headerDragDistance = 0.0;
+          _toggleGreetingPanel();
+        }
+      }
+    }
+  }
+
+  void _handleHeaderPanEnd(DragEndDetails details) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final totalHeight = screenHeight * 0.45;
+    final threshold = totalHeight * 0.15; // 15% от высоты панели
+    
+    // Проверяем скорость перетаскивания
+    final velocity = details.velocity.pixelsPerSecond.dy;
+    
+    if (_isGreetingPanelOpen) {
+      // Если перетащили достаточно или скорость высокая вниз - закрываем
+      if (_headerDragDistance > threshold || velocity > 300) {
+        if (!_isGreetingPanelOpen) return; // Уже закрыта
+        _toggleGreetingPanel();
+      }
+    } else {
+      // Если перетащили достаточно или скорость высокая вверх - открываем
+      if (_headerDragDistance > threshold || velocity < -300) {
+        if (_isGreetingPanelOpen) return; // Уже открыта
+        _toggleGreetingPanel();
+      }
+    }
+    
+    // Сбрасываем расстояние
+    _headerDragDistance = 0.0;
+  }
+
   void _toggleSidebar() {
+    // Скрываем клавиатуру при открытии/закрытии сайдбара
+    FocusScope.of(context).unfocus();
     setState(() {
       _isSidebarOpen = !_isSidebarOpen;
     });
@@ -146,6 +208,7 @@ class _TasksPageState extends State<TasksPage> {
       }
 
       _loadTasksForDate(_selectedDate);
+      _loadWeekTasks();
       _loadTodayCounts();
       _closeTaskModal();
     } catch (e) {
@@ -158,6 +221,7 @@ class _TasksPageState extends State<TasksPage> {
     if (intId == null) return;
     _taskRepository.updateCompletion(intId, isCompleted).then((_) {
       _loadTasksForDate(_selectedDate);
+      _loadWeekTasks();
       _loadTodayCounts();
     });
   }
@@ -167,6 +231,7 @@ class _TasksPageState extends State<TasksPage> {
       _selectedDate = date;
     });
     _loadTasksForDate(date);
+    _loadWeekTasks();
   }
 
   void _loadTasksForDate(DateTime date) async {
@@ -174,6 +239,19 @@ class _TasksPageState extends State<TasksPage> {
     if (mounted) {
       setState(() {
         _tasks = tasks;
+      });
+    }
+  }
+
+  void _loadWeekTasks() async {
+    final startOfWeek = _selectedDate.subtract(
+      Duration(days: _selectedDate.weekday - 1),
+    );
+    final endOfWeek = startOfWeek.add(const Duration(days: 6));
+    final tasks = await _taskRepository.tasksForDateRange(startOfWeek, endOfWeek);
+    if (mounted) {
+      setState(() {
+        _weekTasks = tasks;
       });
     }
   }
@@ -228,6 +306,7 @@ class _TasksPageState extends State<TasksPage> {
     try {
       await _taskRepository.deleteTask(intId);
       _loadTasksForDate(_selectedDate);
+      _loadWeekTasks();
       _loadTodayCounts();
     } catch (e) {
       _showError('Не удалось удалить: $e');
@@ -247,6 +326,7 @@ class _TasksPageState extends State<TasksPage> {
       );
       _editingTask = null;
       _loadTasksForDate(_selectedDate);
+      _loadWeekTasks();
       _loadTodayCounts();
       _closeTaskModal();
     } catch (e) {
@@ -331,6 +411,7 @@ class _TasksPageState extends State<TasksPage> {
           }
           await _taskRepository.deleteTask(intId);
           _loadTasksForDate(_selectedDate);
+          _loadWeekTasks();
           _loadTodayCounts();
         },
       ),
@@ -379,6 +460,9 @@ class _TasksPageState extends State<TasksPage> {
                       _navigateTo(const SettingsPage());
                     },
                     onGreetingToggle: _toggleGreetingPanel,
+                    onGreetingPanUpdate: _handleHeaderPanUpdate,
+                    onGreetingPanEnd: _handleHeaderPanEnd,
+                    isGreetingPanelOpen: _isGreetingPanelOpen,
                   ),
                   // Контент
                   Expanded(
@@ -406,6 +490,7 @@ class _TasksPageState extends State<TasksPage> {
                               WeekCalendar(
                                 selectedDate: _selectedDate,
                                 onDateSelected: _selectDate,
+                                tasks: _weekTasks,
                               ),
                               const SizedBox(height: 14),
                               // Список задач
@@ -476,6 +561,7 @@ class _TasksPageState extends State<TasksPage> {
                 onSave: _editingTask == null ? _addTask : _editTask,
                 initialTask: _editingTask,
                 isEdit: _editingTask != null,
+                initialDate: _editingTask == null ? _selectedDate : null,
               ),
             // AI меню
             AiMenuModal(
@@ -515,26 +601,33 @@ class _TasksPageState extends State<TasksPage> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
-              CalendarDatePicker(
+              AppleCalendar(
                 initialDate: _selectedDate,
-                firstDate: DateTime(2020),
-                lastDate: DateTime(2100),
-                onDateChanged: (d) => selected = d,
+                onDateSelected: (d) {
+                  selected = d;
+                },
+                onClose: () {},
+                tasks: _weekTasks,
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              SizedBox(
+                width: MediaQuery.of(ctx).size.width * 0.6,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    setState(() {
+                      _selectedDate = selected;
+                      _loadTasksForDate(_selectedDate);
+                      _loadWeekTasks();
+                    });
+                  },
+                  child: const Text('Выбрать'),
                 ),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  setState(() {
-                    _selectedDate = selected;
-                  });
-                },
-                child: const Text('Выбрать'),
               ),
               const SizedBox(height: 12),
             ],

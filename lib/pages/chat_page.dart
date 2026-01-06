@@ -23,6 +23,8 @@ class _ChatPageState extends State<ChatPage> {
   bool _isSending = false;
 
   void _toggleSidebar() {
+    // Скрываем клавиатуру при открытии/закрытии сайдбара
+    FocusScope.of(context).unfocus();
     setState(() {
       _isSidebarOpen = !_isSidebarOpen;
     });
@@ -71,7 +73,7 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           Padding(
@@ -95,21 +97,16 @@ class _ChatPageState extends State<ChatPage> {
                       constraints: const BoxConstraints(maxWidth: 900),
                       child: Container(
                         color: Colors.white,
-                        child: Stack(
+                        child: Column(
                           children: [
                             // Сообщения / пустое состояние
-                            Positioned.fill(
+                            Expanded(
                               child: _messages.isEmpty
                                   ? _buildEmptyState()
                                   : _buildMessages(),
                             ),
                             // Поле ввода
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: _buildInput(),
-                            ),
+                            _buildInput(),
                           ],
                         ),
                       ),

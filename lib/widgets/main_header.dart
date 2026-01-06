@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 class MainHeader extends StatefulWidget {
-  final VoidCallback onMenuTap;
+  final VoidCallback? onMenuTap;
   final VoidCallback? onSearchTap;
   final VoidCallback? onSettingsTap;
   final VoidCallback? onGreetingToggle;
+  final Function(DragUpdateDetails)? onGreetingPanUpdate;
+  final Function(DragEndDetails)? onGreetingPanEnd;
+  final bool isGreetingPanelOpen;
   final String? title;
   final bool hideSearchAndSettings;
   final bool showBackButton;
@@ -12,10 +15,13 @@ class MainHeader extends StatefulWidget {
 
   const MainHeader({
     super.key,
-    required this.onMenuTap,
+    this.onMenuTap,
     required this.onSearchTap,
     this.onSettingsTap,
     this.onGreetingToggle,
+    this.onGreetingPanUpdate,
+    this.onGreetingPanEnd,
+    this.isGreetingPanelOpen = false,
     this.title,
     this.hideSearchAndSettings = false,
     this.showBackButton = false,
@@ -46,46 +52,47 @@ class _MainHeaderState extends State<MainHeader> {
           child: Stack(
             children: [
               // Бургер меню слева
-              Positioned(
-                left: -6,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Transform.translate(
-                    offset: widget.showBackButton ? const Offset(0, 1) : const Offset(0, 6),
-                    child: widget.showBackButton
-                        ? GestureDetector(
-                            onTap: widget.onBack,
-                            behavior: HitTestBehavior.opaque,
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              color: Colors.transparent,
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.arrow_back_ios_new,
-                                size: 20,
-                                color: Colors.black,
+              if (widget.onMenuTap != null || widget.showBackButton)
+                Positioned(
+                  left: -6,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: Transform.translate(
+                      offset: widget.showBackButton ? const Offset(0, 1) : const Offset(0, 6),
+                      child: widget.showBackButton
+                          ? GestureDetector(
+                              onTap: widget.onBack,
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                color: Colors.transparent,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.arrow_back_ios_new,
+                                  size: 20,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            )
+                          : GestureDetector(
+                              onTap: widget.onMenuTap,
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                color: Colors.transparent,
+                                alignment: Alignment.center,
+                                child: CustomPaint(
+                                  size: const Size(24, 24),
+                                  painter: BurgerMenuPainter(),
+                                ),
                               ),
                             ),
-                          )
-                        : GestureDetector(
-                            onTap: widget.onMenuTap,
-                            behavior: HitTestBehavior.opaque,
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              color: Colors.transparent,
-                              alignment: Alignment.center,
-                              child: CustomPaint(
-                                size: const Size(24, 24),
-                                painter: BurgerMenuPainter(),
-                              ),
-                            ),
-                          ),
+                    ),
                   ),
                 ),
-              ),
               // Заголовок по центру экрана
               Positioned.fill(
                 child: Center(
@@ -164,18 +171,27 @@ class _MainHeaderState extends State<MainHeader> {
         // Header divider для открытия шторки
         if (widget.onGreetingToggle != null)
           Positioned(
-            top: 10,
+            top: 0,
             left: 0,
             right: 0,
             child: Center(
               child: GestureDetector(
                 onTap: widget.onGreetingToggle,
+                onPanUpdate: widget.onGreetingPanUpdate,
+                onPanEnd: widget.onGreetingPanEnd,
                 child: Container(
-                  width: 45,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFC2C1C1),
-                    borderRadius: BorderRadius.circular(5),
+                  width: 150, // Увеличена область тапа
+                  height: 40, // Увеличена область тапа
+                  color: Colors.transparent, // Прозрачный цвет для корректной работы hit testing
+                  alignment: Alignment.topCenter,
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: 45, // Размер самой черточки остается прежним
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFC2C1C1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
                   ),
                 ),
               ),

@@ -95,6 +95,40 @@ class TaskRepository {
     return result;
   }
 
+  Future<List<model.Task>> tasksForDateRange(DateTime startDate, DateTime endDate) async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return [];
+    await _ensureTaskColumns();
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day).add(const Duration(days: 1));
+
+    final rows = await (database.select(database.tasks)
+          ..where((t) =>
+              t.userId.equals(userId) &
+              ((t.date.isBiggerOrEqualValue(start) & t.date.isSmallerThanValue(end)) |
+                  (t.endDate.isNotNull() &
+                      ((t.date.isSmallerOrEqualValue(end) & t.endDate.isBiggerOrEqualValue(start)))))))
+        .get();
+
+    final result = <model.Task>[];
+    for (final row in rows) {
+      final tags = await _tagsForTask(row.id);
+      result.add(
+        model.Task(
+          id: row.id.toString(),
+          title: row.title,
+          description: row.description,
+          priority: row.priority,
+          tags: tags,
+          date: row.date,
+          endDate: row.endDate,
+          isCompleted: row.isCompleted,
+        ),
+      );
+    }
+    return result;
+  }
+
   Future<List<String>> _tagsForTask(int taskId) async {
     final q = database.select(database.tags).join([
       dr.innerJoin(database.taskTags, database.taskTags.tagId.equalsExp(database.tags.id)),

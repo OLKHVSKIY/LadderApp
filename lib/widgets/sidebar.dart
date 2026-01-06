@@ -192,47 +192,51 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                       child: Container(
                         constraints: const BoxConstraints(maxWidth: 340),
                         padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildSidebarItem(
-                              text: 'Чат с AI',
-                              onTap: () {
-                                // Если передан callback чата — вызываем, иначе просто закрываем
-                                if (widget.onChatTap != null) {
-                                  widget.onChatTap!();
-                                } else {
-                                  widget.onClose();
-                                }
-                              },
+                        child: Center(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildSidebarItem(
+                                  text: 'Чат с AI',
+                                  onTap: () {
+                                    // Если передан callback чата — вызываем, иначе просто закрываем
+                                    if (widget.onChatTap != null) {
+                                      widget.onChatTap!();
+                                    } else {
+                                      widget.onClose();
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSidebarItem(
+                                  text: 'Задачи',
+                                  onTap: () {
+                                    widget.onTasksTap?.call();
+                                    widget.onClose();
+                                  },
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSidebarItem(
+                                  text: 'Информация',
+                                  onTap: () {},
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSidebarItem(
+                                  text: 'Поддержка',
+                                  onTap: () {},
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSidebarItem(
+                                  text: 'Предложить идею',
+                                  onTap: () {},
+                                ),
+                                const SizedBox(height: 14),
+                                // Баннер подписки
+                                _buildSubscriptionBanner(),
+                              ],
                             ),
-                            const SizedBox(height: 14),
-                            _buildSidebarItem(
-                              text: 'Задачи',
-                              onTap: () {
-                                widget.onTasksTap?.call();
-                                widget.onClose();
-                              },
-                            ),
-                            const SizedBox(height: 14),
-                            _buildSidebarItem(
-                              text: 'Информация',
-                              onTap: () {},
-                            ),
-                            const SizedBox(height: 14),
-                            _buildSidebarItem(
-                              text: 'Поддержка',
-                              onTap: () {},
-                            ),
-                            const SizedBox(height: 14),
-                            _buildSidebarItem(
-                              text: 'Предложить идею',
-                              onTap: () {},
-                            ),
-                            const SizedBox(height: 14),
-                            // Баннер подписки
-                            _buildSubscriptionBanner(),
-                          ],
+                          ),
                         ),
                       ),
                     ),

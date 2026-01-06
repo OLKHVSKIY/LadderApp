@@ -34,6 +34,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _saving = false;
 
   void _toggleSidebar() {
+    // Скрываем клавиатуру при открытии/закрытии сайдбара
+    FocusScope.of(context).unfocus();
     setState(() {
       _isSidebarOpen = !_isSidebarOpen;
     });
@@ -251,6 +253,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 subtitle: 'Как к вам обращаться',
                 hint: 'Введите имя',
                 controller: _nameController,
+                maxLength: 22,
               ),
               _buildInputItem(
                 title: 'Email',
@@ -680,6 +683,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     required String hint,
     TextInputType keyboardType = TextInputType.text,
     TextEditingController? controller,
+    int? maxLength,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
@@ -712,8 +716,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             child: TextField(
               controller: controller,
               keyboardType: keyboardType,
+              maxLength: maxLength,
               style: const TextStyle(color: Colors.black, fontSize: 16),
               decoration: InputDecoration(
+                counterText: '',
                 hintText: hint,
                 hintStyle: const TextStyle(color: Color(0xFF999999)),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

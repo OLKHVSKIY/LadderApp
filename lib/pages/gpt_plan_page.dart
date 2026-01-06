@@ -53,6 +53,8 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   }
 
   void _toggleSidebar() {
+    // Скрываем клавиатуру при открытии/закрытии сайдбара
+    FocusScope.of(context).unfocus();
     setState(() {
       _isSidebarOpen = !_isSidebarOpen;
     });

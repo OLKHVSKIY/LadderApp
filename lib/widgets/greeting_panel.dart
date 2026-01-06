@@ -158,7 +158,7 @@ class _GreetingPanelState extends State<GreetingPanel>
   void _handlePanUpdate(DragUpdateDetails details) {
     setState(() {
       final screenHeight = MediaQuery.of(context).size.height;
-      final totalHeight = screenHeight * 0.4; // 40% экрана
+      final totalHeight = screenHeight * 0.45; // 45% экрана
       
       // Обновляем offset в зависимости от направления перетаскивания
       if (widget.isOpen) {
@@ -181,7 +181,7 @@ class _GreetingPanelState extends State<GreetingPanel>
 
   void _handlePanEnd(DragEndDetails details) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final totalHeight = screenHeight * 0.4; // 40% экрана
+    final totalHeight = screenHeight * 0.45; // 45% экрана
     
     // Определяем, нужно ли открыть или закрыть панель
     final threshold = totalHeight * 0.3; // 30% от высоты панели
@@ -371,7 +371,7 @@ class _GreetingPanelState extends State<GreetingPanel>
                   top: MediaQuery.of(context).padding.top + 20,
                   left: 20,
                   right: 20,
-                  bottom: 20,
+                  bottom: 27, // 20 + 7px отступ для "Выполнено"
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,7 +399,7 @@ class _GreetingPanelState extends State<GreetingPanel>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                     // Приветствие
                     Text(
                       _getGreeting(),
@@ -409,7 +409,7 @@ class _GreetingPanelState extends State<GreetingPanel>
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 30),
                     // Статистика
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,30 +422,19 @@ class _GreetingPanelState extends State<GreetingPanel>
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          'Выполнено: ${_pluralizeTasks(widget.completedTasksToday)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            color: Colors.white,
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: Text(
+                            'Выполнено: ${_pluralizeTasks(widget.completedTasksToday)}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const Spacer(),
-                    // Разделитель внизу (handle для перетаскивания)
-                    Center(
-                      child: GestureDetector(
-                        onTap: widget.onToggle,
-                        child: Container(
-                          width: 45,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
