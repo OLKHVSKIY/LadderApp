@@ -1,20 +1,44 @@
-name: Telegram notifications
+name: 📬 Telegram notifications
 
 on:
   push:
+    branches:
+      - "**"
   pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Send Telegram message
+      - name: 📤 Send Telegram notification
         uses: appleboy/telegram-action@v0.1.1
         with:
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          format: markdown
           message: |
-            🚀 Репозиторий: ${{ github.repository }}
-            👤 Автор: ${{ github.actor }}
-            📝 Событие: ${{ github.event_name }}
-            🔗 Коммит: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+            *🚀 GitHub Notification*
+
+            *📦 Репозиторий:*  
+            `${{ github.repository }}`
+
+            *👤 Автор:*  
+            `${{ github.actor }}`
+
+            *📝 Событие:*  
+            `${{ github.event_name }}`
+
+            *🌿 Ветка:*  
+            `${{ github.ref_name }}`
+
+            *🔐 Commit SHA:*  
+            `${{ github.sha }}`
+
+            *🔗 Ссылки:*  
+            • [Открыть репозиторий](https://github.com/${{ github.repository }})  
+            • [Открыть коммит](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+            ---
+            ⏰ *Время:* `${{ github.event.head_commit.timestamp || '—' }}`
