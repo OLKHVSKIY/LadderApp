@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'pages/tasks_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Загружаем переменные окружения
+  await dotenv.load(fileName: '.env');
   
   // Блокируем горизонтальную ориентацию
   await SystemChrome.setPreferredOrientations([

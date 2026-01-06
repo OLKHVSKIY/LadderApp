@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
+import '../services/yandex_gpt_service.dart';
 import 'plan_page.dart';
 import 'tasks_page.dart';
 import 'settings_page.dart';
@@ -21,6 +22,8 @@ class _ChatPageState extends State<ChatPage> {
   final List<_ChatMessage> _messages = [];
   final TextEditingController _controller = TextEditingController();
   bool _isSending = false;
+  final YandexGptService _gptService = YandexGptService();
+  String _currentLanguage = 'ru'; // TODO: получать из настроек
 
   void _toggleSidebar() {
     // Скрываем клавиатуру при открытии/закрытии сайдбара
@@ -42,13 +45,14 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isSending) return;
 
+    final userMessage = text;
     setState(() {
       _messages.add(_ChatMessage(
-        text: text,
+        text: userMessage,
         isUser: true,
         timestamp: DateTime.now(),
       ));
@@ -56,17 +60,45 @@ class _ChatPageState extends State<ChatPage> {
       _isSending = true;
     });
 
-    // Имитация ответа ассистента
-    Timer(const Duration(milliseconds: 400), () {
-      setState(() {
-        _messages.add(_ChatMessage(
-          text: 'Принял. Что ещё нужно сделать?',
-          isUser: false,
-          timestamp: DateTime.now(),
-        ));
-        _isSending = false;
-      });
-    });
+    try {
+      // Формируем историю сообщений для API (исключаем последнее сообщение пользователя, которое уже добавлено)
+      final chatHistory = _messages
+          .where((m) => m.text != userMessage)
+          .map((m) => {
+                'role': m.isUser ? 'user' : 'assistant',
+                'text': m.text,
+              })
+          .toList();
+
+      // Отправляем запрос к Yandex GPT
+      final response = await _gptService.sendMessage(
+        userMessage,
+        chatHistory,
+        _currentLanguage,
+      );
+
+      if (mounted) {
+        setState(() {
+          _messages.add(_ChatMessage(
+            text: response,
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+          _isSending = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _messages.add(_ChatMessage(
+            text: 'Извините, произошла ошибка. Попробуйте еще раз.',
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+          _isSending = false;
+        });
+      }
+    }
   }
 
   @override
@@ -95,9 +127,7 @@ class _ChatPageState extends State<ChatPage> {
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 900),
-                      child: Container(
-                        color: Colors.white,
-                        child: Column(
+                      child: Column(
                           children: [
                             // Сообщения / пустое состояние
                             Expanded(
@@ -105,10 +135,11 @@ class _ChatPageState extends State<ChatPage> {
                                   ? _buildEmptyState()
                                   : _buildMessages(),
                             ),
+                            // Отступ между сообщениями и полем ввода
+                            const SizedBox(height: 15),
                             // Поле ввода
                             _buildInput(),
                           ],
-                        ),
                       ),
                     ),
                   ),
@@ -134,7 +165,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _buildMessages() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: ListView.separated(
         reverse: true,
         itemCount: _messages.length,
@@ -152,7 +183,6 @@ class _ChatPageState extends State<ChatPage> {
     return Container(
       padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset),
       decoration: const BoxDecoration(
-        color: Colors.white,
         border: Border(
           top: BorderSide(color: Color(0xFFE5E5E5), width: 1),
         ),
@@ -304,37 +334,21 @@ class _MessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        textDirection: isUser ? TextDirection.rtl : TextDirection.ltr,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: isUser ? Colors.black : const Color(0xFFF5F5F5),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              isUser ? 'Я' : 'AI',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isUser ? Colors.white : Colors.black,
-              ),
-            ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: radius,
           ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: radius,
-              ),
-              child: Text(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
                 message.text,
                 style: TextStyle(
                   fontSize: 15,
@@ -342,9 +356,23 @@ class _MessageBubble extends StatelessWidget {
                   color: textColor,
                 ),
               ),
-            ),
+              if (!isUser) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'by AI',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: const Color(0xFF999999),
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
