@@ -17,6 +17,38 @@ import '../data/user_session.dart';
 import '../data/database_instance.dart';
 import '../models/goal_model.dart';
 
+// Функция для правильного склонения слова "дата"
+String _getDateWord(int count) {
+  final mod10 = count % 10;
+  final mod100 = count % 100;
+  
+  if (mod100 >= 11 && mod100 <= 14) {
+    return 'дат';
+  } else if (mod10 == 1) {
+    return 'дата';
+  } else if (mod10 >= 2 && mod10 <= 4) {
+    return 'даты';
+  } else {
+    return 'дат';
+  }
+}
+
+// Функция для правильного склонения слова "задача"
+String _getTaskWord(int count) {
+  final mod10 = count % 10;
+  final mod100 = count % 100;
+  
+  if (mod100 >= 11 && mod100 <= 14) {
+    return 'задач';
+  } else if (mod10 == 1) {
+    return 'задача';
+  } else if (mod10 >= 2 && mod10 <= 4) {
+    return 'задачи';
+  } else {
+    return 'задач';
+  }
+}
+
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
 
@@ -34,6 +66,9 @@ class _PlanPageState extends State<PlanPage> {
 
   final List<GoalModel> _goals = [];
   String? _activeGoalId;
+  bool _isEditMode = false;
+  bool _isLoading = true; // Флаг загрузки данных
+  final TextEditingController _goalTitleController = TextEditingController();
 
   GoalModel? get _activeGoal {
     if (_goals.isEmpty) return null;
@@ -45,19 +80,26 @@ class _PlanPageState extends State<PlanPage> {
 
   Future<void> _loadFromDb() async {
     final userId = UserSession.currentUserId;
-    if (userId == null) return;
+    if (userId == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
     final items = await _planRepo.loadGoals(userId);
     setState(() {
       _goals
         ..clear()
         ..addAll(items);
       _activeGoalId = null;
+      _isLoading = false; // Данные загружены
     });
   }
 
   @override
   void dispose() {
     _goalInputController.dispose();
+    _goalTitleController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -66,6 +108,10 @@ class _PlanPageState extends State<PlanPage> {
   void initState() {
     super.initState();
     _planRepo = PlanRepository(appDatabase);
+    // Убеждаемся, что при открытии страницы показывается список планов
+    _activeGoalId = null;
+    _isEditMode = false;
+    _isLoading = true;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromDb());
   }
 
@@ -100,27 +146,54 @@ class _PlanPageState extends State<PlanPage> {
 
   // --------- Создание / управление планами ---------
   void _createGoal() {
+    // Если вызывается из формы создания (кнопка "Создать"), создаем план с названием
     final title = _goalInputController.text.trim();
-    if (title.isEmpty) return;
-    final userId = UserSession.currentUserId;
-    if (userId == null) {
-      _showMessage('Нет авторизованного пользователя');
-      return;
+    if (title.isNotEmpty) {
+      final userId = UserSession.currentUserId;
+      if (userId == null) {
+        _showMessage('Нет авторизованного пользователя');
+        return;
+      }
+      final goal = GoalModel(
+        id: _uuid.v4(),
+        title: title,
+        isSaved: false,
+        isActive: true,
+        dates: [],
+        createdAt: DateTime.now(),
+        dbId: null,
+      );
+      setState(() {
+        _goals.add(goal);
+        _activeGoalId = goal.id;
+        _isEditMode = false; // Режим редактирования выключен для нового плана
+        _goalTitleController.text = goal.title;
+        _goalInputController.clear();
+      });
+    } else {
+      // Если вызывается из панели навигации (+), создаем пустой план для редактирования
+      final userId = UserSession.currentUserId;
+      if (userId == null) {
+        _showMessage('Нет авторизованного пользователя');
+        return;
+      }
+      final goal = GoalModel(
+        id: _uuid.v4(),
+        title: '',
+        isSaved: false,
+        isActive: true,
+        dates: [],
+        createdAt: DateTime.now(),
+        dbId: null,
+      );
+      setState(() {
+        _goals.add(goal);
+        _activeGoalId = goal.id;
+        _isEditMode = true; // Включаем режим редактирования для ввода названия
+        _goalTitleController.text = '';
+        _goalInputController.clear();
+      });
     }
-    final goal = GoalModel(
-      id: _uuid.v4(),
-      title: title,
-      isSaved: false,
-      isActive: true,
-      dates: [],
-      createdAt: DateTime.now(),
-      dbId: null,
-    );
-    setState(() {
-      _goals.add(goal);
-      _activeGoalId = goal.id;
-      _goalInputController.clear();
-    });
   }
 
   Future<void> _saveActiveGoal() async {
@@ -140,16 +213,25 @@ class _PlanPageState extends State<PlanPage> {
       _showMessage('Добавьте хотя бы одну задачу');
       return;
     }
-    final saved = goal.copyWith(isSaved: true, isActive: false, savedAt: DateTime.now());
-    await _persistGoal(saved, userId);
+    // Сохраняем текущее название из контроллера
+    final currentTitle = _goalTitleController.text.trim();
+    final goalToSave = currentTitle.isNotEmpty 
+        ? goal.copyWith(title: currentTitle, isSaved: true, isActive: false, savedAt: DateTime.now())
+        : goal.copyWith(isSaved: true, isActive: false, savedAt: DateTime.now());
+    
+    await _persistGoal(goalToSave, userId);
     setState(() {
-      final idx = _goals.indexWhere((g) => g.id == saved.id);
+      final idx = _goals.indexWhere((g) => g.id == goalToSave.id);
       if (idx >= 0) {
-        _goals[idx] = saved;
+        _goals[idx] = goalToSave;
       } else {
-        _goals.add(saved);
+        _goals.add(goalToSave);
       }
-      _activeGoalId = null;
+      // Обновляем контроллер с сохраненным названием
+      _goalTitleController.text = goalToSave.title;
+      // Не закрываем план - он должен остаться открытым для просмотра
+      // _activeGoalId остается установленным
+      _isEditMode = false; // Выключаем режим редактирования после сохранения
     });
     _showMessage('План сохранен');
   }
@@ -170,11 +252,135 @@ class _PlanPageState extends State<PlanPage> {
   void _openGoal(GoalModel goal) {
     setState(() {
       _activeGoalId = goal.id;
+      _isEditMode = false;
+      _goalTitleController.text = goal.title;
       for (var g in _goals) {
         final idx = _goals.indexOf(g);
         _goals[idx] = g.copyWith(isActive: g.id == goal.id);
       }
     });
+  }
+
+  void _toggleEditMode() {
+    final goal = _activeGoal;
+    if (goal == null) return;
+    
+    if (_isEditMode) {
+      // Сохраняем изменения
+      final newTitle = _goalTitleController.text.trim();
+      if (newTitle.isNotEmpty && newTitle != goal.title) {
+        final updated = goal.copyWith(title: newTitle);
+        _updateActiveGoal(updated);
+        if (goal.isSaved) {
+          _persistIfSaved(updated);
+        }
+      }
+      setState(() {
+        _isEditMode = false;
+      });
+    } else {
+      // Включаем режим редактирования
+      setState(() {
+        _isEditMode = true;
+        _goalTitleController.text = goal.title;
+      });
+    }
+  }
+
+  Future<void> _showDeleteConfirmDialog(String goalId) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 40,
+            left: 20,
+            right: 20,
+            top: 40,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Удалить план?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'В случае удаления цели она исчезнет безвозвратно. Вы точно хотите удалить цель?',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF666666),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(
+                          color: Color(0xFF6D6D6D),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(19),
+                        ),
+                      ),
+                      child: const Text(
+                        'Отмена',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF666666),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        _deleteGoal(goalId);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(19),
+                        ),
+                      ),
+                      child: const Text(
+                        'Удалить',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _deleteGoal(String goalId) {
@@ -384,50 +590,120 @@ class _PlanPageState extends State<PlanPage> {
                 'Добавить задачу',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 24),
               TextField(
                 controller: titleCtrl,
+                maxLength: 60,
                 decoration: InputDecoration(
                   hintText: 'Название задачи',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(color: Colors.black, width: 1.5),
                   ),
+                  counterText: '',
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _priorityChip(1, 'assets/icon/thunder-red.png', priority, () {
-                    priority = 1;
-                    (ctx as Element).markNeedsBuild();
-                  }),
-                  const SizedBox(width: 8),
-                  _priorityChip(2, 'assets/icon/thunder-yellow.png', priority, () {
-                    priority = 2;
-                    (ctx as Element).markNeedsBuild();
-                  }),
-                  const SizedBox(width: 8),
-                  _priorityChip(3, 'assets/icon/thunder-blue.png', priority, () {
-                    priority = 3;
-                    (ctx as Element).markNeedsBuild();
-                  }),
+                  const Text(
+                    'Приоритет',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF666666),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [1, 2, 3].map((p) {
+                        final isSelected = priority == p;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              priority = p;
+                              (ctx as Element).markNeedsBuild();
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: isSelected ? Colors.white : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: isSelected
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset(
+                                    p == 1
+                                        ? 'assets/icon/thunder-red.png'
+                                        : p == 2
+                                            ? 'assets/icon/thunder-yellow.png'
+                                            : 'assets/icon/thunder-blue.png',
+                                    width: 20,
+                                    height: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '$p',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: isSelected
+                                          ? Colors.black
+                                          : const Color(0xFF666666),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(19),
+                    ),
+                  ),
+                  onPressed: () {
+                    if (titleCtrl.text.trim().isEmpty) return;
+                    Navigator.of(ctx).pop();
+                    _addTaskToDate(dateId, titleCtrl.text.trim(), priority);
+                  },
+                  child: const Text(
+                    'Добавить',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
-                onPressed: () {
-                  if (titleCtrl.text.trim().isEmpty) return;
-                  Navigator.of(ctx).pop();
-                  _addTaskToDate(dateId, titleCtrl.text.trim(), priority);
-                },
-                child: const Text('Добавить'),
               ),
               const SizedBox(height: 12),
             ],
@@ -482,11 +758,11 @@ class _PlanPageState extends State<PlanPage> {
   // --------- UI Builders ---------
   @override
   Widget build(BuildContext context) {
-    final hasGoals = _goals.isNotEmpty;
     final activeGoal = _activeGoal;
     final savedGoals = _goals.where((g) => g.isSaved).toList();
-    final showConstructor = activeGoal != null;
-    final showCreation = !hasGoals;
+    final showConstructor = activeGoal != null && _activeGoalId != null;
+    // Блок создания показывается только если данные загружены И нет сохраненных планов
+    final showCreation = !_isLoading && savedGoals.isEmpty;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -497,7 +773,7 @@ class _PlanPageState extends State<PlanPage> {
             child: Column(
               children: [
                 MainHeader(
-                  title: 'План',
+                  title: 'Цели',
                   onMenuTap: _toggleSidebar,
                   onSearchTap: null,
                   onSettingsTap: () {
@@ -506,12 +782,13 @@ class _PlanPageState extends State<PlanPage> {
                   hideSearchAndSettings: false,
                   showBackButton: _activeGoalId != null,
                   onBack: () {
-                    // Если открыт конструктор, закрыть его и показать список планов
-                    if (_activeGoalId != null) {
-                      setState(() {
-                        _activeGoalId = null;
-                      });
-                    }
+                    // Если открыт план, закрыть его и показать список планов
+                    setState(() {
+                      _activeGoalId = null;
+                      _isEditMode = false;
+                      // Удаляем несохраненные планы при возврате к списку
+                      _goals.removeWhere((g) => !g.isSaved);
+                    });
                   },
                   onGreetingToggle: null,
                 ),
@@ -519,16 +796,13 @@ class _PlanPageState extends State<PlanPage> {
                   child: SingleChildScrollView(
                     controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(10, 10, 10, 120),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: showConstructor
-                          ? _buildConstructor(activeGoal!)
-                          : savedGoals.isNotEmpty
-                              ? _buildSavedList(savedGoals)
-                              : showCreation
-                                  ? _buildCreation()
-                                  : _buildSavedList(savedGoals),
-                    ),
+                    child: _isLoading
+                        ? const SizedBox.shrink() // Показываем пустой виджет во время загрузки
+                        : showConstructor
+                            ? _buildConstructor(activeGoal!)
+                            : savedGoals.isNotEmpty
+                                ? _buildSavedList(savedGoals)
+                                : _buildCreation(),
                   ),
                 ),
               ],
@@ -542,10 +816,21 @@ class _PlanPageState extends State<PlanPage> {
           ),
           BottomNavigation(
             currentIndex: 2,
-            onAddTask: _createGoal,
+            onAddTask: _activeGoalId == null ? _createGoal : null,
             isSidebarOpen: _isSidebarOpen,
             onGptTap: _openAiMenu,
-            onPlanTap: () {},
+            onPlanTap: () {
+              // При нажатии на "План" всегда показываем список планов
+              setState(() {
+                _activeGoalId = null;
+                _isEditMode = false;
+                _goals.removeWhere((g) => !g.isSaved);
+                _isLoading = true; // Устанавливаем флаг загрузки перед перезагрузкой
+              });
+              // Перезагружаем данные из БД
+              _loadFromDb();
+            },
+            onTasksTap: () => _navigateTo(const TasksPage()),
             onIndexChanged: (index) {
               if (index == 0) _navigateTo(const TasksPage());
             },
@@ -692,62 +977,116 @@ class _PlanPageState extends State<PlanPage> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      goal.title,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black,
-                      ),
-                    ),
+                  Flexible(
+                    flex: 3,
+                    child: (!goal.isSaved || _isEditMode)
+                        ? TextField(
+                            controller: _goalTitleController,
+                            autofocus: !goal.isSaved && goal.title.isEmpty,
+                            maxLines: 2,
+                            minLines: 1,
+                            maxLength: 40,
+                            cursorHeight: 20,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'Введите название цели',
+                              hintStyle: const TextStyle(
+                                color: Color(0xFF999999),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Colors.black, width: 1),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Colors.black, width: 1),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Colors.black, width: 1),
+                              ),
+                              filled: false,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              isDense: false,
+                              counterText: '',
+                            ),
+                          )
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              goal.title,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.visible,
+                            ),
+                          ),
                   ),
+                  const SizedBox(width: 8),
                   Row(
                     children: [
-                      _iconButton(Icons.edit, onTap: () => _showRenameDialog(goal)),
-                      const SizedBox(width: 8),
-                      _iconButton(Icons.delete_outline, onTap: () => _deleteGoal(goal.id)),
+                      // Кнопка редактирования показывается только для сохраненных планов
+                      if (goal.isSaved) ...[
+                        _iconButton(
+                          _isEditMode ? Icons.check : Icons.edit,
+                          onTap: _toggleEditMode,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      _iconButton(Icons.delete_outline, onTap: () => _showDeleteConfirmDialog(goal.id), iconSize: 22),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeInOut,
-                          width: MediaQuery.of(context).size.width *
-                              progress *
-                              0.7,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDC3545),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+              // Прогресс бар показывается только для сохраненных планов не в режиме редактирования
+              if (goal.isSaved && !_isEditMode) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Align(
+                              alignment: Alignment.centerLeft,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 500),
+                                curve: Curves.easeInOut,
+                                width: constraints.maxWidth * progress,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDC3545),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '${(progress * 100).round()}%',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF666666),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${(progress * 100).round()}%',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF666666),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -760,33 +1099,55 @@ class _PlanPageState extends State<PlanPage> {
                   onDeleteDate: () => _deleteDate(d.id),
                   onToggleTask: (taskId) => _toggleTask(d.id, taskId),
                   onDeleteTask: (taskId) => _deleteTask(d.id, taskId),
+                  isEditMode: !goal.isSaved || _isEditMode,
                 ),
               )
               .toList(),
         ),
-        const SizedBox(height: 12),
-        _addDateButton(),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 0,
-            ),
-            onPressed: _saveActiveGoal,
-            child: const Text(
-              'Сохранить',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+        // Для несохраненных планов показываем кнопки "Добавить дату" и "Сохранить"
+        // Для сохраненных планов показываем кнопки только в режиме редактирования
+        if (!goal.isSaved || _isEditMode) ...[
+          const SizedBox(height: 12),
+          _addDateButton(),
+          // Кнопка "Сохранить" показывается только для несохраненных планов
+          if (!goal.isSaved) ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                onPressed: _saveActiveGoal,
+                child: const Text(
+                  'Сохранить',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
+            const SizedBox(height: 30),
+            AnimatedOpacity(
+              opacity: goal.dates.any((d) => d.tasks.isNotEmpty) ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: const Text(
+                'Добавьте название вашей цели, выберите дни и создайте задачи',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF666666),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
       ],
     );
   }
@@ -830,24 +1191,13 @@ class _PlanPageState extends State<PlanPage> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Список планов',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
-              ),
-              _iconButton(Icons.add, onTap: () {
-                _activeGoalId = null;
-                _goals.removeWhere((g) => !g.isSaved);
-                _goalInputController.clear();
-                setState(() {});
-              }),
-            ],
+          child: const Text(
+            'Список целей',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: Colors.black,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -858,7 +1208,7 @@ class _PlanPageState extends State<PlanPage> {
                   goal: g,
                   progress: _progressOf(g),
                   onOpen: () => _openGoal(g),
-                  onDelete: () => _deleteGoal(g.id),
+                  onDelete: () => _showDeleteConfirmDialog(g.id),
                 ),
               )
               .toList(),
@@ -867,7 +1217,7 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  Widget _iconButton(IconData icon, {required VoidCallback onTap}) {
+  Widget _iconButton(IconData icon, {required VoidCallback onTap, double iconSize = 20}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -877,7 +1227,7 @@ class _PlanPageState extends State<PlanPage> {
           color: Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, size: 20, color: Colors.black),
+        child: Icon(icon, size: iconSize, color: Colors.black),
       ),
     );
   }
@@ -1005,6 +1355,7 @@ class _DateCard extends StatelessWidget {
   final VoidCallback onDeleteDate;
   final void Function(String taskId) onToggleTask;
   final void Function(String taskId) onDeleteTask;
+  final bool isEditMode;
 
   const _DateCard({
     required this.date,
@@ -1012,6 +1363,7 @@ class _DateCard extends StatelessWidget {
     required this.onDeleteDate,
     required this.onToggleTask,
     required this.onDeleteTask,
+    this.isEditMode = true,
   });
 
   @override
@@ -1047,11 +1399,12 @@ class _DateCard extends StatelessWidget {
                     color: Colors.black,
                   ),
                 ),
-                Row(
-                  children: [
-                    _smallIcon(Icons.delete_outline, onTap: onDeleteDate),
-                  ],
-                ),
+                if (isEditMode)
+                  Row(
+                    children: [
+                      _smallIcon(Icons.delete_outline, onTap: onDeleteDate, iconSize: 18),
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -1066,8 +1419,10 @@ class _DateCard extends StatelessWidget {
                   )
                   .toList(),
             ),
-            const SizedBox(height: 8),
-            _addTaskButton(),
+            if (isEditMode) ...[
+              const SizedBox(height: 8),
+              _addTaskButton(),
+            ],
           ],
         ),
       ),
@@ -1105,7 +1460,7 @@ class _DateCard extends StatelessWidget {
     );
   }
 
-  Widget _smallIcon(IconData icon, {required VoidCallback onTap}) {
+  Widget _smallIcon(IconData icon, {required VoidCallback onTap, double iconSize = 18}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1115,7 +1470,7 @@ class _DateCard extends StatelessWidget {
           color: Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, size: 16, color: Colors.black),
+        child: Icon(icon, size: iconSize, color: Colors.black),
       ),
     );
   }
@@ -1183,14 +1538,14 @@ class _TaskTileState extends State<_TaskTile> {
     Color borderColor;
     switch (widget.task.priority) {
       case 1:
-        borderColor = const Color(0xFFDC3545);
+        borderColor = const Color(0xFFDC3545); // Красный (thunder-red.png)
         break;
       case 2:
-        borderColor = const Color(0xFFFFC107);
+        borderColor = const Color(0xFFFFC107); // Желтый (thunder-yellow.png)
         break;
       case 3:
       default:
-        borderColor = const Color(0xFF28A745);
+        borderColor = const Color(0xFF007AFF); // Синий (thunder-blue.png)
         break;
     }
     return GestureDetector(
@@ -1201,7 +1556,7 @@ class _TaskTileState extends State<_TaskTile> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF7F6F7),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border(left: BorderSide(color: borderColor, width: 4)),
         ),
@@ -1240,7 +1595,7 @@ class _TaskTileState extends State<_TaskTile> {
               duration: const Duration(milliseconds: 200),
               child: GestureDetector(
                 onTap: widget.onDelete,
-                child: const Icon(Icons.delete_outline, size: 18, color: Color(0xFF666666)),
+                child: const Icon(Icons.delete_outline, size: 20, color: Color(0xFF666666)),
               ),
             ),
             const SizedBox(width: 6),
@@ -1301,32 +1656,37 @@ class _SavedCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        goal.title,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          goal.title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.visible,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${goal.dates.length} дат • ${goal.totalTasks} задач',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF666666),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${goal.dates.length} ${_getDateWord(goal.dates.length)} • ${goal.totalTasks} ${_getTaskWord(goal.totalTasks)}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF666666),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Row(
                     children: [
-                      _smallIcon(Icons.delete_outline, onTap: onDelete),
+                      _smallIcon(Icons.delete_outline, onTap: onDelete, iconSize: 18),
                     ],
                   ),
                 ],
@@ -1341,19 +1701,21 @@ class _SavedCard extends StatelessWidget {
                         color: Colors.black.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(3),
                       ),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeInOut,
-                          width: MediaQuery.of(context).size.width *
-                              progress *
-                              0.6,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDC3545),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return Align(
+                            alignment: Alignment.centerLeft,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 500),
+                              curve: Curves.easeInOut,
+                              width: constraints.maxWidth * progress,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDC3545),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -1375,7 +1737,7 @@ class _SavedCard extends StatelessWidget {
     );
   }
 
-  Widget _smallIcon(IconData icon, {required VoidCallback onTap}) {
+  Widget _smallIcon(IconData icon, {required VoidCallback onTap, double iconSize = 18}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1385,7 +1747,7 @@ class _SavedCard extends StatelessWidget {
           color: Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, size: 16, color: Colors.black),
+        child: Icon(icon, size: iconSize, color: Colors.black),
       ),
     );
   }

@@ -176,6 +176,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                               label: 'Название',
                               controller: _titleController,
                               hint: 'Название задачи',
+                              maxLength: 60,
                             ),
                             const SizedBox(height: 24),
                             // Описание
@@ -280,6 +281,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     required String label,
     required TextEditingController controller,
     required String hint,
+    int? maxLength,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,6 +297,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
         const SizedBox(height: 8),
         TextField(
           controller: controller,
+          maxLength: maxLength,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(

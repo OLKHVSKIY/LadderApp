@@ -120,7 +120,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
                   Expanded(
                     child: _buildNavItemContent(
                       iconPath: 'assets/icon/draft.png',
-                      label: 'План',
+                      label: 'Цели',
                       isActive: widget.currentIndex == 2,
                       onTap: widget.onPlanTap,
                     ),
