@@ -33,6 +33,9 @@ jobs:
             *🌿 Ветка:*  
             `${{ github.ref_name }}`
 
+            *💬 Коммит:*  
+            `${{ github.event.head_commit.message || '—' }}`
+
             *🔐 Commit SHA:*  
             `${{ github.sha }}`
 
