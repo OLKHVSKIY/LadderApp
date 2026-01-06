@@ -1,17 +1,64 @@
-name: 📬 Telegram notifications
+name: 📬 Telegram notifications (FULL)
 
 on:
   push:
-    branches:
-      - "**"
+    branches: ["**"]
+
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - closed
+      - ready_for_review
+
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+
+  issue_comment:
+    types: [created, edited, deleted]
+
+  release:
+    types: [published, prereleased, created, edited]
+
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+
+  deployment:
+  deployment_status:
+
+  discussion:
+    types: [created, edited, answered, unanswered]
+
+  discussion_comment:
+    types: [created, edited, deleted]
+
+  create:
+
+  fork:
+
+  # Stars (GitHub does NOT have `star` trigger)
+  watch:
+    types: [started]
+
+  delete:
 
 jobs:
   notify:
     runs-on: ubuntu-latest
 
     steps:
+      - name: 🕒 Format time (MSK)
+        id: time
+        run: |
+          TZ=Europe/Moscow
+          echo "TIME=$(date '+%d.%m.%Y %H:%M (MSK)')" >> $GITHUB_OUTPUT
+
       - name: 📤 Send Telegram notification
         uses: appleboy/telegram-action@v0.1.1
         with:
@@ -19,29 +66,35 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           format: markdown
           message: |
-            *🚀 GitHub Notification*
+            *🚨 GitHub Event Notification*
 
             *📦 Репозиторий:*  
             `${{ github.repository }}`
 
-            *👤 Автор:*  
-            `${{ github.actor }}`
-
-            *📝 Событие:*  
+            *🧩 Тип события:*  
             `${{ github.event_name }}`
 
-            *🌿 Ветка:*  
-            `${{ github.ref_name }}`
+            *⚙️ Action:*  
+            `${{ github.event.action || '—' }}`
 
-            *💬 Коммит:*  
-            `${{ github.event.head_commit.message || '—' }}`
+            *👤 Инициатор:*  
+            `${{ github.actor }}`
 
-            *🔐 Commit SHA:*  
-            `${{ github.sha }}`
+            *🌿 Ref:*  
+            `${{ github.ref_name || '—' }}`
 
-            *🔗 Ссылки:*  
-            • [Открыть репозиторий](https://github.com/${{ github.repository }})  
-            • [Открыть коммит](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+            *💬 Сообщение / Заголовок:*  
+            `${{ github.event.head_commit.message
+              || github.event.pull_request.title
+              || github.event.issue.title
+              || github.event.release.name
+              || '—' }}`
 
-            ---
-            ⏰ *Время:* `${{ github.event.head_commit.timestamp || '—' }}`
+            *🔗 URL:*  
+            ${{ github.event.pull_request.html_url
+              || github.event.issue.html_url
+              || github.event.release.html_url
+              || github.event.repository.html_url }}
+
+            *⏰ Время:*  
+            `${{ steps.time.outputs.TIME }}`
