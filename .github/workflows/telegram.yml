@@ -1,0 +1,20 @@
+name: Telegram notifications
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram message
+        uses: appleboy/telegram-action@v0.1.1
+        with:
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          message: |
+            🚀 Репозиторий: ${{ github.repository }}
+            👤 Автор: ${{ github.actor }}
+            📝 Событие: ${{ github.event_name }}
+            🔗 Коммит: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
