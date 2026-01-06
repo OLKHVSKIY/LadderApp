@@ -1,0 +1,20 @@
+{
+  // Автоматический hot reload при сохранении файлов Dart
+  "dart.flutterHotReloadOnSave": "always",
+  
+  // Автоматический hot restart при изменении pubspec.yaml
+  "dart.flutterHotRestartOnSave": "always",
+  
+  // Автоматическое форматирование при сохранении
+  "editor.formatOnSave": true,
+  
+  // Автоматическое сохранение при потере фокуса
+  "files.autoSave": "onFocusChange",
+  
+  // Настройки для Dart/Flutter
+  "[dart]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "Dart-Code.dart-code"
+  }
+}
+
