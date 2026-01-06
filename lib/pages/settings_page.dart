@@ -119,6 +119,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Padding(

@@ -162,12 +162,19 @@ class _GreetingPanelState extends State<GreetingPanel>
       
       // Обновляем offset в зависимости от направления перетаскивания
       if (widget.isOpen) {
-        // При открытой панели: перетаскивание вверх (положительный delta.dy) закрывает панель
-        _dragOffset = (_dragOffset + details.delta.dy).clamp(0.0, totalHeight);
+        // При открытой панели: разрешаем только перетаскивание вверх (закрытие)
+        // delta.dy положительный при перетаскивании вверх
+        if (details.delta.dy > 0) {
+          _dragOffset = (_dragOffset + details.delta.dy).clamp(0.0, totalHeight);
+        }
+        // Игнорируем перетаскивание вниз (delta.dy < 0)
       } else {
-        // При закрытой панели: перетаскивание вниз (положительный delta.dy) открывает панель
-        // Увеличиваем _dragOffset, чтобы topPosition = -totalHeight + _dragOffset приближался к 0
-        _dragOffset = (_dragOffset + details.delta.dy).clamp(0.0, totalHeight);
+        // При закрытой панели: разрешаем только перетаскивание вниз (открытие)
+        // delta.dy отрицательный при перетаскивании вниз
+        if (details.delta.dy < 0) {
+          _dragOffset = (_dragOffset - details.delta.dy).clamp(0.0, totalHeight);
+        }
+        // Игнорируем перетаскивание вверх (delta.dy > 0)
       }
     });
   }
@@ -179,23 +186,35 @@ class _GreetingPanelState extends State<GreetingPanel>
     // Определяем, нужно ли открыть или закрыть панель
     final threshold = totalHeight * 0.3; // 30% от высоты панели
     
+    bool shouldToggle = false;
+    
     if (widget.isOpen) {
       // Если панель открыта и перетащена больше порога вверх - закрываем
-      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy > 500) {
-        widget.onToggle();
+      // При перетаскивании вверх velocity будет положительной
+      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy > 300) {
+        shouldToggle = true;
       }
     } else {
       // Если панель закрыта и перетащена больше порога вниз - открываем
-      // При перетаскивании вниз velocity будет положительной
-      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy > 500) {
-        widget.onToggle();
+      // При перетаскивании вниз velocity будет отрицательной
+      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy < -300) {
+        shouldToggle = true;
       }
     }
     
-    setState(() {
-      _isDragging = false;
-      _dragOffset = 0.0;
-    });
+    if (shouldToggle) {
+      widget.onToggle();
+      setState(() {
+        _isDragging = false;
+        _dragOffset = 0.0;
+      });
+    } else {
+      // Если не переключаем, возвращаем панель в исходное состояние с анимацией
+      setState(() {
+        _isDragging = false;
+        _dragOffset = 0.0;
+      });
+    }
   }
 
   List<Widget> _buildTwinklingStars() {
@@ -290,12 +309,13 @@ class _GreetingPanelState extends State<GreetingPanel>
       topPosition = _dragOffset;
     } else {
       // При закрытой панели: начинаем с -totalHeight, перетаскивание вниз уменьшает отрицательное значение
+      // _dragOffset будет отрицательным при перетаскивании вниз
       topPosition = -totalHeight + _dragOffset;
     }
     
     return AnimatedPositioned(
-      duration: _isDragging ? Duration.zero : const Duration(milliseconds: 400),
-      curve: Curves.easeInOutCubic,
+      duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
       top: topPosition,
       left: 0,
       right: 0,
@@ -412,7 +432,7 @@ class _GreetingPanelState extends State<GreetingPanel>
                       ],
                     ),
                     const Spacer(),
-                    // Разделитель внизу
+                    // Разделитель внизу (handle для перетаскивания)
                     Center(
                       child: GestureDetector(
                         onTap: widget.onToggle,

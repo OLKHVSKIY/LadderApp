@@ -354,6 +354,7 @@ class _TasksPageState extends State<TasksPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
       body: ClipRect(
         clipBehavior: Clip.hardEdge,
         child: Stack(

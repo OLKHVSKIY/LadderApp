@@ -103,6 +103,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Padding(

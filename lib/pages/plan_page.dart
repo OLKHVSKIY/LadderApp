@@ -766,6 +766,7 @@ class _PlanPageState extends State<PlanPage> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Padding(

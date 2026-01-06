@@ -129,6 +129,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     final bottom = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
       body: FadeTransition(
         opacity: _fade,
         child: SlideTransition(
