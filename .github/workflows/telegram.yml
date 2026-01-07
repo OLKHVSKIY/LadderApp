@@ -98,13 +98,13 @@ jobs:
             `${{ github.event_name }}`
 
             *⚙️ Action:*
-            `${{ github.event.action || '—' }}`
+            `${{ github.event.action }}`
 
             *👤 Инициатор:*
             `${{ github.actor }}`
 
             *🌿 Ref:*
-            `${{ github.ref_name || '—' }}`
+            `${{ github.ref_name }}`
 
             *💬 Заголовок:*
             `${{ steps.msg.outputs.TITLE }}`
