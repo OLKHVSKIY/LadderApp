@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/task.dart';
 import '../widgets/greeting_panel.dart';
 import '../widgets/main_header.dart';
@@ -13,11 +14,12 @@ import 'plan_page.dart';
 import 'gpt_plan_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
+import 'notes_page.dart';
 import '../data/database_instance.dart';
 import '../data/repositories/task_repository.dart';
 import '../data/user_session.dart';
+import '../widgets/custom_snackbar.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
-import 'package:flutter/material.dart';
 
 class TasksPage extends StatefulWidget {
   final bool animateNavIn;
@@ -219,6 +221,8 @@ class _TasksPageState extends State<TasksPage> {
   void _updateTaskCompletion(String taskId, bool isCompleted) {
     final intId = int.tryParse(taskId);
     if (intId == null) return;
+    // Вибрация при отметке задачи
+    HapticFeedback.mediumImpact();
     _taskRepository.updateCompletion(intId, isCompleted).then((_) {
       _loadTasksForDate(_selectedDate);
       _loadWeekTasks();
@@ -336,9 +340,7 @@ class _TasksPageState extends State<TasksPage> {
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    CustomSnackBar.show(context, message);
   }
 
   void _navigateTo(Widget page) {
@@ -452,9 +454,7 @@ class _TasksPageState extends State<TasksPage> {
                   MainHeader(
                     onMenuTap: _toggleSidebar,
                     onSearchTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Поиск (в разработке)')),
-                      );
+                      CustomSnackBar.show(context, 'Поиск (в разработке)');
                     },
                     onSettingsTap: () {
                       _navigateTo(const SettingsPage());
@@ -548,9 +548,14 @@ class _TasksPageState extends State<TasksPage> {
               onPlanTap: () {
                 _navigateTo(const PlanPage());
               },
+              onNotesTap: () {
+                _navigateTo(const NotesPage());
+              },
               onIndexChanged: (index) {
                 if (index == 2) {
                   _navigateTo(const PlanPage());
+                } else if (index == 3) {
+                  _navigateTo(const NotesPage());
                 }
               },
             ),

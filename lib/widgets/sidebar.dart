@@ -362,7 +362,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     return AnimatedBuilder(
       animation: _fallingStarController,
       builder: (context, child) {
-        final value = _fallingStarController.value;
+        final value = _fallingStarController.value.clamp(0.0, 1.0);
         // Звезда появляется вверху слева и плавно падает вниз вправо
         final startX = 60.0;
         final endX = 240.0;
@@ -395,7 +395,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity(opacity * 0.9),
+                    color: Colors.white.withOpacity((opacity * 0.9).clamp(0.0, 1.0)),
                     blurRadius: 6,
                     spreadRadius: 2,
                   ),
@@ -467,7 +467,8 @@ class _TwinklingStar extends StatelessWidget {
       animation: animationController,
       builder: (context, child) {
         // Создаем плавную синусоидальную анимацию с задержкой
-        final value = (animationController.value + delay) % 1.0;
+        final controllerValue = animationController.value.clamp(0.0, 1.0);
+        final value = ((controllerValue + delay) % 1.0).clamp(0.0, 1.0);
         final sineValue = math.sin(value * 2 * math.pi);
         // Преобразуем синус от -1..1 в 0..1, чтобы opacity доходил до 0
         final opacity = (0.5 + 0.5 * sineValue).clamp(0.0, 1.0);
@@ -485,7 +486,7 @@ class _TwinklingStar extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity(opacity * 0.8),
+                    color: Colors.white.withOpacity((opacity * 0.8).clamp(0.0, 1.0)),
                     blurRadius: 3,
                     spreadRadius: 1,
                   ),

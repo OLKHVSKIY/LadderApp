@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import 'apple_calendar.dart';
+import 'custom_snackbar.dart';
 
 class TaskCreateModal extends StatefulWidget {
   final VoidCallback onClose;
@@ -79,7 +80,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
 
   void _showMessage(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    CustomSnackBar.show(context, msg);
   }
 
   void _handleClose() {

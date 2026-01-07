@@ -15,6 +15,10 @@ class AuthRepository {
         await (db.select(db.users)..where((u) => u.email.equals(normalized))).get();
 
     if (usersQuery.isEmpty) {
+      // При регистрации проверяем длину пароля
+      if (password.length < 9) {
+        throw Exception('Пароль должен содержать минимум 9 символов');
+      }
       final id = await db.into(db.users).insert(UsersCompanion.insert(
         email: normalized,
         passwordHash: password,

@@ -6,9 +6,13 @@ import 'package:flutter/services.dart';
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import '../services/yandex_gpt_service.dart';
-import 'plan_page.dart';
 import 'tasks_page.dart';
 import 'settings_page.dart';
+import '../data/database_instance.dart';
+import '../data/repositories/chat_repository.dart';
+import '../data/repositories/task_repository.dart';
+import '../models/task.dart';
+import '../widgets/custom_snackbar.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -23,7 +27,51 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
   bool _isSending = false;
   final YandexGptService _gptService = YandexGptService();
+  late final ChatRepository _chatRepository;
+  TaskRepository? _taskRepository;
   String _currentLanguage = 'ru'; // TODO: получать из настроек
+  bool _isLoadingHistory = true;
+  // Состояние для ожидания выбора приоритета задачи
+  _PendingTask? _pendingTask;
+
+  TaskRepository get taskRepository {
+    _taskRepository ??= TaskRepository(appDatabase);
+    return _taskRepository!;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _chatRepository = ChatRepository(appDatabase);
+    _taskRepository = TaskRepository(appDatabase);
+    _loadChatHistory();
+  }
+
+  /// Загрузить историю чата из БД
+  Future<void> _loadChatHistory() async {
+    try {
+      final dbMessages = await _chatRepository.loadMessages();
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          _messages.addAll(
+            dbMessages.map((msg) => _ChatMessage(
+                  text: msg.content,
+                  isUser: msg.role == 'user',
+                  timestamp: msg.createdAt,
+                )),
+          );
+          _isLoadingHistory = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingHistory = false;
+        });
+      }
+    }
+  }
 
   void _toggleSidebar() {
     // Скрываем клавиатуру при открытии/закрытии сайдбара
@@ -45,20 +93,303 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  // Распознает запрос на создание задачи
+  _PendingTask? _parseTaskRequest(String text) {
+    final lowerText = text.toLowerCase();
+    
+    // Словарь месяцев
+    final monthNames = {
+      'января': 1, 'янв': 1, 'январь': 1,
+      'февраля': 2, 'фев': 2, 'февраль': 2,
+      'марта': 3, 'мар': 3, 'март': 3,
+      'апреля': 4, 'апр': 4, 'апрель': 4,
+      'мая': 5, 'май': 5,
+      'июня': 6, 'июн': 6, 'июнь': 6,
+      'июля': 7, 'июл': 7, 'июль': 7,
+      'августа': 8, 'авг': 8, 'август': 8,
+      'сентября': 9, 'сен': 9, 'сентябрь': 9,
+      'октября': 10, 'окт': 10, 'октябрь': 10,
+      'ноября': 11, 'ноя': 11, 'ноябрь': 11,
+      'декабря': 12, 'дек': 12, 'декабрь': 12,
+    };
+    
+    // Паттерны для распознавания запросов на создание задач
+    final taskPatterns = [
+      // Паттерн для "поставь задачу на 12 января Билеты" или "поставь задачу на 12 января 2025 Билеты"
+      RegExp(r'поставь\s+задачу\s+(?:на\s+)?(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря|янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)(?:\s+(\d{2,4}))?\s+(.+)$', caseSensitive: false),
+      RegExp(r'создай\s+задачу\s+(?:на\s+)?(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря|янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)(?:\s+(\d{2,4}))?\s+(.+)$', caseSensitive: false),
+      RegExp(r'добавь\s+задачу\s+(?:на\s+)?(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря|янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)(?:\s+(\d{2,4}))?\s+(.+)$', caseSensitive: false),
+      // Старые паттерны для других форматов
+      RegExp(r'поставь\s+задачу\s+(?:на\s+)?(сегодня|завтра|вчера|послезавтра|(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?)\s+(.+)', caseSensitive: false),
+      RegExp(r'создай\s+задачу\s+(?:на\s+)?(сегодня|завтра|вчера|послезавтра|(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?)\s+(.+)', caseSensitive: false),
+      RegExp(r'добавь\s+задачу\s+(?:на\s+)?(сегодня|завтра|вчера|послезавтра|(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?)\s+(.+)', caseSensitive: false),
+    ];
+    
+    for (int i = 0; i < taskPatterns.length; i++) {
+      final pattern = taskPatterns[i];
+      final match = pattern.firstMatch(lowerText);
+      if (match != null) {
+        DateTime taskDate = DateTime.now();
+        String? taskTitle;
+        
+        // Первые три паттерна - для формата "12 января"
+        if (i < 3) {
+          try {
+            final day = int.parse(match.group(1)!);
+            final monthName = match.group(2)!.toLowerCase();
+            final month = monthNames[monthName] ?? DateTime.now().month;
+            final year = match.group(3) != null ? int.parse(match.group(3)!) : DateTime.now().year;
+            taskDate = DateTime(year, month, day);
+            taskTitle = match.group(4)?.trim();
+          } catch (e) {
+            debugPrint('Ошибка парсинга даты: $e');
+            continue;
+          }
+        } else {
+          // Старые паттерны
+          String dateStr = match.group(1) ?? '';
+          
+          if (dateStr == 'сегодня') {
+            taskDate = DateTime.now();
+          } else if (dateStr == 'завтра') {
+            taskDate = DateTime.now().add(const Duration(days: 1));
+          } else if (dateStr == 'послезавтра') {
+            taskDate = DateTime.now().add(const Duration(days: 2));
+          } else if (dateStr == 'вчера') {
+            taskDate = DateTime.now().subtract(const Duration(days: 1));
+          } else if (match.group(2) != null && match.group(3) != null) {
+            // Парсим дату в формате дд.мм или дд.мм.гггг
+            try {
+              final day = int.parse(match.group(2)!);
+              final month = int.parse(match.group(3)!);
+              final year = match.group(4) != null ? int.parse(match.group(4)!) : DateTime.now().year;
+              taskDate = DateTime(year, month, day);
+            } catch (_) {
+              taskDate = DateTime.now();
+            }
+          }
+          
+          taskTitle = match.group(5)?.trim() ?? text.replaceFirst(match.group(0)!, '').trim();
+        }
+        
+        if (taskTitle != null && taskTitle.isNotEmpty) {
+          return _PendingTask(
+            title: taskTitle,
+            date: DateTime(taskDate.year, taskDate.month, taskDate.day),
+          );
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  // Обрабатывает ответ пользователя с приоритетом
+  bool _handlePriorityResponse(String text) {
+    if (_pendingTask == null) return false;
+    
+    final trimmed = text.trim();
+    final priority = int.tryParse(trimmed);
+    
+    if (priority != null && priority >= 1 && priority <= 3) {
+      _createTask(_pendingTask!.title, _pendingTask!.date, priority);
+      setState(() {
+        _pendingTask = null;
+      });
+      return true;
+    }
+    
+    return false;
+  }
+
+  // Создает задачу в БД
+  Future<void> _createTask(String title, DateTime date, int priority) async {
+    if (!mounted) return;
+    
+    // Проверяем, что дата не в прошлом
+    final today = DateTime.now();
+    final taskDateNormalized = DateTime(date.year, date.month, date.day);
+    final todayNormalized = DateTime(today.year, today.month, today.day);
+    
+    if (taskDateNormalized.isBefore(todayNormalized)) {
+      final errorMessage = _ChatMessage(
+        text: 'Нельзя создать задачу на прошедшую дату. Выберите сегодняшнюю или будущую дату.',
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _messages.add(errorMessage);
+        });
+        
+        // Сохраняем сообщение в БД
+        try {
+          await _chatRepository.saveMessage(
+            role: 'assistant',
+            content: errorMessage.text,
+          );
+        } catch (e) {
+          debugPrint('Ошибка сохранения сообщения: $e');
+        }
+      }
+      return;
+    }
+    
+    try {
+      final task = Task(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: title,
+        description: null,
+        priority: priority,
+        tags: [],
+        date: date,
+        endDate: null,
+        isCompleted: false,
+      );
+      
+      await taskRepository.addTask(task);
+      
+      final successMessage = _ChatMessage(
+        text: 'Задача "$title" успешно создана на ${date.day}.${date.month}.${date.year} с приоритетом $priority 🌿',
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _messages.add(successMessage);
+        });
+        
+        // Сохраняем сообщение в БД
+        try {
+          await _chatRepository.saveMessage(
+            role: 'assistant',
+            content: successMessage.text,
+          );
+        } catch (e) {
+          debugPrint('Ошибка сохранения сообщения: $e');
+        }
+      }
+    } catch (e) {
+      final errorMessage = _ChatMessage(
+        text: 'Не удалось создать задачу: $e',
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _messages.add(errorMessage);
+        });
+      }
+    }
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _isSending) return;
 
-    final userMessage = text;
-    setState(() {
-      _messages.add(_ChatMessage(
-        text: userMessage,
+    // Проверяем, ожидаем ли мы ответ с приоритетом
+    if (_pendingTask != null) {
+      if (_handlePriorityResponse(text)) {
+        final userMessageObj = _ChatMessage(
+          text: text,
+          isUser: true,
+          timestamp: DateTime.now(),
+        );
+        
+        setState(() {
+          _messages.add(userMessageObj);
+          _controller.clear();
+        });
+        
+        // Сохраняем сообщение пользователя в БД
+        try {
+          await _chatRepository.saveMessage(
+            role: 'user',
+            content: text,
+          );
+        } catch (e) {
+          debugPrint('Ошибка сохранения сообщения пользователя: $e');
+        }
+        
+        return;
+      }
+    }
+
+    // Проверяем, является ли сообщение запросом на создание задачи
+    final taskRequest = _parseTaskRequest(text);
+    if (taskRequest != null) {
+      final userMessageObj = _ChatMessage(
+        text: text,
         isUser: true,
         timestamp: DateTime.now(),
-      ));
+      );
+      
+      setState(() {
+        _messages.add(userMessageObj);
+        _controller.clear();
+        _pendingTask = taskRequest;
+      });
+      
+      // Сохраняем сообщение пользователя в БД
+      try {
+        await _chatRepository.saveMessage(
+          role: 'user',
+          content: text,
+        );
+      } catch (e) {
+        debugPrint('Ошибка сохранения сообщения пользователя: $e');
+      }
+      
+      // Спрашиваем про приоритет
+      final priorityQuestion = _ChatMessage(
+        text: 'Какой приоритет выбрать для задачи? 1, 2 или 3?',
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+      
+      setState(() {
+        _messages.add(priorityQuestion);
+      });
+      
+      // Сохраняем вопрос AI в БД
+      try {
+        await _chatRepository.saveMessage(
+          role: 'assistant',
+          content: priorityQuestion.text,
+        );
+      } catch (e) {
+        debugPrint('Ошибка сохранения сообщения AI: $e');
+      }
+      
+      return;
+    }
+
+    final userMessage = text;
+    final userMessageObj = _ChatMessage(
+      text: userMessage,
+      isUser: true,
+      timestamp: DateTime.now(),
+    );
+
+    setState(() {
+      _messages.add(userMessageObj);
       _controller.clear();
       _isSending = true;
     });
+
+    // Сохраняем сообщение пользователя в БД
+    try {
+      await _chatRepository.saveMessage(
+        role: 'user',
+        content: userMessage,
+      );
+    } catch (e) {
+      // Логируем ошибку, но продолжаем работу
+      debugPrint('Ошибка сохранения сообщения пользователя: $e');
+    }
 
     try {
       // Формируем историю сообщений для API (исключаем последнее сообщение пользователя, которое уже добавлено)
@@ -77,26 +408,52 @@ class _ChatPageState extends State<ChatPage> {
         _currentLanguage,
       );
 
+      final aiMessageObj = _ChatMessage(
+        text: response,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+
       if (mounted) {
         setState(() {
-          _messages.add(_ChatMessage(
-            text: response,
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
+          _messages.add(aiMessageObj);
           _isSending = false;
         });
+
+        // Сохраняем ответ AI в БД
+        try {
+          await _chatRepository.saveMessage(
+            role: 'assistant',
+            content: response,
+          );
+        } catch (e) {
+          // Логируем ошибку, но продолжаем работу
+          debugPrint('Ошибка сохранения сообщения AI: $e');
+        }
       }
     } catch (e) {
+      final errorMessage = 'Извините, произошла ошибка. Попробуйте еще раз.';
+      final errorMessageObj = _ChatMessage(
+        text: errorMessage,
+        isUser: false,
+        timestamp: DateTime.now(),
+      );
+
       if (mounted) {
         setState(() {
-          _messages.add(_ChatMessage(
-            text: 'Извините, произошла ошибка. Попробуйте еще раз.',
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
+          _messages.add(errorMessageObj);
           _isSending = false;
         });
+
+        // Сохраняем сообщение об ошибке в БД
+        try {
+          await _chatRepository.saveMessage(
+            role: 'assistant',
+            content: errorMessage,
+          );
+        } catch (saveError) {
+          debugPrint('Ошибка сохранения сообщения об ошибке: $saveError');
+        }
       }
     }
   }
@@ -131,9 +488,11 @@ class _ChatPageState extends State<ChatPage> {
                           children: [
                             // Сообщения / пустое состояние
                             Expanded(
-                              child: _messages.isEmpty
-                                  ? _buildEmptyState()
-                                  : _buildMessages(),
+                              child: _isLoadingHistory
+                                  ? const Center(child: CircularProgressIndicator())
+                                  : _messages.isEmpty
+                                      ? _buildEmptyState()
+                                      : _buildMessages(),
                             ),
                             // Отступ между сообщениями и полем ввода
                             const SizedBox(height: 15),
@@ -315,14 +674,53 @@ class _ChatMessage {
   });
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   final _ChatMessage message;
 
   const _MessageBubble({required this.message});
 
   @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  Timer? _longPressTimer;
+  bool _isPressed = false;
+
+  @override
+  void dispose() {
+    _longPressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    _isPressed = true;
+    _longPressTimer = Timer(const Duration(milliseconds: 1000), () {
+      if (mounted && _isPressed) {
+        // Копируем текст в буфер обмена
+        Clipboard.setData(ClipboardData(text: widget.message.text));
+        // Вибрация
+        HapticFeedback.mediumImpact();
+        // Показываем уведомление
+        CustomSnackBar.show(context, 'Текст скопирован в буфер обмена');
+        _isPressed = false;
+      }
+    });
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _isPressed = false;
+    _longPressTimer?.cancel();
+  }
+
+  void _handleTapCancel() {
+    _isPressed = false;
+    _longPressTimer?.cancel();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isUser = message.isUser;
+    final isUser = widget.message.isUser;
     final bgColor = isUser ? Colors.black : const Color(0xFFF5F5F5);
     final textColor = isUser ? Colors.white : Colors.black;
     final radius = BorderRadius.only(
@@ -338,43 +736,58 @@ class _MessageBubble extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: radius,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                message.text,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: textColor,
-                ),
-              ),
-              if (!isUser) ...[
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    'by AI',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: const Color(0xFF999999),
-                      height: 1.0,
-                    ),
+        child: GestureDetector(
+          onTapDown: _handleTapDown,
+          onTapUp: _handleTapUp,
+          onTapCancel: _handleTapCancel,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: radius,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.message.text,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.5,
+                    color: textColor,
                   ),
                 ),
+                if (!isUser) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'by AI',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: const Color(0xFF999999),
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _PendingTask {
+  final String title;
+  final DateTime date;
+
+  _PendingTask({
+    required this.title,
+    required this.date,
+  });
 }
 

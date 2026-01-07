@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:uuid/uuid.dart';
 
@@ -12,10 +13,12 @@ import 'tasks_page.dart';
 import 'gpt_plan_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
+import 'notes_page.dart';
 import '../data/repositories/plan_repository.dart';
 import '../data/user_session.dart';
 import '../data/database_instance.dart';
 import '../widgets/apple_calendar.dart';
+import '../widgets/custom_snackbar.dart';
 import '../models/goal_model.dart';
 
 // Функция для правильного склонения слова "дата"
@@ -238,7 +241,7 @@ class _PlanPageState extends State<PlanPage> {
       // _activeGoalId остается установленным
       _isEditMode = false; // Выключаем режим редактирования после сохранения
     });
-    _showMessage('План сохранен');
+    _showMessage('План сохранен 🌿');
   }
 
   Future<void> _persistGoal(GoalModel goal, int userId) async {
@@ -463,6 +466,8 @@ class _PlanPageState extends State<PlanPage> {
   void _toggleTask(String dateId, String taskId) {
     final goal = _activeGoal;
     if (goal == null) return;
+    // Вибрация при отметке задачи
+    HapticFeedback.mediumImpact();
     final dates = goal.dates.map((d) {
       if (d.id != dateId) return d;
       final tasks = d.tasks
@@ -508,7 +513,7 @@ class _PlanPageState extends State<PlanPage> {
 
   void _showMessage(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    CustomSnackBar.show(context, msg);
   }
 
   void _persistIfSaved(GoalModel goal) {
@@ -842,6 +847,9 @@ class _PlanPageState extends State<PlanPage> {
               });
               // Перезагружаем данные из БД
               _loadFromDb();
+            },
+            onNotesTap: () {
+              _navigateTo(const NotesPage());
             },
             onTasksTap: () => _navigateTo(const TasksPage()),
             onIndexChanged: (index) {

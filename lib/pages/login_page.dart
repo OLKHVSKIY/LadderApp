@@ -52,6 +52,11 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       setState(() => _error = 'Введите почту и пароль');
       return;
     }
+    // Проверяем длину пароля при регистрации (минимум 9 символов)
+    if (password.length < 9) {
+      setState(() => _error = 'Пароль должен содержать минимум 9 символов');
+      return;
+    }
     setState(() {
       _isLoading = true;
       _error = null;

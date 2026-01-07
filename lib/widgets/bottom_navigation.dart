@@ -6,10 +6,12 @@ class BottomNavigation extends StatefulWidget {
   final VoidCallback? onTasksTap;
   final VoidCallback? onPlanTap;
   final VoidCallback? onGptTap;
+  final VoidCallback? onNotesTap;
   final Function(int)? onIndexChanged;
   final double activeIndicatorWidth;
   final double activeIndicatorHeight;
   final bool isSidebarOpen;
+  final bool isEditorOpen;
 
   const BottomNavigation({
     super.key,
@@ -18,10 +20,12 @@ class BottomNavigation extends StatefulWidget {
     this.onTasksTap,
     this.onPlanTap,
     this.onGptTap,
+    this.onNotesTap,
     this.onIndexChanged,
     this.activeIndicatorWidth = 77, // Ширина овала по умолчанию
     this.activeIndicatorHeight = 59, // Высота овала по умолчанию
     this.isSidebarOpen = false,
+    this.isEditorOpen = false,
   });
 
   @override
@@ -31,6 +35,21 @@ class BottomNavigation extends StatefulWidget {
 class _BottomNavigationState extends State<BottomNavigation> {
   double? _dragOffset;
   double? _initialDragX;
+  bool _previousShouldHide = false;
+  bool _isInitialBuild = true;
+  
+  @override
+  void didUpdateWidget(BottomNavigation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Обновляем предыдущее состояние только если виджет действительно обновляется
+    // (не пересоздается при переходе между страницами)
+    final oldShouldHide = oldWidget.isSidebarOpen || oldWidget.isEditorOpen;
+    final newShouldHide = widget.isSidebarOpen || widget.isEditorOpen;
+    if (oldShouldHide != newShouldHide) {
+      _previousShouldHide = oldShouldHide;
+      _isInitialBuild = false;
+    }
+  }
 
   int? _calculateButtonIndex(double centerX, BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -60,14 +79,45 @@ class _BottomNavigationState extends State<BottomNavigation> {
     final navHeight = 60.0;
     final navBottom = 15.0;
     
+    final shouldHide = widget.isSidebarOpen || widget.isEditorOpen;
+    final targetBottom = shouldHide
+        ? -(navHeight + navBottom + bottomPadding + 20)
+        : navBottom;
+    
+    // При первой сборке виджета устанавливаем позицию сразу без анимации
+    if (_isInitialBuild) {
+      _isInitialBuild = false;
+      _previousShouldHide = shouldHide;
+      // Используем Positioned вместо AnimatedPositioned для мгновенной установки позиции
+      return Positioned(
+        bottom: targetBottom,
+        left: 22,
+        right: 22,
+        child: _buildNavigationContent(),
+      );
+    }
+    
+    // Проверяем, изменилось ли состояние скрытия
+    final stateChanged = _previousShouldHide != shouldHide;
+    
+    // Анимируем только если состояние действительно изменилось
+    if (stateChanged) {
+      _previousShouldHide = shouldHide;
+    }
+    
     return AnimatedPositioned(
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeInOutCubic,
-      bottom: widget.isSidebarOpen ? -(navHeight + navBottom + bottomPadding + 20) : navBottom,
+      duration: stateChanged ? const Duration(milliseconds: 300) : Duration.zero,
+      curve: Curves.easeOutCubic,
+      bottom: targetBottom,
       left: 22,
       right: 22,
-      child: Container(
-        height: 62, // Фиксированная высота панели
+      child: _buildNavigationContent(),
+    );
+  }
+  
+  Widget _buildNavigationContent() {
+    return Container(
+      height: 62, // Фиксированная высота панели
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(40),
@@ -128,10 +178,14 @@ class _BottomNavigationState extends State<BottomNavigation> {
                   const SizedBox(width: 5),
                   // Заметки
                   Expanded(
-                    child: _buildNavItemContent(
-                      iconPath: 'assets/icon/notes.png',
-                      label: 'Заметки',
-                      isActive: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: _buildNavItemContent(
+                        iconPath: 'assets/icon/notes.png',
+                        label: 'Заметки',
+                        isActive: widget.currentIndex == 3,
+                        onTap: widget.onNotesTap,
+                      ),
                     ),
                   ),
                 ],
@@ -169,7 +223,6 @@ class _BottomNavigationState extends State<BottomNavigation> {
             ),
           ],
         ),
-      ),
     );
   }
 

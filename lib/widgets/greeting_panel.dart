@@ -461,7 +461,8 @@ class _TwinkleDot extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, child) {
-        final value = (controller.value + delay) % 1.0;
+        final controllerValue = controller.value.clamp(0.0, 1.0);
+        final value = ((controllerValue + delay) % 1.0).clamp(0.0, 1.0);
         final sine = math.sin(value * 2 * math.pi);
         final opacity = (0.2 + 0.8 * (0.5 + 0.5 * sine)).clamp(0.0, 1.0);
         final scale = 0.9 + 0.5 * (0.5 + 0.5 * sine);

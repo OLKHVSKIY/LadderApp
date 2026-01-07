@@ -59,8 +59,14 @@ class WeekCalendar extends StatelessWidget {
 
   // Виджет для отображения кружочков приоритетов
   Widget _buildPriorityIndicators(Set<int> priorities) {
+    const circleSize = 7.0;
+    
+    // Всегда возвращаем виджет с фиксированной высотой для выравнивания
     if (priorities.isEmpty) {
-      return const SizedBox.shrink();
+      return const SizedBox(
+        height: circleSize,
+        width: double.infinity,
+      );
     }
 
     // Сортируем приоритеты: 1 (красный), 2 (желтый), 3 (синий)
@@ -71,49 +77,52 @@ class WeekCalendar extends StatelessWidget {
     
     // Определяем смещение для наезжания (примерно 1px)
     const overlap = 1.0;
-    const circleSize = 7.0;
     
     // Вычисляем общую ширину всех кружочков с учетом наезжания
     final totalWidth = circleSize + (count - 1) * (circleSize - overlap);
     
-    return Center(
-      child: SizedBox(
-        width: totalWidth,
-        height: circleSize,
-        child: Stack(
-          children: List.generate(count, (index) {
-            final priority = sortedPriorities[index];
-            Color color;
-            switch (priority) {
-              case 1:
-                color = Colors.red;
-                break;
-              case 2:
-                color = Colors.yellow;
-                break;
-              case 3:
-                color = const Color(0xFF0066FF); // Синий цвет (не голубой)
-                break;
-              default:
-                color = Colors.grey;
-            }
-            
-            // Позиционируем кружочки так, чтобы они наезжали друг на друга
-            // и вся группа была по центру
-            final leftOffset = index * (circleSize - overlap);
-            
-            return Positioned(
-              left: leftOffset,
-              child: Container(
-                width: circleSize,
-                height: circleSize,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
+    return SizedBox(
+      height: circleSize,
+      width: double.infinity,
+      child: Center(
+        child: SizedBox(
+          width: totalWidth,
+          height: circleSize,
+          child: Stack(
+            children: List.generate(count, (index) {
+              final priority = sortedPriorities[index];
+              Color color;
+              switch (priority) {
+                case 1:
+                  color = Colors.red;
+                  break;
+                case 2:
+                  color = Colors.yellow;
+                  break;
+                case 3:
+                  color = const Color(0xFF0066FF); // Синий цвет (не голубой)
+                  break;
+                default:
+                  color = Colors.grey;
+              }
+              
+              // Позиционируем кружочки так, чтобы они наезжали друг на друга
+              // и вся группа была по центру
+              final leftOffset = index * (circleSize - overlap);
+              
+              return Positioned(
+                left: leftOffset,
+                child: Container(
+                  width: circleSize,
+                  height: circleSize,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -125,11 +134,11 @@ class WeekCalendar extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 0),
-      padding: const EdgeInsets.only(bottom: 0),
+      padding: const EdgeInsets.only(bottom: 0, top: 5),
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 19),
+            padding: const EdgeInsets.only(bottom: 14),
             child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: weekDates.map((date) {

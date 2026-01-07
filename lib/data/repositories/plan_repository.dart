@@ -21,6 +21,27 @@ class PlanRepository {
       );
       return goal.dbId!;
     } else {
+      // Проверяем на дубликаты перед сохранением
+      final existingGoals = await (db.select(db.plans)
+            ..where((p) => p.userId.equals(userId))
+            ..where((p) => p.title.equals(goal.title)))
+          .get();
+      
+      // Проверяем, есть ли цель с таким же названием и содержимым
+      for (final existing in existingGoals) {
+        if (existing.description == jsonStr) {
+          // Найден дубликат - обновляем существующую запись вместо создания новой
+          await (db.update(db.plans)..where((p) => p.id.equals(existing.id))).write(
+            PlansCompanion(
+              description: dr.Value(jsonStr),
+              updatedAt: dr.Value(DateTime.now()),
+            ),
+          );
+          return existing.id;
+        }
+      }
+      
+      // Дубликатов не найдено - создаем новую запись
       return db.into(db.plans).insert(
             PlansCompanion.insert(
               userId: userId,
@@ -43,16 +64,37 @@ class PlanRepository {
           ..orderBy([(p) => dr.OrderingTerm.desc(p.updatedAt)]))
         .get();
     final result = <GoalModel>[];
+    final seenDescriptions = <String, int>{}; // Для отслеживания дубликатов
+    final duplicatesToDelete = <int>[]; // Список дубликатов для удаления
+    
     for (final r in rows) {
       try {
         final map = r.description != null ? jsonDecode(r.description!) as Map<String, dynamic> : null;
         if (map == null) continue;
+        
+        final description = r.description!;
+        
+        // Проверяем на дубликаты по содержимому
+        if (seenDescriptions.containsKey(description)) {
+          // Найден дубликат - помечаем для удаления (оставляем первую встреченную, которая более новая из-за сортировки)
+          duplicatesToDelete.add(r.id);
+          continue;
+        } else {
+          seenDescriptions[description] = r.id;
+        }
+        
         final goal = GoalModel.fromMap(map).copyWith(dbId: r.id, isSaved: true, isActive: false);
         result.add(goal);
       } catch (_) {
         // skip malformed entry
       }
     }
+    
+    // Удаляем найденные дубликаты
+    for (final duplicateId in duplicatesToDelete) {
+      await deleteGoal(duplicateId);
+    }
+    
     return result;
   }
 }

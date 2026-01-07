@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../widgets/main_header.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
+import '../widgets/custom_snackbar.dart';
 import 'tasks_page.dart';
 import 'plan_page.dart';
 import 'chat_page.dart';
@@ -84,9 +85,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
         _currentStep++;
       });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Генерация плана скоро будет доступна')),
-      );
+      CustomSnackBar.show(context, 'Генерация плана скоро будет доступна');
     }
   }
 

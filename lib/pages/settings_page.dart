@@ -9,6 +9,7 @@ import 'login_page.dart';
 import '../data/database_instance.dart';
 import '../data/user_session.dart';
 import '../data/app_database.dart';
+import '../widgets/custom_snackbar.dart';
 
 class SettingsPage extends StatefulWidget {
   final Widget Function() buildReturnPage;
@@ -91,9 +92,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     final email = _emailController.text.trim();
     final name = _nameController.text.trim();
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите email')),
-      );
+      CustomSnackBar.show(context, 'Введите email');
       return;
     }
     setState(() {
@@ -111,9 +110,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       _saving = false;
     });
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сохранено')),
-      );
+      CustomSnackBar.show(context, 'Сохранено');
     }
   }
 
@@ -438,8 +435,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               child: AnimatedBuilder(
                 animation: _starsController,
                 builder: (context, child) {
-                  final base = _starsController.value;
-                  final phase = (base + entry.key * 0.07) % 1.0;
+                  final base = _starsController.value.clamp(0.0, 1.0);
+                  final phase = ((base + entry.key * 0.07) % 1.0).clamp(0.0, 1.0);
                   final sine = math.sin(phase * 2 * math.pi);
                   final opacity = (0.3 + 0.7 * (0.5 + 0.5 * sine)).clamp(0.0, 1.0);
                   final scale = 0.8 + 0.4 * (0.5 + 0.5 * sine);

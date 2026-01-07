@@ -12,6 +12,9 @@ class MainHeader extends StatefulWidget {
   final bool hideSearchAndSettings;
   final bool showBackButton;
   final VoidCallback? onBack;
+  final String? searchIconPath;
+  final String? settingsIconPath;
+  final bool disableSettingsSpin;
 
   const MainHeader({
     super.key,
@@ -26,6 +29,9 @@ class MainHeader extends StatefulWidget {
     this.hideSearchAndSettings = false,
     this.showBackButton = false,
     this.onBack,
+    this.searchIconPath,
+    this.settingsIconPath,
+    this.disableSettingsSpin = false,
   });
 
   @override
@@ -126,7 +132,7 @@ class _MainHeaderState extends State<MainHeader> {
                                 color: Colors.transparent,
                                 alignment: Alignment.center,
                                 child: Image.asset(
-                                  'assets/icon/glass.png',
+                                  widget.searchIconPath ?? 'assets/icon/glass.png',
                                   width: 24,
                                   height: 24,
                                   fit: BoxFit.contain,
@@ -134,33 +140,49 @@ class _MainHeaderState extends State<MainHeader> {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            MouseRegion(
-                              onEnter: (_) => _spinSettings(),
-                              onHover: (_) => _spinSettings(),
-                              child: GestureDetector(
-                                onTap: () {
-                                  _spinSettings();
-                                  widget.onSettingsTap?.call();
-                                },
-                                child: AnimatedRotation(
-                                  duration: const Duration(milliseconds: 200),
-                                  turns: _settingsTurns,
-                                  curve: Curves.easeOut,
-                                  child: Container(
-                                    width: 24,
-                                    height: 24,
-                                    color: Colors.transparent,
-                                    alignment: Alignment.center,
-                                    child: Image.asset(
-                                      'assets/icon/settings.png',
+                            widget.disableSettingsSpin
+                                ? GestureDetector(
+                                    onTap: widget.onSettingsTap,
+                                    child: Container(
                                       width: 24,
                                       height: 24,
-                                      fit: BoxFit.contain,
+                                      color: Colors.transparent,
+                                      alignment: Alignment.center,
+                                      child: Image.asset(
+                                        widget.settingsIconPath ?? 'assets/icon/settings.png',
+                                        width: 24,
+                                        height: 24,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  )
+                                : MouseRegion(
+                                    onEnter: (_) => _spinSettings(),
+                                    onHover: (_) => _spinSettings(),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        _spinSettings();
+                                        widget.onSettingsTap?.call();
+                                      },
+                                      child: AnimatedRotation(
+                                        duration: const Duration(milliseconds: 200),
+                                        turns: _settingsTurns,
+                                        curve: Curves.easeOut,
+                                        child: Container(
+                                          width: 24,
+                                          height: 24,
+                                          color: Colors.transparent,
+                                          alignment: Alignment.center,
+                                          child: Image.asset(
+                                            widget.settingsIconPath ?? 'assets/icon/settings.png',
+                                            width: 24,
+                                            height: 24,
+                                            fit: BoxFit.contain,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                 ),
