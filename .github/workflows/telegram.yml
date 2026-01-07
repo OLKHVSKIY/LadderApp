@@ -26,7 +26,6 @@ on:
     types: [published, prereleased, created, edited]
 
   workflow_run:
-    workflows: ["*"]
     types: [completed]
 
   deployment:
@@ -56,8 +55,27 @@ jobs:
       - name: 🕒 Format time (MSK)
         id: time
         run: |
-          TZ=Europe/Moscow
-          echo "TIME=$(date '+%d.%m.%Y %H:%M (MSK)')" >> $GITHUB_OUTPUT
+          echo "TIME=$(TZ=Europe/Moscow date '+%d.%m.%Y %H:%M (MSK)')" >> $GITHUB_OUTPUT
+
+      - name: 📂 Collect changed files
+        id: files
+        run: |
+          git init
+          git remote add origin https://github.com/${{ github.repository }}.git
+          git fetch --depth=2 origin
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            FILES=$(git diff --name-status HEAD~1 HEAD | sed 's/^/• /')
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.event.pull_request.base.ref }}
+            FILES=$(git diff --name-status origin/${{ github.event.pull_request.base.ref }}...HEAD | sed 's/^/• /')
+          else
+            FILES="—"
+          fi
+
+          echo "FILES<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 📤 Send Telegram notification
         uses: appleboy/telegram-action@v0.1.1
@@ -89,6 +107,11 @@ jobs:
               || github.event.issue.title
               || github.event.release.name
               || '—' }}`
+
+            *📂 Изменённые файлы:*  
+            ```
+            ${{ steps.files.outputs.FILES }}
+            ```
 
             *🔗 URL:*  
             ${{ github.event.pull_request.html_url
