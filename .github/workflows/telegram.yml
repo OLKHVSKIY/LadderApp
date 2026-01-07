@@ -58,6 +58,30 @@ jobs:
         run: |
           echo "TIME=$(TZ=Europe/Moscow date '+%d.%m.%Y %H:%M (MSK)')" >> "$GITHUB_OUTPUT"
 
+      - name: 🧠 Build message
+        id: msg
+        shell: bash
+        run: |
+          TITLE="—"
+          URL="https://github.com/${{ github.repository }}"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TITLE="${{ github.event.head_commit.message }}"
+            URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            TITLE="${{ github.event.pull_request.title }}"
+            URL="${{ github.event.pull_request.html_url }}"
+          elif [ "${{ github.event_name }}" = "issues" ]; then
+            TITLE="${{ github.event.issue.title }}"
+            URL="${{ github.event.issue.html_url }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TITLE="${{ github.event.release.name }}"
+            URL="${{ github.event.release.html_url }}"
+          fi
+
+          echo "TITLE=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "URL=$URL" >> "$GITHUB_OUTPUT"
+
       - name: 📤 Send Telegram notification
         uses: appleboy/telegram-action@v0.1.1
         with:
@@ -67,33 +91,26 @@ jobs:
           message: |
             *🚨 GitHub Event Notification*
 
-            *📦 Репозиторий:*  
+            *📦 Репозиторий:*
             `${{ github.repository }}`
 
-            *🧩 Тип события:*  
+            *🧩 Тип события:*
             `${{ github.event_name }}`
 
-            *⚙️ Action:*  
+            *⚙️ Action:*
             `${{ github.event.action || '—' }}`
 
-            *👤 Инициатор:*  
+            *👤 Инициатор:*
             `${{ github.actor }}`
 
-            *🌿 Ref:*  
+            *🌿 Ref:*
             `${{ github.ref_name || '—' }}`
 
-            *💬 Сообщение / Заголовок:*  
-            `${{ github.event.head_commit.message
-              || github.event.pull_request.title
-              || github.event.issue.title
-              || github.event.release.name
-              || '—' }}`
+            *💬 Заголовок:*
+            `${{ steps.msg.outputs.TITLE }}`
 
-            *🔗 URL:*  
-            ${{ github.event.pull_request.html_url
-              || github.event.issue.html_url
-              || github.event.release.html_url
-              || github.event.repository.html_url }}
+            *🔗 URL:*
+            ${{ steps.msg.outputs.URL }}
 
-            *⏰ Время:*  
+            *⏰ Время:*
             `${{ steps.time.outputs.TIME }}`
