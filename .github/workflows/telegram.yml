@@ -26,6 +26,7 @@ on:
     types: [published, prereleased, created, edited]
 
   workflow_run:
+    workflows: ["*"]
     types: [completed]
 
   deployment:
@@ -55,7 +56,8 @@ jobs:
       - name: 🕒 Format time (MSK)
         id: time
         run: |
-          echo "TIME=$(TZ=Europe/Moscow date '+%d.%m.%Y %H:%M (MSK)')" >> $GITHUB_OUTPUT
+          TZ=Europe/Moscow
+          echo "TIME=$(date '+%d.%m.%Y %H:%M (MSK)')" >> $GITHUB_OUTPUT
 
       - name: 📤 Send Telegram notification
         uses: appleboy/telegram-action@v0.1.1
