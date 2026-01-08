@@ -95,8 +95,26 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       final user = users.first;
       _nameController.text = user.name ?? '';
       _emailController.text = user.email;
+      
+      // Проверяем, что файл аватара существует
+      String? validAvatarPath = user.avatarUrl;
+      if (validAvatarPath != null && validAvatarPath.isNotEmpty) {
+        final avatarFile = File(validAvatarPath);
+        if (!await avatarFile.exists()) {
+          debugPrint('Файл аватара не существует: $validAvatarPath, очищаем путь в БД');
+          // Очищаем несуществующий путь из БД
+          await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
+            UsersCompanion(
+              avatarUrl: dr.Value(null),
+              updatedAt: dr.Value(DateTime.now()),
+            ),
+          );
+          validAvatarPath = null;
+        }
+      }
+      
       setState(() {
-        _avatarPath = user.avatarUrl;
+        _avatarPath = validAvatarPath;
       });
     } else {
       _emailController.text = UserSession.currentEmail ?? '';
@@ -452,6 +470,26 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         });
         
         debugPrint('Аватар установлен в состояние: $_avatarPath');
+        
+        // ВАЖНО: Сохраняем путь к аватару в БД сразу после выбора
+        final userId = UserSession.currentUserId;
+        if (userId != null) {
+          try {
+            await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
+              UsersCompanion(
+                avatarUrl: dr.Value(finalPath),
+                updatedAt: dr.Value(DateTime.now()),
+              ),
+            );
+            debugPrint('Путь к аватару сохранен в БД: $finalPath');
+          } catch (e) {
+            debugPrint('Ошибка сохранения пути к аватару в БД: $e');
+            if (mounted) {
+              CustomSnackBar.show(context, 'Аватар обновлен, но не сохранен в профиле');
+            }
+            return;
+          }
+        }
         
         if (mounted) {
           CustomSnackBar.show(context, 'Аватар обновлен');
