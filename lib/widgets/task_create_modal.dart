@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/task.dart';
 import 'apple_calendar.dart';
 import 'custom_snackbar.dart';
@@ -36,6 +37,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
   bool _isEndDateCalendarOpen = false;
   late AnimationController _animationController;
   late Animation<Offset> _slideAnimation;
+  String _previousTitleText = '';
+  String _previousDescriptionText = '';
 
   @override
   void initState() {
@@ -67,6 +70,119 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       curve: Curves.easeOutCubic,
     ));
     _animationController.forward();
+    
+    // Инициализируем предыдущие значения
+    _previousTitleText = _titleController.text;
+    _previousDescriptionText = _descriptionController.text;
+    
+    // Добавляем слушатели для ограничения количества строк
+    _titleController.addListener(_limitTitleLines);
+    _descriptionController.addListener(_limitDescriptionLines);
+  }
+  
+  void _limitTitleLines() {
+    if (!mounted) return;
+    final text = _titleController.text;
+    
+    // Используем TextPainter для определения реального количества строк
+    final textStyle = const TextStyle(fontSize: 16, fontWeight: FontWeight.w500);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxWidth = screenWidth * 0.8 - 32; // Примерная ширина поля
+    
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    )..layout(minWidth: 0, maxWidth: maxWidth);
+    
+    final lineHeight = tp.preferredLineHeight;
+    final actualLines = (tp.size.height / lineHeight).ceil();
+    
+    // Если превышен лимит строк, блокируем ввод и вибрируем
+    if (actualLines > 3) {
+      // Откатываем к предыдущему значению
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _titleController.text != _previousTitleText) {
+          _titleController.value = TextEditingValue(
+            text: _previousTitleText,
+            selection: TextSelection.collapsed(offset: _previousTitleText.length),
+          );
+          // Вибрация при попытке ввести больше 3 строк
+          HapticFeedback.mediumImpact();
+        }
+      });
+    } else {
+      // Сохраняем текущее значение как предыдущее
+      _previousTitleText = text;
+    }
+  }
+  
+  void _limitDescriptionLines() {
+    if (!mounted) return;
+    final text = _descriptionController.text;
+    
+    // Используем TextPainter для определения реального количества строк
+    final textStyle = const TextStyle(fontSize: 14);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxWidth = screenWidth * 0.8 - 32; // Примерная ширина поля
+    
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    )..layout(minWidth: 0, maxWidth: maxWidth);
+    
+    final lineHeight = tp.preferredLineHeight;
+    final actualLines = (tp.size.height / lineHeight).ceil();
+    
+    // Если превышен лимит строк, блокируем ввод и вибрируем
+    if (actualLines > 8) {
+      // Откатываем к предыдущему значению
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _descriptionController.text != _previousDescriptionText) {
+          _descriptionController.value = TextEditingValue(
+            text: _previousDescriptionText,
+            selection: TextSelection.collapsed(offset: _previousDescriptionText.length),
+          );
+          // Вибрация при попытке ввести больше 8 строк
+          HapticFeedback.mediumImpact();
+        }
+      });
+    } else {
+      // Сохраняем текущее значение как предыдущее
+      _previousDescriptionText = text;
+    }
+  }
+  
+  void _limitTextFieldLines(TextEditingController controller, String value, double maxWidth, int maxLines) {
+    if (!mounted) return;
+    
+    // Используем TextPainter для определения реального количества строк с учетом автоматических переносов
+    final textStyle = const TextStyle(fontSize: 16, fontWeight: FontWeight.w500);
+    final tp = TextPainter(
+      text: TextSpan(text: value, style: textStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    )..layout(minWidth: 0, maxWidth: maxWidth - 32); // Учитываем padding (16px с каждой стороны)
+    
+    final lineHeight = tp.preferredLineHeight;
+    final actualLines = (tp.size.height / lineHeight).ceil();
+    
+    if (actualLines > maxLines) {
+      // Находим позицию, где заканчивается maxLines-я строка
+      double targetY = (maxLines - 1) * lineHeight + lineHeight / 2;
+      final position = tp.getPositionForOffset(Offset(0, targetY));
+      
+      // Обрезаем текст до этой позиции
+      final limitedText = value.substring(0, position.offset);
+      
+      if (controller.text != limitedText) {
+        controller.value = TextEditingValue(
+          text: limitedText,
+          selection: TextSelection.collapsed(offset: limitedText.length),
+        );
+      }
+    }
   }
 
   @override
@@ -180,18 +296,31 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             // Название
-                            _buildTextField(
-                              label: 'Название',
-                              controller: _titleController,
-                              hint: 'Название задачи',
-                              maxLength: 60,
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                return _buildTextField(
+                                  label: 'Название',
+                                  controller: _titleController,
+                                  hint: 'Название задачи',
+                                  maxLength: 70,
+                                  maxWidth: constraints.maxWidth,
+                                  maxLinesLimit: 3,
+                                );
+                              },
                             ),
                             const SizedBox(height: 24),
                             // Описание
-                            _buildTextArea(
-                              label: 'Описание',
-                              controller: _descriptionController,
-                              hint: 'Описание задачи (необязательно)',
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                return _buildTextArea(
+                                  label: 'Описание',
+                                  controller: _descriptionController,
+                                  hint: 'Описание задачи (необязательно)',
+                                  maxLength: 200,
+                                  maxWidth: constraints.maxWidth,
+                                  maxLinesLimit: 8,
+                                );
+                              },
                             ),
                             const SizedBox(height: 24),
                             // Приоритет
@@ -290,6 +419,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     required TextEditingController controller,
     required String hint,
     int? maxLength,
+    double? maxWidth,
+    int? maxLinesLimit,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -306,6 +437,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
         TextField(
           controller: controller,
           maxLength: maxLength,
+          maxLines: maxLinesLimit ?? null,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(
@@ -333,6 +465,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
               horizontal: 16,
               vertical: 12,
             ),
+            counterText: null,
           ),
         ),
       ],
@@ -343,6 +476,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     required String label,
     required TextEditingController controller,
     required String hint,
+    int? maxLength,
+    double? maxWidth,
+    int? maxLinesLimit,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,7 +494,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
         const SizedBox(height: 8),
         TextField(
           controller: controller,
-          maxLines: 3,
+          maxLength: maxLength,
+          maxLines: maxLinesLimit ?? 8,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(
@@ -382,7 +519,11 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                 color: Colors.black,
               ),
             ),
-            contentPadding: const EdgeInsets.all(16),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+            counterText: null,
           ),
         ),
       ],

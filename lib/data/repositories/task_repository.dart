@@ -178,5 +178,35 @@ class TaskRepository {
     await _ensureTaskColumns();
     await (database.delete(database.tasks)..where((t) => t.id.equals(id))).go();
   }
+
+  /// Поиск всех задач пользователя
+  Future<List<model.Task>> searchAllTasks() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return [];
+    await _ensureTaskColumns();
+
+    final rows = await (database.select(database.tasks)
+          ..where((t) => t.userId.equals(userId))
+          ..orderBy([(t) => dr.OrderingTerm.desc(t.updatedAt)]))
+        .get();
+
+    final result = <model.Task>[];
+    for (final row in rows) {
+      final tags = await _tagsForTask(row.id);
+      result.add(
+        model.Task(
+          id: row.id.toString(),
+          title: row.title,
+          description: row.description,
+          priority: row.priority,
+          tags: tags,
+          date: row.date,
+          endDate: row.endDate,
+          isCompleted: row.isCompleted,
+        ),
+      );
+    }
+    return result;
+  }
 }
 

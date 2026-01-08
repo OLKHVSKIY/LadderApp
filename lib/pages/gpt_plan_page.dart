@@ -7,6 +7,7 @@ import '../widgets/main_header.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ios_page_route.dart';
+import '../widgets/spotlight_search.dart';
 import '../widgets/custom_snackbar.dart';
 import 'tasks_page.dart';
 import 'plan_page.dart';
@@ -125,7 +126,13 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
                 MainHeader(
                   title: 'GPT План',
                   onMenuTap: _toggleSidebar,
-                  onSearchTap: () {},
+                  onSearchTap: () {
+                    showDialog(
+                      context: context,
+                      barrierColor: Colors.transparent,
+                      builder: (context) => const SpotlightSearch(),
+                    );
+                  },
                   onSettingsTap: () {
                     _navigateTo(const SettingsPage());
                   },

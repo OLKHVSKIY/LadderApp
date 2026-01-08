@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/bottom_navigation.dart';
+import '../widgets/spotlight_search.dart';
 import '../widgets/note_sticker.dart';
 import '../widgets/note_editor.dart';
 import '../models/note_model.dart';
@@ -15,7 +16,9 @@ import 'plan_page.dart';
 import 'settings_page.dart';
 
 class NotesPage extends StatefulWidget {
-  const NotesPage({super.key});
+  final NoteModel? initialNoteToOpen;
+  
+  const NotesPage({super.key, this.initialNoteToOpen});
 
   @override
   State<NotesPage> createState() => _NotesPageState();
@@ -222,7 +225,13 @@ class _NotesPageState extends State<NotesPage> {
                 MainHeader(
                   title: 'Заметки',
                   onMenuTap: _toggleSidebar,
-                  onSearchTap: () {},
+                  onSearchTap: () {
+                    showDialog(
+                      context: context,
+                      barrierColor: Colors.transparent,
+                      builder: (context) => const SpotlightSearch(),
+                    );
+                  },
                   onSettingsTap: () {
                     // Действие для кнопки совместной работы
                   },

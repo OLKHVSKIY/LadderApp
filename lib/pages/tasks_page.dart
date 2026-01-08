@@ -5,6 +5,7 @@ import '../models/task.dart';
 import '../widgets/greeting_panel.dart';
 import '../widgets/main_header.dart';
 import '../widgets/week_calendar.dart';
+import '../widgets/spotlight_search.dart';
 import '../widgets/task_list.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/task_create_modal.dart';
@@ -25,8 +26,9 @@ import 'package:drift/drift.dart' show OrderingTerm;
 
 class TasksPage extends StatefulWidget {
   final bool animateNavIn;
+  final Task? initialTaskToOpen;
 
-  const TasksPage({super.key, this.animateNavIn = false});
+  const TasksPage({super.key, this.animateNavIn = false, this.initialTaskToOpen});
 
   @override
   State<TasksPage> createState() => _TasksPageState();
@@ -38,7 +40,7 @@ class _TasksPageState extends State<TasksPage> {
   bool _isTaskModalOpen = false;
   bool _isAiMenuOpen = false;
   bool _navHidden = false;
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
   List<Task> _tasks = [];
   List<Task> _weekTasks = []; // Задачи для всей недели
   int _todayTotal = 0;
@@ -54,6 +56,8 @@ class _TasksPageState extends State<TasksPage> {
   @override
   void initState() {
     super.initState();
+    // Устанавливаем дату сразу, чтобы не было видимого перехода
+    _selectedDate = widget.initialTaskToOpen?.date ?? DateTime.now();
     _taskRepository = TaskRepository(appDatabase);
     if (widget.animateNavIn) {
       _navHidden = true;
@@ -469,7 +473,18 @@ class _TasksPageState extends State<TasksPage> {
                   MainHeader(
                     onMenuTap: _toggleSidebar,
                     onSearchTap: () {
-                      CustomSnackBar.show(context, 'Поиск (в разработке)');
+                      showDialog(
+                        context: context,
+                        barrierColor: Colors.transparent,
+                        builder: (context) => SpotlightSearch(
+                          onTaskCreated: () {
+                            // Обновляем задачи после создания
+                            _loadTasksForDate(_selectedDate);
+                            _loadWeekTasks();
+                            _loadTodayCounts();
+                          },
+                        ),
+                      );
                     },
                     onSettingsTap: () {
                       _navigateTo(const SettingsPage());

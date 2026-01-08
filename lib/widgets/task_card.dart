@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 
+class TextLineMetrics {
+  final double width;
+  final double height;
+  
+  TextLineMetrics({required this.width, required this.height});
+}
+
 class TaskCard extends StatefulWidget {
   final Task task;
   final Function(bool) onToggle;
@@ -141,6 +148,133 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
     return tp.size.width;
   }
 
+  List<TextLineMetrics> _getTextLineMetrics(String text, TextStyle style, double maxWidth) {
+    if (text.isEmpty) return [];
+    
+    final lineMetrics = <TextLineMetrics>[];
+    
+    // Используем TextPainter с теми же параметрами, что и для отображения
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: null, // Без ограничения строк, как в Text виджете
+    )..layout(minWidth: 0, maxWidth: maxWidth);
+    
+    final lineHeight = tp.preferredLineHeight;
+    
+    // Используем getPositionForOffset для определения позиций строк
+    // Проходим по вертикали и находим каждую строку
+    double currentY = 0;
+    int lastOffset = 0;
+    
+    while (currentY < tp.size.height && lastOffset < text.length) {
+      // Находим позицию текста на текущей Y координате
+      final position = tp.getPositionForOffset(Offset(0, currentY));
+      final lineStart = position.offset;
+      
+      // Находим конец строки - следующая строка или конец текста
+      double nextY = currentY + lineHeight;
+      int lineEnd = text.length;
+      
+      if (nextY < tp.size.height) {
+        final nextPosition = tp.getPositionForOffset(Offset(0, nextY));
+        lineEnd = nextPosition.offset;
+      }
+      
+      // Получаем текст строки
+      final lineText = text.substring(lineStart, lineEnd).replaceAll('\n', '');
+      
+      if (lineText.isEmpty && lineStart >= text.length) {
+        break;
+      }
+      
+      // Измеряем ширину строки
+      final lineTp = TextPainter(
+        text: TextSpan(text: lineText, style: style),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout(minWidth: 0, maxWidth: double.infinity);
+      
+      lineMetrics.add(TextLineMetrics(
+        width: lineTp.width,
+        height: lineHeight,
+      ));
+      
+      currentY = nextY;
+      lastOffset = lineEnd;
+      
+      // Если достигли конца текста, выходим
+      if (lineEnd >= text.length) {
+        break;
+      }
+    }
+    
+    // Если не получилось определить строки через getPositionForOffset,
+    // используем резервный метод - разбиваем по \n
+    if (lineMetrics.isEmpty) {
+      final lines = text.split('\n');
+      for (final line in lines) {
+        if (line.isEmpty) {
+          lineMetrics.add(TextLineMetrics(
+            width: 0,
+            height: lineHeight,
+          ));
+          continue;
+        }
+        
+        final lineTp = TextPainter(
+          text: TextSpan(text: line, style: style),
+          textDirection: TextDirection.ltr,
+        )..layout(minWidth: 0, maxWidth: maxWidth);
+        
+        if (lineTp.width <= maxWidth) {
+          lineMetrics.add(TextLineMetrics(
+            width: lineTp.width,
+            height: lineHeight,
+          ));
+        } else {
+          // Разбиваем длинную строку
+          int start = 0;
+          while (start < line.length) {
+            int end = start;
+            while (end < line.length) {
+              final test = line.substring(start, end + 1);
+              final testTp = TextPainter(
+                text: TextSpan(text: test, style: style),
+                textDirection: TextDirection.ltr,
+                maxLines: 1,
+              )..layout(minWidth: 0, maxWidth: double.infinity);
+              
+              if (testTp.width > maxWidth && end > start) {
+                break;
+              }
+              end++;
+            }
+            
+            if (end > start) {
+              final sub = line.substring(start, end);
+              final subTp = TextPainter(
+                text: TextSpan(text: sub, style: style),
+                textDirection: TextDirection.ltr,
+                maxLines: 1,
+              )..layout(minWidth: 0, maxWidth: double.infinity);
+              
+              lineMetrics.add(TextLineMetrics(
+                width: subTp.width,
+                height: lineHeight,
+              ));
+              start = end;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    return lineMetrics;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -199,93 +333,261 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Stack(
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        Text(
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final textStyle = TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: widget.task.isCompleted
+                              ? const Color(0xFF999999)
+                              : Colors.black,
+                        );
+                        final availableWidth = constraints.maxWidth;
+                        final titleLineMetrics = _getTextLineMetrics(
                           widget.task.title,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: widget.task.isCompleted
-                                ? const Color(0xFF999999)
-                                : Colors.black,
-                          ),
-                        ),
-                        AnimatedBuilder(
-                          animation: _strikeAnimation ??
-                              const AlwaysStoppedAnimation(0.0),
-                          builder: (context, child) {
-                            final v = _strikeAnimation?.value ??
-                                (widget.task.isCompleted ? 1.0 : 0.0);
-                            final textStyle = TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: widget.task.isCompleted
-                                  ? const Color(0xFF999999)
-                                  : const Color(0xFF666666),
-                            );
-                            final textWidth =
-                                _measureTextWidth(widget.task.title, textStyle);
-                            final lineWidth = (textWidth + 5) * v;
-                            return Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                width: lineWidth,
-                                height: 2,
-                                color: (widget.task.isCompleted
-                                        ? const Color(0xFF999999)
-                                        : const Color(0xFF666666))
-                                    .withOpacity(0.6),
+                          textStyle,
+                          availableWidth,
+                        );
+                        
+                        return IntrinsicHeight(
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.topLeft,
+                            children: [
+                              Text(
+                                widget.task.title,
+                                style: textStyle,
+                                maxLines: null,
                               ),
-                            );
-                          },
-                        ),
-                      ],
+                              AnimatedBuilder(
+                                animation: _strikeAnimation ??
+                                    const AlwaysStoppedAnimation(0.0),
+                                builder: (context, child) {
+                                  final v = _strikeAnimation?.value ??
+                                      (widget.task.isCompleted ? 1.0 : 0.0);
+                                  
+                                  if (v == 0.0 || titleLineMetrics.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  
+                                  // Используем TextPainter для точного определения позиций строк названия
+                                  final titleTp = TextPainter(
+                                    text: TextSpan(text: widget.task.title, style: textStyle),
+                                    textDirection: TextDirection.ltr,
+                                    maxLines: null,
+                                  )..layout(minWidth: 0, maxWidth: availableWidth);
+                                  
+                                  final actualLineHeight = titleTp.preferredLineHeight;
+                                  
+                                  // Получаем реальные координаты каждой строки названия
+                                  final titleLineCenterPositions = <double>[];
+                                  double currentY = 0;
+                                  int lastOffset = 0;
+                                  
+                                  for (int i = 0; i < titleLineMetrics.length; i++) {
+                                    final position = titleTp.getPositionForOffset(Offset(0, currentY));
+                                    final caretOffset = titleTp.getOffsetForCaret(position, Rect.zero);
+                                    
+                                    // Отдельные коррекции для названия задачи (настраиваются вручную)
+                                    final correction = i == 0 
+                                        ? 2   // Первая строка названия
+                                        : (i == 1 
+                                            ? 6   // Вторая строка названия
+                                            : (i == 2 
+                                                ? 10   // Третья строка названия
+                                                : 8)); // Для остальных строк (если понадобится)
+                                    final lineCenterY = caretOffset.dy + (actualLineHeight / 2) + correction;
+                                    titleLineCenterPositions.add(lineCenterY);
+                                    
+                                    lastOffset = position.offset;
+                                    currentY += actualLineHeight;
+                                    
+                                    if (position.offset >= widget.task.title.length) {
+                                      break;
+                                    }
+                                  }
+                                  
+                                  while (titleLineCenterPositions.length < titleLineMetrics.length) {
+                                    final index = titleLineCenterPositions.length;
+                                    final fallbackY = index * actualLineHeight + (actualLineHeight / 2) + 1;
+                                    titleLineCenterPositions.add(fallbackY);
+                                  }
+                                  
+                                  return Stack(
+                                    clipBehavior: Clip.none,
+                                    alignment: Alignment.topLeft,
+                                    children: titleLineMetrics.asMap().entries.map((entry) {
+                                      final index = entry.key;
+                                      final metrics = entry.value;
+                                      final lineWidth = metrics.width * v;
+                                      
+                                      final centerY = index < titleLineCenterPositions.length 
+                                          ? titleLineCenterPositions[index] 
+                                          : index * actualLineHeight + (actualLineHeight / 2);
+                                      
+                                      final topPosition = centerY;
+                                      
+                                      return Positioned(
+                                        left: 0,
+                                        top: topPosition,
+                                        child: Container(
+                                          width: lineWidth,
+                                          height: 2,
+                                          color: (widget.task.isCompleted
+                                                  ? const Color(0xFF999999)
+                                                  : const Color(0xFF666666))
+                                              .withOpacity(0.6),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                     if (widget.task.description != null && widget.task.description!.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Stack(
-                        alignment: Alignment.centerLeft,
-                        children: [
-                          Text(
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final textStyle = TextStyle(
+                            fontSize: 14,
+                            color: widget.task.isCompleted
+                                ? const Color(0xFF999999)
+                                : const Color(0xFF666666),
+                          );
+                          final availableWidth = constraints.maxWidth;
+                          final lineMetrics = _getTextLineMetrics(
                             widget.task.description!,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: widget.task.isCompleted
-                                  ? const Color(0xFF999999)
-                                  : const Color(0xFF666666),
-                            ),
-                          ),
-                          AnimatedBuilder(
-                            animation: _strikeAnimation ??
-                                const AlwaysStoppedAnimation(0.0),
-                            builder: (context, child) {
-                              final v = _strikeAnimation?.value ??
-                                  (widget.task.isCompleted ? 1.0 : 0.0);
-                              final textStyle = TextStyle(
-                                fontSize: 14,
-                                color: widget.task.isCompleted
-                                    ? const Color(0xFF999999)
-                                    : const Color(0xFF666666),
-                              );
-                              final textWidth = _measureTextWidth(
-                                  widget.task.description!, textStyle);
-                              final lineWidth = (textWidth + 5) * v;
-                              return Align(
-                                alignment: Alignment.centerLeft,
-                                child: Container(
-                                  width: lineWidth,
-                                  height: 2,
-                                  color: (widget.task.isCompleted
-                                          ? const Color(0xFF999999)
-                                          : const Color(0xFF666666))
-                                      .withOpacity(0.6),
+                            textStyle,
+                            availableWidth,
+                          );
+                          
+                          return IntrinsicHeight(
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.topLeft,
+                              children: [
+                                Text(
+                                  widget.task.description!,
+                                  style: textStyle,
+                                  maxLines: null,
                                 ),
-                              );
-                            },
-                          ),
-                        ],
+                                AnimatedBuilder(
+                                  animation: _strikeAnimation ??
+                                      const AlwaysStoppedAnimation(0.0),
+                                  builder: (context, child) {
+                                    final v = _strikeAnimation?.value ??
+                                        (widget.task.isCompleted ? 1.0 : 0.0);
+                                    
+                                    if (v == 0.0 || lineMetrics.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    
+                                    // Создаем линии для каждой строки
+                                    // Используем TextPainter для точного определения позиций строк
+                                    final textTp = TextPainter(
+                                      text: TextSpan(text: widget.task.description!, style: textStyle),
+                                      textDirection: TextDirection.ltr,
+                                      maxLines: null,
+                                    )..layout(minWidth: 0, maxWidth: availableWidth);
+                                    
+                                    // Получаем реальные координаты каждой строки через TextPainter
+                                    final lineCenterPositions = <double>[];
+                                    final actualLineHeight = textTp.preferredLineHeight;
+                                    
+                                    // Используем тот же алгоритм, что и в _getTextLineMetrics для определения позиций строк
+                                    // Проходим по тексту и определяем центр каждой строки
+                                    double currentY = 0;
+                                    int lastOffset = 0;
+                                    
+                                    for (int i = 0; i < lineMetrics.length; i++) {
+                                      // Получаем позицию текста на текущей Y координате
+                                      final position = textTp.getPositionForOffset(Offset(0, currentY));
+                                      
+                                      // Получаем точные координаты для начала этой строки
+                                      final caretOffset = textTp.getOffsetForCaret(position, Rect.zero);
+                                      
+                                      // Вычисляем центр строки: Y координата начала строки + половина высоты строки
+                                      // Для каждой строки используем коррекцию по арифметической прогрессии:
+                                      // Первая: +1, Вторая: +5, Третья: +8, Четвертая: +11
+                                      // Продолжаем прогрессию с разностью 3: 5-я: +14, 6-я: +17, 7-я: +20, 8-я: +23
+                                      final correction = i == 0 
+                                          ? 1 
+                                          : (i == 1 
+                                              ? 5 
+                                              : (i == 2 
+                                                  ? 8 
+                                                  : (i == 3 
+                                                      ? 11 
+                                                      : (i == 4 
+                                                          ? 14 
+                                                          : (i == 5 
+                                                              ? 17 
+                                                              : (i == 6 
+                                                                  ? 20 
+                                                                  : (i == 7 
+                                                                      ? 23 
+                                                                      : 11 + (i - 3) * 3)))))));
+                                      final lineCenterY = caretOffset.dy + (actualLineHeight / 2) + correction;
+                                      lineCenterPositions.add(lineCenterY);
+                                      
+                                      // Переходим к следующей строке
+                                      lastOffset = position.offset;
+                                      currentY += actualLineHeight;
+                                      
+                                      // Если достигли конца текста, выходим
+                                      if (position.offset >= widget.task.description!.length) {
+                                        break;
+                                      }
+                                    }
+                                    
+                                    // Если не получилось определить все позиции, дополняем расчетом
+                                    while (lineCenterPositions.length < lineMetrics.length) {
+                                      final index = lineCenterPositions.length;
+                                      final fallbackY = index * actualLineHeight + (actualLineHeight / 2) + 1;
+                                      lineCenterPositions.add(fallbackY);
+                                    }
+                                    
+                                    return Stack(
+                                      clipBehavior: Clip.none,
+                                      alignment: Alignment.topLeft,
+                                      children: lineMetrics.asMap().entries.map((entry) {
+                                        final index = entry.key;
+                                        final metrics = entry.value;
+                                        // Ширина линии = ширина текста (без дополнительных пикселей)
+                                        final lineWidth = metrics.width * v;
+                                        
+                                        // Используем реальную позицию центра строки из lineCenterPositions
+                                        final centerY = index < lineCenterPositions.length 
+                                            ? lineCenterPositions[index] 
+                                            : index * actualLineHeight + (actualLineHeight / 2);
+                                        
+                                        // Позиция линии: центр строки (коррекция уже учтена в lineCenterPositions)
+                                        final topPosition = centerY;
+                                        
+                                        return Positioned(
+                                          left: 0,
+                                          top: topPosition,
+                                          child: Container(
+                                            width: lineWidth,
+                                            height: 2,
+                                            color: (widget.task.isCompleted
+                                                    ? const Color(0xFF999999)
+                                                    : const Color(0xFF666666))
+                                                .withOpacity(0.6),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ],
                     if (widget.task.tags.isNotEmpty) ...[

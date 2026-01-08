@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ios_page_route.dart';
+import '../widgets/spotlight_search.dart';
 import '../services/yandex_gpt_service.dart';
 import 'tasks_page.dart';
 import 'settings_page.dart';
@@ -35,6 +36,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _isLoadingHistory = true;
   // Состояние для ожидания выбора приоритета задачи
   _PendingTask? _pendingTask;
+  int _loadedMessagesCount = 0; // Количество загруженных сообщений из БД
 
   TaskRepository get taskRepository {
     _taskRepository ??= TaskRepository(appDatabase);
@@ -63,6 +65,7 @@ class _ChatPageState extends State<ChatPage> {
                   timestamp: msg.createdAt,
                 )),
           );
+          _loadedMessagesCount = _messages.length; // Запоминаем количество загруженных сообщений
           _isLoadingHistory = false;
         });
       }
@@ -140,6 +143,10 @@ class _ChatPageState extends State<ChatPage> {
       final pattern = taskPatterns[i];
       final match = pattern.firstMatch(lowerText);
       if (match != null) {
+        // Ищем совпадение в оригинальном тексте для сохранения регистра
+        final originalMatch = pattern.firstMatch(text);
+        if (originalMatch == null) continue;
+        
         DateTime taskDate = DateTime.now();
         String? taskTitle;
         
@@ -151,7 +158,7 @@ class _ChatPageState extends State<ChatPage> {
             final month = monthNames[monthName] ?? DateTime.now().month;
             final year = match.group(3) != null ? int.parse(match.group(3)!) : DateTime.now().year;
             taskDate = DateTime(year, month, day);
-            taskTitle = match.group(4)?.trim();
+            taskTitle = originalMatch.group(4)?.trim(); // Используем оригинальный текст
           } catch (e) {
             debugPrint('Ошибка парсинга даты: $e');
             continue;
@@ -180,7 +187,7 @@ class _ChatPageState extends State<ChatPage> {
             }
           }
           
-          taskTitle = match.group(5)?.trim() ?? text.replaceFirst(match.group(0)!, '').trim();
+          taskTitle = originalMatch.group(5)?.trim() ?? text.replaceFirst(originalMatch.group(0)!, '').trim(); // Используем оригинальный текст
         }
         
         if (taskTitle != null && taskTitle.isNotEmpty) {
@@ -485,7 +492,13 @@ class _ChatPageState extends State<ChatPage> {
                 MainHeader(
                   title: 'Чат с AI',
                   onMenuTap: _toggleSidebar,
-                  onSearchTap: () {},
+                  onSearchTap: () {
+                    showDialog(
+                      context: context,
+                      barrierColor: Colors.transparent,
+                      builder: (context) => const SpotlightSearch(),
+                    );
+                  },
                   onSettingsTap: () {
                     _navigateTo(const SettingsPage(), slideFromRight: true);
                   },
@@ -542,7 +555,18 @@ class _ChatPageState extends State<ChatPage> {
         separatorBuilder: (_, __) => const SizedBox(height: 16),
         itemBuilder: (context, index) {
           final msg = _messages[_messages.length - 1 - index];
-          return _MessageBubble(message: msg);
+          final actualIndex = _messages.length - 1 - index;
+          // Анимируем только новые сообщения (после загрузки истории)
+          // В reverse ListView индекс 0 - это последнее сообщение (самое новое)
+          final shouldAnimate = actualIndex >= _loadedMessagesCount;
+          // Для reverse ListView используем обратный индекс для правильной последовательности анимации
+          final animationIndex = shouldAnimate ? (_messages.length - actualIndex - 1) : 0;
+          return _AnimatedMessageBubble(
+            key: ValueKey('${msg.timestamp.millisecondsSinceEpoch}_${msg.text}'),
+            message: msg,
+            index: animationIndex,
+            shouldAnimate: shouldAnimate,
+          );
         },
       ),
     );
@@ -683,6 +707,84 @@ class _ChatMessage {
     required this.isUser,
     required this.timestamp,
   });
+}
+
+class _AnimatedMessageBubble extends StatefulWidget {
+  final _ChatMessage message;
+  final int index;
+  final bool shouldAnimate;
+
+  const _AnimatedMessageBubble({
+    super.key,
+    required this.message,
+    required this.index,
+    this.shouldAnimate = true,
+  });
+
+  @override
+  State<_AnimatedMessageBubble> createState() => _AnimatedMessageBubbleState();
+}
+
+class _AnimatedMessageBubbleState extends State<_AnimatedMessageBubble>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    // Запускаем анимацию только если нужно
+    if (widget.shouldAnimate) {
+      // Запускаем анимацию сразу, без задержки для первого сообщения
+      Future.delayed(Duration(milliseconds: widget.index * 30), () {
+        if (mounted) {
+          _controller.forward();
+        }
+      });
+    } else {
+      // Для загруженных сообщений сразу показываем без анимации
+      _controller.value = 1.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: _MessageBubble(message: widget.message),
+      ),
+    );
+  }
 }
 
 class _MessageBubble extends StatefulWidget {

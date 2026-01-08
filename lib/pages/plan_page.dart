@@ -12,6 +12,7 @@ import '../widgets/sidebar.dart';
 import '../widgets/ai_menu_modal.dart';
 import '../widgets/swipe_back_wrapper.dart';
 import '../widgets/ios_page_route.dart';
+import '../widgets/spotlight_search.dart';
 import 'tasks_page.dart';
 import 'gpt_plan_page.dart';
 import 'chat_page.dart';
@@ -57,7 +58,9 @@ String _getTaskWord(int count) {
 }
 
 class PlanPage extends StatefulWidget {
-  const PlanPage({super.key});
+  final String? initialGoalIdToOpen;
+  
+  const PlanPage({super.key, this.initialGoalIdToOpen});
 
   @override
   State<PlanPage> createState() => _PlanPageState();
@@ -98,7 +101,13 @@ class _PlanPageState extends State<PlanPage> {
       _goals
         ..clear()
         ..addAll(items);
-      _activeGoalId = null;
+      // Если есть цель для открытия, устанавливаем её ID, иначе null
+      if (widget.initialGoalIdToOpen != null && 
+          items.any((g) => g.id == widget.initialGoalIdToOpen)) {
+        _activeGoalId = widget.initialGoalIdToOpen;
+      } else {
+        _activeGoalId = null;
+      }
       _isLoading = false; // Данные загружены
     });
   }
@@ -115,8 +124,8 @@ class _PlanPageState extends State<PlanPage> {
   void initState() {
     super.initState();
     _planRepo = PlanRepository(appDatabase);
-    // Убеждаемся, что при открытии страницы показывается список планов
-    _activeGoalId = null;
+    // Если есть цель для открытия, устанавливаем её ID
+    _activeGoalId = widget.initialGoalIdToOpen;
     _isEditMode = false;
     _isLoading = true;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromDb());
@@ -819,7 +828,13 @@ class _PlanPageState extends State<PlanPage> {
                 MainHeader(
                   title: 'Цели',
                   onMenuTap: _toggleSidebar,
-                  onSearchTap: null,
+                  onSearchTap: () {
+                    showDialog(
+                      context: context,
+                      barrierColor: Colors.transparent,
+                      builder: (context) => const SpotlightSearch(),
+                    );
+                  },
                   onSettingsTap: () {
                     _navigateTo(const SettingsPage(), slideFromRight: true);
                   },
@@ -900,7 +915,13 @@ class _PlanPageState extends State<PlanPage> {
                   MainHeader(
                     title: 'Цели',
                     onMenuTap: _toggleSidebar,
-                    onSearchTap: null,
+                    onSearchTap: () {
+                    showDialog(
+                      context: context,
+                      barrierColor: Colors.transparent,
+                      builder: (context) => const SpotlightSearch(),
+                    );
+                  },
                     onSettingsTap: () {
                       _navigateTo(const SettingsPage(), slideFromRight: true);
                     },
