@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
+import 'dart:io';
 import 'package:drift/drift.dart' as dr;
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
@@ -33,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   bool _saving = false;
+  String? _avatarPath;
 
   void _toggleSidebar() {
     // Скрываем клавиатуру при открытии/закрытии сайдбара
@@ -81,6 +90,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       final user = users.first;
       _nameController.text = user.name ?? '';
       _emailController.text = user.email;
+      setState(() {
+        _avatarPath = user.avatarUrl;
+      });
     } else {
       _emailController.text = UserSession.currentEmail ?? '';
     }
@@ -95,6 +107,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       CustomSnackBar.show(context, 'Введите email');
       return;
     }
+    // Вибрация при сохранении (такая же как при отметках)
+    HapticFeedback.heavyImpact();
     setState(() {
       _saving = true;
     });
@@ -102,6 +116,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       UsersCompanion(
         name: dr.Value(name.isEmpty ? null : name),
         email: dr.Value(email),
+        avatarUrl: dr.Value(_avatarPath),
         updatedAt: dr.Value(DateTime.now()),
       ),
     );
@@ -111,6 +126,342 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     });
     if (mounted) {
       CustomSnackBar.show(context, 'Сохранено');
+    }
+  }
+
+  Future<void> _pickAndCropImage() async {
+    try {
+      String? filePath;
+      
+      // ВСЕГДА используем file_picker для веба и десктопных платформ (macOS, Windows, Linux)
+      // ТОЛЬКО для настоящих Android/iOS устройств используем image_picker
+      bool useImagePicker = false;
+      
+      if (!kIsWeb) {
+        try {
+          // ВАЖНО: Проверяем macOS ПЕРВЫМ, так как на macOS Platform.isIOS может возвращать true!
+          final isMacOS = Platform.isMacOS;
+          final isWindows = Platform.isWindows;
+          final isLinux = Platform.isLinux;
+          final isAndroid = Platform.isAndroid;
+          final isIOS = Platform.isIOS;
+          
+          // КРИТИЧНО: На macOS Platform.isMacOS может быть false, а Platform.isIOS - true!
+          // Поэтому используем image_picker ТОЛЬКО для Android
+          // Для всех остальных (macOS, Windows, Linux, iOS) используем file_picker
+          useImagePicker = isAndroid && !isMacOS && !isWindows && !isLinux;
+          
+          debugPrint('Платформа: isMacOS=$isMacOS, isWindows=$isWindows, isLinux=$isLinux, isIOS=$isIOS, isAndroid=$isAndroid, useImagePicker=$useImagePicker');
+        } catch (e) {
+          debugPrint('Ошибка определения платформы: $e, используем file_picker');
+          useImagePicker = false;
+        }
+      }
+      
+      if (useImagePicker) {
+        // ТОЛЬКО для настоящих iOS/Android устройств используем image_picker
+        debugPrint('Используем image_picker для мобильного устройства');
+        try {
+          final imagePicker = ImagePicker();
+          final pickedFile = await imagePicker.pickImage(
+            source: ImageSource.gallery,
+          );
+          if (pickedFile != null) {
+            filePath = pickedFile.path;
+          }
+        } catch (e) {
+          debugPrint('Ошибка image_picker: $e');
+          if (mounted) {
+            CustomSnackBar.show(context, 'Не удалось открыть галерею');
+          }
+          return;
+        }
+      } else {
+        // Для веба, macOS, Windows, Linux используем file_picker
+        debugPrint('Используем file_picker');
+        
+        // Пробуем использовать file_picker с обработкой ошибок
+        FilePickerResult? result;
+        try {
+          result = await FilePicker.platform.pickFiles(
+            type: FileType.image,
+            allowMultiple: false,
+          );
+        } catch (e) {
+          debugPrint('Ошибка file_picker при вызове: $e');
+          
+          // Если file_picker не работает, пробуем альтернативный способ
+          if (mounted) {
+            final useAlternative = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Не удалось открыть файловый диалог'),
+                content: const Text('Пожалуйста, перезапустите приложение полностью (не hot reload).'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Отмена'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Попробовать еще раз'),
+                  ),
+                ],
+              ),
+            );
+            
+            if (useAlternative == true) {
+              // Повторная попытка
+              try {
+                result = await FilePicker.platform.pickFiles(
+                  type: FileType.image,
+                  allowMultiple: false,
+                );
+              } catch (e2) {
+                debugPrint('Ошибка file_picker при повторной попытке: $e2');
+                if (mounted) {
+                  CustomSnackBar.show(context, 'Перезапустите приложение полностью');
+                }
+                return;
+              }
+            } else {
+              return;
+            }
+          } else {
+            return;
+          }
+        }
+        
+        if (result != null && result.files.isNotEmpty) {
+          try {
+            if (kIsWeb) {
+              // Для веба используем bytes
+              final bytes = result.files.single.bytes;
+              if (bytes != null) {
+                final tempDir = await getTemporaryDirectory();
+                final tempFile = File(path.join(tempDir.path, 'temp_avatar_${DateTime.now().millisecondsSinceEpoch}.jpg'));
+                await tempFile.writeAsBytes(bytes);
+                filePath = tempFile.path;
+              }
+            } else {
+              // Для десктопных платформ используем path
+              filePath = result.files.single.path;
+              if (filePath == null || filePath.isEmpty) {
+                debugPrint('Путь к файлу пустой, пробуем имя файла');
+                filePath = result.files.single.name;
+              }
+            }
+          } catch (e) {
+            debugPrint('Ошибка при обработке выбранного файла: $e');
+            if (mounted) {
+              CustomSnackBar.show(context, 'Ошибка обработки файла');
+            }
+            return;
+          }
+        }
+      }
+
+      if (filePath == null || filePath.isEmpty) {
+        // Пользователь отменил выбор файла - это нормально, просто выходим
+        debugPrint('Файл не выбран, выход');
+        return;
+      }
+      
+      debugPrint('Выбран файл: $filePath');
+      
+      // Проверяем, что файл существует
+      final sourceFile = File(filePath);
+      if (!await sourceFile.exists()) {
+        debugPrint('Файл не существует: $filePath');
+        if (mounted) {
+          CustomSnackBar.show(context, 'Файл не найден');
+        }
+        return;
+      }
+      
+      debugPrint('Файл существует, размер: ${await sourceFile.length()} байт');
+      
+      // На iOS файлы из picked_images могут быть недоступны для ImageCropper
+      // Копируем файл во временную директорию для обрезки
+      final tempDir = await getTemporaryDirectory();
+      final tempFileName = 'temp_avatar_${DateTime.now().millisecondsSinceEpoch}${path.extension(filePath)}';
+      final tempFile = File(path.join(tempDir.path, tempFileName));
+      
+      try {
+        await sourceFile.copy(tempFile.path);
+        debugPrint('Файл скопирован во временную директорию: ${tempFile.path}');
+      } catch (e) {
+        debugPrint('Ошибка копирования файла: $e');
+        if (mounted) {
+          CustomSnackBar.show(context, 'Ошибка обработки файла');
+        }
+        return;
+      }
+
+      // Обрезаем изображение
+      CroppedFile? croppedFile;
+      try {
+        debugPrint('Начинаем обрезку изображения...');
+        croppedFile = await ImageCropper().cropImage(
+          sourcePath: tempFile.path,
+          aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Обрезка аватара',
+              toolbarColor: Colors.black,
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: true,
+            ),
+            IOSUiSettings(
+              title: 'Обрезка аватара',
+              aspectRatioLockEnabled: true,
+              resetAspectRatioEnabled: false,
+            ),
+          ],
+        );
+        debugPrint('Обрезка завершена: ${croppedFile?.path}');
+        
+        // Удаляем временный файл после обрезки
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+            debugPrint('Временный файл удален');
+          }
+        } catch (e) {
+          debugPrint('Ошибка удаления временного файла: $e');
+        }
+      } catch (e) {
+        debugPrint('Ошибка при обрезке изображения: $e');
+        // Удаляем временный файл при ошибке
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (_) {}
+        if (mounted) {
+          CustomSnackBar.show(context, 'Ошибка обрезки изображения');
+        }
+        return;
+      }
+
+      if (croppedFile == null) {
+        debugPrint('Обрезка отменена пользователем');
+        return;
+      }
+
+      // Сохраняем обрезанное изображение в директорию приложения
+      String? finalPath;
+      
+      if (kIsWeb) {
+        // Для веба копируем из временного файла
+        final appDir = await getApplicationDocumentsDirectory();
+        final userId = UserSession.currentUserId;
+        final avatarDir = Directory(path.join(appDir.path, 'avatars'));
+        if (!await avatarDir.exists()) {
+          await avatarDir.create(recursive: true);
+        }
+        
+        final fileName = 'avatar_$userId.jpg';
+        final savedFile = File(path.join(avatarDir.path, fileName));
+        final croppedBytes = await croppedFile.readAsBytes();
+        await savedFile.writeAsBytes(croppedBytes);
+        finalPath = savedFile.path;
+      } else {
+        // Для десктопных и мобильных платформ
+        final appDir = await getApplicationDocumentsDirectory();
+        final userId = UserSession.currentUserId;
+        final avatarDir = Directory(path.join(appDir.path, 'avatars'));
+        if (!await avatarDir.exists()) {
+          await avatarDir.create(recursive: true);
+        }
+        
+        final fileName = 'avatar_$userId.jpg';
+        final savedFile = File(path.join(avatarDir.path, fileName));
+        
+        // Читаем байты из обрезанного файла и записываем в новый файл
+        try {
+          debugPrint('Читаем байты из обрезанного файла: ${croppedFile.path}');
+          final croppedBytes = await croppedFile.readAsBytes();
+          debugPrint('Прочитано ${croppedBytes.length} байт');
+          
+          debugPrint('Записываем в файл: ${savedFile.path}');
+          await savedFile.writeAsBytes(croppedBytes, flush: true);
+          debugPrint('Файл записан');
+          
+          // Даем системе время на запись файла на диск
+          await Future.delayed(const Duration(milliseconds: 100));
+          
+          // Проверяем, что файл действительно сохранен, используя абсолютный путь
+          final absolutePath = savedFile.absolute.path;
+          final checkFile = File(absolutePath);
+          
+          if (await checkFile.exists()) {
+            final savedSize = await checkFile.length();
+            debugPrint('Файл существует по абсолютному пути: $absolutePath, размер: $savedSize байт');
+            // Используем абсолютный путь для сохранения
+            finalPath = absolutePath;
+          } else {
+            debugPrint('ОШИБКА: Файл не существует после записи!');
+            debugPrint('Проверяемый путь: $absolutePath');
+            debugPrint('Проверяем исходный путь: ${savedFile.path}');
+            // Пробуем проверить исходный путь
+            if (await savedFile.exists()) {
+              debugPrint('Файл существует по исходному пути: ${savedFile.path}');
+              finalPath = savedFile.path;
+            } else {
+              debugPrint('ОШИБКА: Файл не существует ни по одному пути!');
+              if (mounted) {
+                CustomSnackBar.show(context, 'Ошибка сохранения аватара');
+              }
+              return;
+            }
+          }
+        } catch (e) {
+          debugPrint('Ошибка при сохранении через writeAsBytes: $e');
+          if (mounted) {
+            CustomSnackBar.show(context, 'Ошибка сохранения аватара: $e');
+          }
+          return;
+        }
+      }
+
+      // Удаляем старый аватар, если он есть
+      if (_avatarPath != null && _avatarPath!.isNotEmpty) {
+        try {
+          final oldFile = File(_avatarPath!);
+          if (await oldFile.exists()) {
+            await oldFile.delete();
+          }
+        } catch (e) {
+          debugPrint('Ошибка удаления старого аватара: $e');
+        }
+      }
+
+      if (finalPath != null && finalPath.isNotEmpty) {
+        debugPrint('Сохраняем аватар по пути: $finalPath');
+        
+        // Обновляем состояние сразу, так как файл уже сохранен и проверен выше
+        setState(() {
+          _avatarPath = finalPath;
+        });
+        
+        debugPrint('Аватар установлен в состояние: $_avatarPath');
+        
+        if (mounted) {
+          CustomSnackBar.show(context, 'Аватар обновлен');
+        }
+      } else {
+        debugPrint('ОШИБКА: finalPath равен null или пустой!');
+        if (mounted) {
+          CustomSnackBar.show(context, 'Не удалось сохранить аватар');
+        }
+      }
+    } catch (e) {
+      debugPrint('Ошибка выбора/обрезки изображения: $e');
+      if (mounted) {
+        CustomSnackBar.show(context, 'Не удалось обновить аватар');
+      }
     }
   }
 
@@ -208,18 +559,34 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            Container(
-                              width: 120,
-                              height: 120,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Color(0xFFF5F5F5),
-                              ),
-                              alignment: Alignment.center,
-                              child: const Text(
-                                '👤',
-                                style: TextStyle(fontSize: 36),
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final hasAvatar = _avatarPath != null && 
+                                    _avatarPath!.isNotEmpty &&
+                                    File(_avatarPath!).existsSync();
+                                
+                                return Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0xFFF5F5F5),
+                                    image: hasAvatar
+                                        ? DecorationImage(
+                                            image: FileImage(File(_avatarPath!)),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: !hasAvatar
+                                      ? const Text(
+                                          '👤',
+                                          style: TextStyle(fontSize: 36),
+                                        )
+                                      : null,
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -236,7 +603,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       ),
-                      onPressed: () {},
+                      onPressed: _pickAndCropImage,
                       child: const Text(
                         'Изменить фото',
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
@@ -971,4 +1338,5 @@ class _ToggleState extends State<_Toggle> {
     );
   }
 }
+
 

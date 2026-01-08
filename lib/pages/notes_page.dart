@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/bottom_navigation.dart';
@@ -99,6 +100,8 @@ class _NotesPageState extends State<NotesPage> {
 
   Future<void> _deleteNote(NoteModel note) async {
     if (note.id == null) return;
+    // Вибрация при удалении заметки
+    HapticFeedback.heavyImpact();
     await _noteRepository.deleteNote(note.id!);
     await _loadNotes();
   }

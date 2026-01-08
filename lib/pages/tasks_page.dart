@@ -221,8 +221,8 @@ class _TasksPageState extends State<TasksPage> {
   void _updateTaskCompletion(String taskId, bool isCompleted) {
     final intId = int.tryParse(taskId);
     if (intId == null) return;
-    // Вибрация при отметке задачи
-    HapticFeedback.mediumImpact();
+    // Вибрация при отметке задачи (усиленная)
+    HapticFeedback.heavyImpact();
     _taskRepository.updateCompletion(intId, isCompleted).then((_) {
       _loadTasksForDate(_selectedDate);
       _loadWeekTasks();
@@ -307,6 +307,8 @@ class _TasksPageState extends State<TasksPage> {
   void _deleteTask(String taskId) async {
     final intId = int.tryParse(taskId);
     if (intId == null) return;
+    // Вибрация при удалении задачи
+    HapticFeedback.heavyImpact();
     try {
       await _taskRepository.deleteTask(intId);
       _loadTasksForDate(_selectedDate);
@@ -411,6 +413,8 @@ class _TasksPageState extends State<TasksPage> {
             _showError('Некорректный id задачи');
             return;
           }
+          // Вибрация при удалении задачи
+          HapticFeedback.heavyImpact();
           await _taskRepository.deleteTask(intId);
           _loadTasksForDate(_selectedDate);
           _loadWeekTasks();

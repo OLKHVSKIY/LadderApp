@@ -392,6 +392,8 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   void _deleteGoal(String goalId) {
+    // Вибрация при удалении цели
+    HapticFeedback.heavyImpact();
     GoalModel? goal;
     for (final g in _goals) {
       if (g.id == goalId) {
@@ -466,8 +468,8 @@ class _PlanPageState extends State<PlanPage> {
   void _toggleTask(String dateId, String taskId) {
     final goal = _activeGoal;
     if (goal == null) return;
-    // Вибрация при отметке задачи
-    HapticFeedback.mediumImpact();
+    // Вибрация при отметке задачи (усиленная)
+    HapticFeedback.heavyImpact();
     final dates = goal.dates.map((d) {
       if (d.id != dateId) return d;
       final tasks = d.tasks
@@ -481,6 +483,8 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   void _deleteTask(String dateId, String taskId) {
+    // Вибрация при удалении задачи
+    HapticFeedback.heavyImpact();
     final goal = _activeGoal;
     if (goal == null) return;
     final dates = goal.dates.map((d) {

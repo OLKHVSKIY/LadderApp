@@ -699,8 +699,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
       if (mounted && _isPressed) {
         // Копируем текст в буфер обмена
         Clipboard.setData(ClipboardData(text: widget.message.text));
-        // Вибрация
-        HapticFeedback.mediumImpact();
+        // Вибрация (усиленная)
+        HapticFeedback.heavyImpact();
         // Показываем уведомление
         CustomSnackBar.show(context, 'Текст скопирован в буфер обмена');
         _isPressed = false;
