@@ -9,6 +9,7 @@ import '../widgets/main_header.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ai_menu_modal.dart';
+import '../widgets/swipe_back_wrapper.dart';
 import 'tasks_page.dart';
 import 'gpt_plan_page.dart';
 import 'chat_page.dart';
@@ -776,6 +777,16 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
+  // Функция для возврата из открытого плана в список планов
+  void _goBackToPlanList() {
+    setState(() {
+      _activeGoalId = null;
+      _isEditMode = false;
+      // Удаляем несохраненные планы при возврате к списку
+      _goals.removeWhere((g) => !g.isSaved);
+    });
+  }
+
   // --------- UI Builders ---------
   @override
   Widget build(BuildContext context) {
@@ -785,7 +796,7 @@ class _PlanPageState extends State<PlanPage> {
     // Блок создания показывается только если данные загружены И нет сохраненных планов
     final showCreation = !_isLoading && savedGoals.isEmpty;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: false,
       body: Stack(
@@ -803,15 +814,7 @@ class _PlanPageState extends State<PlanPage> {
                   },
                   hideSearchAndSettings: false,
                   showBackButton: _activeGoalId != null,
-                  onBack: () {
-                    // Если открыт план, закрыть его и показать список планов
-                    setState(() {
-                      _activeGoalId = null;
-                      _isEditMode = false;
-                      // Удаляем несохраненные планы при возврате к списку
-                      _goals.removeWhere((g) => !g.isSaved);
-                    });
-                  },
+                  onBack: _goBackToPlanList,
                   onGreetingToggle: null,
                 ),
                 Expanded(
@@ -870,6 +873,15 @@ class _PlanPageState extends State<PlanPage> {
         ],
       ),
     );
+
+    // Обертываем в SwipeBackWrapper только если открыт план (не список)
+    if (_activeGoalId != null) {
+      return SwipeBackWrapper(
+        onSwipeBack: _goBackToPlanList,
+        child: scaffold,
+      );
+    }
+    return scaffold;
   }
 
   Widget _buildCreation() {

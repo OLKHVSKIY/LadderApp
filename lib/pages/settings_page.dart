@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
+import '../widgets/swipe_back_wrapper.dart';
 import 'tasks_page.dart';
 import 'login_page.dart';
 import '../data/database_instance.dart';
@@ -52,15 +53,20 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   void _goBack() {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, __) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: widget.buildReturnPage(),
+    // Используем pop() вместо pushReplacement для правильной работы свайпа
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 220),
+          pageBuilder: (_, animation, __) => FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+            child: widget.buildReturnPage(),
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
@@ -467,65 +473,67 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          Padding(
-            padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top - 10,
-            ),
-            child: Column(
-              children: [
-                MainHeader(
-                  title: 'Настройки',
-                  onMenuTap: _toggleSidebar,
-                  onSearchTap: null,
-                  onSettingsTap: null,
-                  hideSearchAndSettings: true,
-                  showBackButton: true,
-                  onBack: _goBack,
-                  onGreetingToggle: null,
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(15, 20, 15, 40),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildProfile(),
-                        const SizedBox(height: 32),
-                        _buildSubscription(),
-                        const SizedBox(height: 32),
-                        _buildAppearance(),
-                        const SizedBox(height: 32),
-                        _buildNotifications(),
-                        const SizedBox(height: 32),
-                        _buildAbout(),
-                        const SizedBox(height: 32),
-                        _buildLogout(),
-                        const SizedBox(height: 20),
-                        _buildSaveButton(),
-                      ],
+    return SwipeBackWrapper(
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            Padding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top - 10,
+              ),
+              child: Column(
+                children: [
+                  MainHeader(
+                    title: 'Настройки',
+                    onMenuTap: _toggleSidebar,
+                    onSearchTap: null,
+                    onSettingsTap: null,
+                    hideSearchAndSettings: true,
+                    showBackButton: true,
+                    onBack: _goBack,
+                    onGreetingToggle: null,
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(15, 20, 15, 40),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildProfile(),
+                          const SizedBox(height: 32),
+                          _buildSubscription(),
+                          const SizedBox(height: 32),
+                          _buildAppearance(),
+                          const SizedBox(height: 32),
+                          _buildNotifications(),
+                          const SizedBox(height: 32),
+                          _buildAbout(),
+                          const SizedBox(height: 32),
+                          _buildLogout(),
+                          const SizedBox(height: 20),
+                          _buildSaveButton(),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Sidebar(
-            isOpen: _isSidebarOpen,
-            onClose: _toggleSidebar,
-            onTasksTap: () {
-              _goBack();
-            },
-            onChatTap: () {
-              // Вернуться к задачам, откуда можно в чат
-              _goBack();
-            },
-          ),
-        ],
+            Sidebar(
+              isOpen: _isSidebarOpen,
+              onClose: _toggleSidebar,
+              onTasksTap: () {
+                _goBack();
+              },
+              onChatTap: () {
+                // Вернуться к задачам, откуда можно в чат
+                _goBack();
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -544,7 +552,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 20),
                 decoration: const BoxDecoration(
                   border: Border(
                     bottom: BorderSide(color: Color(0xFFF5F5F5)),
@@ -566,8 +574,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                                     File(_avatarPath!).existsSync();
                                 
                                 return Container(
-                                  width: 120,
-                                  height: 120,
+                                  width: 140,
+                                  height: 140,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: const Color(0xFFF5F5F5),
@@ -582,7 +590,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                                   child: !hasAvatar
                                       ? const Text(
                                           '👤',
-                                          style: TextStyle(fontSize: 36),
+                                          style: TextStyle(fontSize: 42),
                                         )
                                       : null,
                                 );
