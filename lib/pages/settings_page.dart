@@ -12,7 +12,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
-import '../widgets/swipe_back_wrapper.dart';
 import 'tasks_page.dart';
 import 'login_page.dart';
 import '../data/database_instance.dart';
@@ -473,12 +472,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    return SwipeBackWrapper(
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        resizeToAvoidBottomInset: false,
-        body: Stack(
-          children: [
+    return Scaffold(
+      backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        children: [
             Padding(
               padding: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top - 10,
@@ -534,8 +532,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildProfile() {

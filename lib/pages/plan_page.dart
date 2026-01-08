@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import 'package:uuid/uuid.dart';
@@ -10,6 +11,7 @@ import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ai_menu_modal.dart';
 import '../widgets/swipe_back_wrapper.dart';
+import '../widgets/ios_page_route.dart';
 import 'tasks_page.dart';
 import 'gpt_plan_page.dart';
 import 'chat_page.dart';
@@ -139,18 +141,27 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   void _navigateTo(Widget page, {bool slideFromRight = false}) {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 260),
-        pageBuilder: (_, animation, __) {
-          final curve = Curves.easeInOut;
-          return FadeTransition(
-            opacity: CurvedAnimation(parent: animation, curve: curve),
-            child: page,
-          );
-        },
-      ),
-    );
+    if (page is SettingsPage) {
+      // Для настроек используем push с CupertinoPageRoute для iOS swipe back
+      Navigator.of(context).push(
+        CupertinoPageRoute(
+          builder: (_) => page,
+        ),
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 260),
+          pageBuilder: (_, animation, __) {
+            final curve = Curves.easeInOut;
+            return FadeTransition(
+              opacity: CurvedAnimation(parent: animation, curve: curve),
+              child: page,
+            );
+          },
+        ),
+      );
+    }
   }
 
   // --------- Создание / управление планами ---------
@@ -876,8 +887,84 @@ class _PlanPageState extends State<PlanPage> {
 
     // Обертываем в SwipeBackWrapper только если открыт план (не список)
     if (_activeGoalId != null) {
+      // Создаем виджет списка планов для отображения при свайпе
+      final planListWidget = Scaffold(
+        backgroundColor: Colors.white,
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            Padding(
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top - 10),
+              child: Column(
+                children: [
+                  MainHeader(
+                    title: 'Цели',
+                    onMenuTap: _toggleSidebar,
+                    onSearchTap: null,
+                    onSettingsTap: () {
+                      _navigateTo(const SettingsPage(), slideFromRight: true);
+                    },
+                    hideSearchAndSettings: false,
+                    showBackButton: false,
+                    onBack: null,
+                    onGreetingToggle: null,
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 120),
+                      child: _isLoading
+                          ? const SizedBox.shrink()
+                          : savedGoals.isNotEmpty
+                              ? _buildSavedList(savedGoals)
+                              : _buildCreation(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Sidebar(
+              isOpen: _isSidebarOpen,
+              onClose: _toggleSidebar,
+              onTasksTap: () => _navigateTo(const TasksPage()),
+              onChatTap: () => _navigateTo(const ChatPage()),
+            ),
+            BottomNavigation(
+              currentIndex: 2,
+              onAddTask: _createGoal,
+              isSidebarOpen: _isSidebarOpen,
+              onGptTap: _openAiMenu,
+              onPlanTap: () {
+                setState(() {
+                  _activeGoalId = null;
+                  _isEditMode = false;
+                  _goals.removeWhere((g) => !g.isSaved);
+                  _isLoading = true;
+                });
+                _loadFromDb();
+              },
+              onNotesTap: () {
+                _navigateTo(const NotesPage());
+              },
+              onTasksTap: () => _navigateTo(const TasksPage()),
+              onIndexChanged: (index) {
+                if (index == 0) _navigateTo(const TasksPage());
+              },
+            ),
+            if (_isAiMenuOpen)
+              AiMenuModal(
+                isOpen: _isAiMenuOpen,
+                onClose: _closeAiMenu,
+                onChat: _openAiChat,
+                onPlan: _openAiPlan,
+              ),
+          ],
+        ),
+      );
+
       return SwipeBackWrapper(
         onSwipeBack: _goBackToPlanList,
+        previousScreen: planListWidget,
         child: scaffold,
       );
     }

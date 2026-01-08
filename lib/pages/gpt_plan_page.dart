@@ -1,10 +1,12 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../widgets/main_header.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
+import '../widgets/ios_page_route.dart';
 import '../widgets/custom_snackbar.dart';
 import 'tasks_page.dart';
 import 'plan_page.dart';
@@ -62,15 +64,24 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   }
 
   void _navigateTo(Widget page, {bool slideFromRight = false}) {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, __) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: page,
+    if (page is SettingsPage) {
+      // Для настроек используем push с CupertinoPageRoute для iOS swipe back
+      Navigator.of(context).push(
+        CupertinoPageRoute(
+          builder: (_) => page,
         ),
-      ),
-    );
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 220),
+          pageBuilder: (_, animation, __) => FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+            child: page,
+          ),
+        ),
+      );
+    }
   }
 
   void _setStep(int step) {
