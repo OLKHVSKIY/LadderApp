@@ -137,11 +137,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     setState(() {
       _saving = true;
     });
+    // Получаем текущего пользователя, чтобы сохранить существующий путь к аватару, если он не был изменен
+    final currentUser = await (appDatabase.select(appDatabase.users)..where((u) => u.id.equals(userId))).getSingleOrNull();
+    final avatarUrlToSave = _avatarPath ?? currentUser?.avatarUrl;
+    
     await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
       UsersCompanion(
         name: dr.Value(name.isEmpty ? null : name),
         email: dr.Value(email),
-        avatarUrl: dr.Value(_avatarPath),
+        avatarUrl: dr.Value(avatarUrlToSave),
         updatedAt: dr.Value(DateTime.now()),
       ),
     );

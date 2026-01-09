@@ -8,6 +8,7 @@ class TaskList extends StatelessWidget {
   final Function(String, bool) onTaskToggle;
   final String? openMenuTaskId;
   final Function(String?, GlobalKey?)? onMenuToggle;
+  final bool isLoading;
 
   const TaskList({
     super.key,
@@ -16,6 +17,7 @@ class TaskList extends StatelessWidget {
     required this.onTaskToggle,
     this.openMenuTaskId,
     this.onMenuToggle,
+    this.isLoading = false,
   });
 
   bool _isSameDay(DateTime date1, DateTime date2) {
@@ -66,7 +68,8 @@ class TaskList extends StatelessWidget {
   Widget build(BuildContext context) {
     final filteredTasks = _getFilteredTasks();
 
-    if (filteredTasks.isEmpty) {
+    // Не показываем "Нет задач" во время загрузки, чтобы избежать мерцания
+    if (filteredTasks.isEmpty && !isLoading) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(40),
@@ -79,6 +82,11 @@ class TaskList extends StatelessWidget {
           ),
         ),
       );
+    }
+
+    // Во время загрузки показываем пустой виджет
+    if (isLoading && filteredTasks.isEmpty) {
+      return const SizedBox.shrink();
     }
 
     final groupedTasks = _groupByPriority(filteredTasks);

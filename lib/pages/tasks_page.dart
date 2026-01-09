@@ -57,6 +57,7 @@ class _TasksPageState extends State<TasksPage> {
   Task? _editingTask;
   double _headerDragDistance = 0.0;
   List<DelegatedTaskInfo> _pendingDelegatedTasks = [];
+  bool _isLoadingTasks = false;
 
   @override
   void initState() {
@@ -76,6 +77,9 @@ class _TasksPageState extends State<TasksPage> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureUserSession().then((_) {
+        setState(() {
+          _isLoadingTasks = true;
+        });
         _loadTasksForDate(_selectedDate);
         _loadWeekTasks();
         _loadTodayCounts();
@@ -247,6 +251,7 @@ class _TasksPageState extends State<TasksPage> {
   void _selectDate(DateTime date) {
     setState(() {
       _selectedDate = date;
+      _isLoadingTasks = true;
     });
     _loadTasksForDate(date);
     _loadWeekTasks();
@@ -258,6 +263,7 @@ class _TasksPageState extends State<TasksPage> {
     if (mounted) {
       setState(() {
         _tasks = tasks;
+        _isLoadingTasks = false;
       });
     }
   }
@@ -692,6 +698,7 @@ class _TasksPageState extends State<TasksPage> {
                                 onTaskToggle: _updateTaskCompletion,
                                 openMenuTaskId: _openMenuTaskId,
                                 onMenuToggle: _handleMenuToggle,
+                                isLoading: _isLoadingTasks,
                               ),
                             ],
                           ),
