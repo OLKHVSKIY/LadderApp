@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:io';
@@ -14,6 +15,7 @@ import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import 'tasks_page.dart';
 import 'login_page.dart';
+import 'subscription_page.dart';
 import '../data/database_instance.dart';
 import '../data/user_session.dart';
 import '../data/app_database.dart';
@@ -803,7 +805,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ),
                   elevation: 0,
                 ),
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.of(context).push(
+                    CupertinoPageRoute(
+                      builder: (_) => const SubscriptionPage(),
+                    ),
+                  );
+                },
                 child: const Text(
                   'Обновить',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'dart:async';
 import 'dart:math' as math;
+import '../pages/subscription_page.dart';
 
 class Sidebar extends StatefulWidget {
   final bool isOpen;
@@ -282,7 +284,16 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
   }
 
   Widget _buildSubscriptionBanner() {
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        widget.onClose();
+        Navigator.of(context).push(
+          CupertinoPageRoute(
+            builder: (_) => const SubscriptionPage(),
+          ),
+        );
+      },
+      child: Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
@@ -354,6 +365,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           // Падающая звезда
           _buildFallingStar(),
         ],
+      ),
       ),
     );
   }
@@ -446,7 +458,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
             delay: delay,
           ),
         ),
-      );
+    );
     }
     return stars;
   }

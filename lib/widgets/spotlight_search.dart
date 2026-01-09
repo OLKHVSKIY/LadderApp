@@ -1030,7 +1030,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                               child: GestureDetector(
                                 onTap: () {}, // Предотвращаем закрытие при клике на контент
                                 child: Container(
-                                  width: MediaQuery.of(context).size.width * 0.9,
+                                  width: MediaQuery.of(context).size.width * 0.94,
                                   constraints: const BoxConstraints(maxWidth: 600),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(30),
