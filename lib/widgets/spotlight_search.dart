@@ -1097,45 +1097,38 @@ class _SpotlightSearchState extends State<SpotlightSearch>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _fadeAnimation.value,
-          child: Transform.scale(
-            scale: _scaleAnimation.value,
-            child: child!,
-          ),
-        );
-      },
-      child: GestureDetector(
-        onTap: _close,
-        child: AnimatedBuilder(
-          animation: _animationController,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _fadeAnimation.value,
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          // Затемнение на весь экран - занимает весь экран без белых полос
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _close,
               child: Container(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withOpacity(0.75),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
-                    color: Colors.black.withOpacity(0.3),
-                    child: MediaQuery.removePadding(
-                      context: context,
-                      removeTop: true,
-                      child: SafeArea(
-                        bottom: true,
-                        top: false,
-                        child: child!,
-                      ),
-                    ),
+                    color: Colors.transparent,
                   ),
                 ),
               ),
-            );
-          },
-          child: LayoutBuilder(
+            ),
+          ),
+          // Контент Spotlight с анимацией
+          AnimatedBuilder(
+            animation: _animationController,
+            builder: (context, child) {
+              return Opacity(
+                opacity: _fadeAnimation.value,
+                child: Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: child!,
+                ),
+              );
+            },
+            child: LayoutBuilder(
             builder: (context, constraints) {
               final screenHeight = MediaQuery.of(context).size.height;
               // Фиксированная позиция - центр экрана минус половина высоты контейнера
@@ -1143,22 +1136,22 @@ class _SpotlightSearchState extends State<SpotlightSearch>
               final fixedTop = (screenHeight / 2) - 270;
               
               return Align(
-                            alignment: Alignment.topCenter,
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                top: fixedTop.clamp(0.0, double.infinity),
-                              ),
-                              child: GestureDetector(
-                                onTap: () {}, // Предотвращаем закрытие при клике на контент
-                                child: Container(
-                                  width: MediaQuery.of(context).size.width * 0.94,
-                                  constraints: const BoxConstraints(maxWidth: 600),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  child: Material(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(28),
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    top: fixedTop.clamp(0.0, double.infinity),
+                  ),
+                  child: GestureDetector(
+                    onTap: () {}, // Предотвращаем закрытие при клике на контент
+                    child: Container(
+                      width: MediaQuery.of(context).size.width * 0.94,
+                      constraints: const BoxConstraints(maxWidth: 600),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -1303,6 +1296,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
             },
           ),
         ),
+        ],
       ),
     );
   }
