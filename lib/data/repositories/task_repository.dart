@@ -2,11 +2,19 @@ import 'package:drift/drift.dart' as dr;
 import '../app_database.dart' as db;
 import '../user_session.dart';
 import '../../models/task.dart' as model;
+import 'task_file_repository.dart';
 
 class TaskRepository {
   final db.AppDatabase database;
+  TaskFileRepository? _fileRepository;
   bool _checkedSchema = false;
+  
   TaskRepository(this.database);
+  
+  TaskFileRepository get _fileRepo {
+    _fileRepository ??= TaskFileRepository(database);
+    return _fileRepository!;
+  }
 
   Future<void> _ensureTaskColumns() async {
     if (_checkedSchema) return;
@@ -48,6 +56,10 @@ class TaskRepository {
             ),
           );
     }
+    // Файлы
+    if (task.attachedFiles != null && task.attachedFiles!.isNotEmpty) {
+      await _fileRepo.saveTaskFiles(taskId, task.attachedFiles!);
+    }
     return taskId;
   }
 
@@ -79,6 +91,7 @@ class TaskRepository {
     final result = <model.Task>[];
     for (final row in rows) {
       final tags = await _tagsForTask(row.id);
+      final files = await _fileRepo.loadTaskFiles(row.id);
       result.add(
         model.Task(
           id: row.id.toString(),
@@ -89,6 +102,7 @@ class TaskRepository {
           date: row.date,
           endDate: row.endDate,
           isCompleted: row.isCompleted,
+          attachedFiles: files.isNotEmpty ? files : null,
         ),
       );
     }
@@ -113,6 +127,7 @@ class TaskRepository {
     final result = <model.Task>[];
     for (final row in rows) {
       final tags = await _tagsForTask(row.id);
+      final files = await _fileRepo.loadTaskFiles(row.id);
       result.add(
         model.Task(
           id: row.id.toString(),
@@ -123,6 +138,7 @@ class TaskRepository {
           date: row.date,
           endDate: row.endDate,
           isCompleted: row.isCompleted,
+          attachedFiles: files.isNotEmpty ? files : null,
         ),
       );
     }
@@ -172,10 +188,18 @@ class TaskRepository {
             ),
           );
     }
+    // Обновляем файлы
+    if (task.attachedFiles != null && task.attachedFiles!.isNotEmpty) {
+      await _fileRepo.saveTaskFiles(id, task.attachedFiles!);
+    } else {
+      await _fileRepo.deleteTaskFiles(id);
+    }
   }
 
   Future<void> deleteTask(int id) async {
     await _ensureTaskColumns();
+    // Удаляем файлы перед удалением задачи
+    await _fileRepo.deleteTaskFiles(id);
     await (database.delete(database.tasks)..where((t) => t.id.equals(id))).go();
   }
 
@@ -193,6 +217,7 @@ class TaskRepository {
     final result = <model.Task>[];
     for (final row in rows) {
       final tags = await _tagsForTask(row.id);
+      final files = await _fileRepo.loadTaskFiles(row.id);
       result.add(
         model.Task(
           id: row.id.toString(),
@@ -203,6 +228,7 @@ class TaskRepository {
           date: row.date,
           endDate: row.endDate,
           isCompleted: row.isCompleted,
+          attachedFiles: files.isNotEmpty ? files : null,
         ),
       );
     }

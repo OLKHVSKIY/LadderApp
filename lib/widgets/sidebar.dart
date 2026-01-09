@@ -297,22 +297,8 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF58ABF5),
-            Color(0xFF2037E7),
-          ],
-        ),
+        color: Colors.black,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4A90E2).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Stack(
         clipBehavior: Clip.none,

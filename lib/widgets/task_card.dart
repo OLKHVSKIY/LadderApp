@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../models/attached_file.dart';
+import 'file_attachment_display.dart';
 
 class TextLineMetrics {
   final double width;
@@ -613,6 +615,14 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                             ),
                           );
                         }).toList(),
+                      ),
+                    ],
+                    // Отображение прикрепленных файлов
+                    if (widget.task.attachedFiles != null && widget.task.attachedFiles!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      FileAttachmentDisplay(
+                        files: widget.task.attachedFiles!,
+                        isCompact: true,
                       ),
                     ],
                   ],

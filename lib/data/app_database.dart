@@ -81,16 +81,54 @@ class UserSettings extends Table {
   Set<Column> get primaryKey => {userId};
 }
 
+class TaskFiles extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get taskId => integer().references(Tasks, #id, onDelete: KeyAction.cascade)();
+  TextColumn get fileName => text()();
+  TextColumn get filePath => text()();
+  TextColumn get fileType => text()(); // pdf, doc, docx, xls, xlsx, jpg, png, etc.
+  IntColumn get fileSize => integer()(); // размер в байтах
+  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+}
+
+class NoteFiles extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get noteId => integer().references(Notes, #id, onDelete: KeyAction.cascade)();
+  TextColumn get fileName => text()();
+  TextColumn get filePath => text()();
+  TextColumn get fileType => text()(); // pdf, doc, docx, xls, xlsx, jpg, png, etc.
+  IntColumn get fileSize => integer()(); // размер в байтах
+  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+}
+
+class DelegatedTasks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get originalTaskId => integer().references(Tasks, #id, onDelete: KeyAction.cascade)();
+  IntColumn get fromUserId => integer().references(Users, #id, onDelete: KeyAction.cascade)();
+  TextColumn get fromUserEmail => text()();
+  TextColumn get fromUserName => text().nullable()();
+  TextColumn get toUserEmail => text()();
+  TextColumn get taskTitle => text()();
+  TextColumn get taskDescription => text().nullable()();
+  DateTimeColumn get taskDate => dateTime()();
+  DateTimeColumn get taskEndDate => dateTime().nullable()();
+  IntColumn get taskPriority => integer()();
+  TextColumn get taskTags => text()(); // JSON массив тегов
+  BoolColumn get isAccepted => boolean().withDefault(const Constant(false))();
+  BoolColumn get isDeclined => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+}
+
 // ---------- База ----------
 
 @DriftDatabase(
-  tables: [Users, Tasks, Tags, TaskTags, ChatMessages, Plans, Notes, UserSettings],
+  tables: [Users, Tasks, Tags, TaskTags, ChatMessages, Plans, Notes, UserSettings, TaskFiles, NoteFiles, DelegatedTasks],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -124,6 +162,19 @@ class AppDatabase extends _$AppDatabase {
             }
             await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_user_date ON tasks(user_id, date);');
             await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_user_completed ON tasks(user_id, is_completed);');
+          }
+          if (from < 4) {
+            // Добавляем таблицы для файлов
+            await m.createTable(taskFiles);
+            await m.createTable(noteFiles);
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_task_files_task ON task_files(task_id);');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_note_files_note ON note_files(note_id);');
+          }
+          if (from < 5) {
+            // Добавляем таблицу для делегированных задач
+            await m.createTable(delegatedTasks);
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_delegated_tasks_to_email ON delegated_tasks(to_user_email);');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_delegated_tasks_accepted ON delegated_tasks(is_accepted, is_declined);');
           }
         },
         beforeOpen: (details) async {

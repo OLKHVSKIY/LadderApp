@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:async';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:open_filex/open_filex.dart';
 import '../data/repositories/task_repository.dart';
 import '../data/repositories/note_repository.dart';
 import '../data/repositories/plan_repository.dart';
@@ -12,16 +16,19 @@ import '../models/task.dart' as task_model;
 import '../models/task.dart';
 import '../models/note_model.dart';
 import '../models/goal_model.dart';
+import '../models/attached_file.dart';
 import '../pages/tasks_page.dart';
 import '../pages/notes_page.dart';
 import '../pages/plan_page.dart';
 import '../services/yandex_gpt_service.dart';
 import '../widgets/custom_snackbar.dart';
+import 'main_header.dart';
 
 enum SearchResultType {
   task,
   note,
   goal,
+  file,
 }
 
 class SearchResult {
@@ -312,6 +319,45 @@ class _SpotlightSearchState extends State<SpotlightSearch>
               data: goal,
               date: goal.savedAt ?? goal.createdAt,
             ));
+          }
+        }
+      }
+
+      // Поиск по файлам в задачах и заметках (только если не поиск по хештегам)
+      if (!isHashtagSearch) {
+        // Поиск файлов в задачах
+        final allTasks = await _taskRepository.searchAllTasks();
+        for (final task in allTasks) {
+          if (task.attachedFiles != null && task.attachedFiles!.isNotEmpty) {
+            for (final file in task.attachedFiles!) {
+              if (_matchesQuery(query, file.fileName)) {
+                results.add(SearchResult(
+                  type: SearchResultType.file,
+                  title: file.fileName,
+                  subtitle: 'Файл в задаче: ${task.title}',
+                  data: file,
+                  date: task.date,
+                ));
+              }
+            }
+          }
+        }
+        
+        // Поиск файлов в заметках
+        final notes = await _noteRepository.loadNotes(userId);
+        for (final note in notes) {
+          if (note.attachedFiles != null && note.attachedFiles!.isNotEmpty) {
+            for (final file in note.attachedFiles!) {
+              if (_matchesQuery(query, file.fileName)) {
+                results.add(SearchResult(
+                  type: SearchResultType.file,
+                  title: file.fileName,
+                  subtitle: 'Файл в заметке: ${note.title}',
+                  data: file,
+                  date: note.updatedAt ?? note.createdAt,
+                ));
+              }
+            }
           }
         }
       }
@@ -927,6 +973,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         case SearchResultType.goal:
           _navigateToGoal(result.data as GoalModel);
           break;
+        case SearchResultType.file:
+          _openFile(result.data);
+          break;
       }
     });
   }
@@ -972,6 +1021,78 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         ),
       ),
     );
+  }
+
+  Future<void> _openFile(AttachedFile file) async {
+    try {
+      HapticFeedback.mediumImpact();
+      
+      final sourceFile = File(file.filePath);
+      if (!await sourceFile.exists()) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл не найден')),
+        );
+        return;
+      }
+
+      // Получаем директорию для загрузок
+      Directory? directory = await getDownloadsDirectory();
+      
+      // Если папка Downloads недоступна, используем Documents
+      if (directory == null || !await directory.exists()) {
+        directory = await getApplicationDocumentsDirectory();
+      }
+      
+      // Создаем папку Downloads внутри Documents, если её нет
+      final downloadsDir = Directory(path.join(directory.path, 'Downloads'));
+      if (!await downloadsDir.exists()) {
+        await downloadsDir.create(recursive: true);
+      }
+      
+      // Очищаем имя файла от префикса timestamp, если он есть
+      String cleanFileName = file.fileName;
+      final timestampPattern = RegExp(r'^\d+_');
+      if (timestampPattern.hasMatch(cleanFileName)) {
+        cleanFileName = cleanFileName.replaceFirst(timestampPattern, '');
+      }
+      
+      final downloadsPath = path.join(downloadsDir.path, cleanFileName);
+      var targetFile = File(downloadsPath);
+      
+      // Если файл уже существует, добавляем номер
+      int counter = 1;
+      String finalPath = downloadsPath;
+      while (await targetFile.exists()) {
+        final nameWithoutExt = path.basenameWithoutExtension(cleanFileName);
+        final ext = path.extension(cleanFileName);
+        finalPath = path.join(downloadsDir.path, '${nameWithoutExt}_$counter$ext');
+        targetFile = File(finalPath);
+        counter++;
+      }
+      
+      // Копируем файл в папку загрузок
+      await sourceFile.copy(finalPath);
+      
+      // Пытаемся открыть файл
+      final result = await OpenFilex.open(finalPath);
+      
+      if (!mounted) return;
+      
+      if (result.type != ResultType.done) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Файл сохранен: $cleanFileName'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при открытии файла: $e')),
+      );
+    }
   }
 
   @override
@@ -1222,6 +1343,27 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         iconColor = Colors.green;
         typeLabel = 'Цель';
         break;
+      case SearchResultType.file:
+        final file = result.data as dynamic;
+        // Определяем иконку по типу файла
+        if (file.fileType == 'pdf') {
+          icon = Icons.picture_as_pdf;
+          iconColor = Colors.red;
+        } else if (file.fileType == 'word') {
+          icon = Icons.description;
+          iconColor = Colors.blue;
+        } else if (file.fileType == 'excel') {
+          icon = Icons.table_chart;
+          iconColor = Colors.green;
+        } else if (file.fileType == 'image') {
+          icon = Icons.image;
+          iconColor = Colors.purple;
+        } else {
+          icon = Icons.insert_drive_file;
+          iconColor = Colors.grey;
+        }
+        typeLabel = 'Файл';
+        break;
     }
 
     return InkWell(
@@ -1274,6 +1416,20 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                   else if (result.type == SearchResultType.note && 
                            result.subtitle.isNotEmpty && 
                            result.subtitle != result.title) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      result.subtitle,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ]
+                  // Для файлов: показываем subtitle
+                  else if (result.type == SearchResultType.file && 
+                           result.subtitle.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
                       result.subtitle,

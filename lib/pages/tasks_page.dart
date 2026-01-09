@@ -22,6 +22,9 @@ import '../data/database_instance.dart';
 import '../data/repositories/task_repository.dart';
 import '../data/user_session.dart';
 import '../widgets/custom_snackbar.dart';
+import '../widgets/delegate_task_modal.dart';
+import '../widgets/delegated_task_accept_modal.dart';
+import '../data/repositories/delegated_task_repository.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
 
 class TasksPage extends StatefulWidget {
@@ -48,10 +51,12 @@ class _TasksPageState extends State<TasksPage> {
   String? _openMenuTaskId;
   OverlayEntry? _menuOverlayEntry;
   late final TaskRepository _taskRepository;
+  late final DelegatedTaskRepository _delegatedTaskRepository;
   bool _loadedUserName = false;
   bool _userReady = false;
   Task? _editingTask;
   double _headerDragDistance = 0.0;
+  List<DelegatedTaskInfo> _pendingDelegatedTasks = [];
 
   @override
   void initState() {
@@ -59,6 +64,7 @@ class _TasksPageState extends State<TasksPage> {
     // Устанавливаем дату сразу, чтобы не было видимого перехода
     _selectedDate = widget.initialTaskToOpen?.date ?? DateTime.now();
     _taskRepository = TaskRepository(appDatabase);
+    _delegatedTaskRepository = DelegatedTaskRepository(appDatabase);
     if (widget.animateNavIn) {
       _navHidden = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -74,6 +80,7 @@ class _TasksPageState extends State<TasksPage> {
         _loadWeekTasks();
         _loadTodayCounts();
         _loadUserNameIfNeeded();
+        _checkDelegatedTasks();
       });
     });
   }
@@ -209,6 +216,7 @@ class _TasksPageState extends State<TasksPage> {
           date: day,
           endDate: null,
           isCompleted: false,
+          attachedFiles: task.attachedFiles,
         );
         await _taskRepository.addTask(copy);
         counter++;
@@ -242,6 +250,7 @@ class _TasksPageState extends State<TasksPage> {
     });
     _loadTasksForDate(date);
     _loadWeekTasks();
+    _checkDelegatedTasks();
   }
 
   void _loadTasksForDate(DateTime date) async {
@@ -419,7 +428,7 @@ class _TasksPageState extends State<TasksPage> {
         },
         onShare: () {
           _handleMenuToggle(null, null);
-          // TODO: Реализовать поделиться
+          _showDelegateModal(task);
         },
         onDelete: () async {
           _handleMenuToggle(null, null);
@@ -444,6 +453,159 @@ class _TasksPageState extends State<TasksPage> {
   void _removeMenuOverlay() {
     _menuOverlayEntry?.remove();
     _menuOverlayEntry = null;
+  }
+
+  void _showDelegateModal(Task task) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withOpacity(0.4), // Затемнение сразу видимо
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) => DelegateTaskModal(
+        task: task,
+        onDelegate: (email, deleteFromMe) async {
+          try {
+            final intId = int.tryParse(task.id);
+            if (intId == null) {
+              _showError('Некорректный id задачи');
+              return;
+            }
+            await _delegatedTaskRepository.delegateTask(
+              taskId: intId,
+              toUserEmail: email,
+              deleteFromMe: deleteFromMe,
+            );
+            if (deleteFromMe) {
+              _loadTasksForDate(_selectedDate);
+              _loadWeekTasks();
+              _loadTodayCounts();
+            }
+            if (mounted) {
+              CustomSnackBar.show(context, 'Задача делегирована пользователю $email');
+            }
+          } catch (e) {
+            _showError('Ошибка при делегировании: $e');
+          }
+        },
+      ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        // Затемнение появляется сразу, шторка анимируется снизу
+        return FadeTransition(
+          opacity: AlwaysStoppedAnimation(1.0), // Затемнение сразу видимо
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 1),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            )),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _checkDelegatedTasks() async {
+    try {
+      final pendingTasks = await _delegatedTaskRepository.getPendingDelegatedTasks();
+      if (pendingTasks.isNotEmpty && mounted) {
+        setState(() {
+          _pendingDelegatedTasks = pendingTasks;
+        });
+        // Показываем модальное окно
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pendingDelegatedTasks.isNotEmpty) {
+            _showAcceptModal();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Ошибка при проверке делегированных задач: $e');
+    }
+  }
+
+  void _showAcceptModal() {
+    if (_pendingDelegatedTasks.isEmpty) return;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false, // Отключаем закрытие по клику вне шторки
+      enableDrag: false, // Отключаем перетаскивание
+      builder: (context) => DelegatedTaskAcceptModal(
+        tasks: _pendingDelegatedTasks,
+        onAccept: (taskId) {
+          _acceptDelegatedTask(taskId);
+        },
+        onDecline: (taskId) {
+          _declineDelegatedTask(taskId);
+        },
+        onClose: () {
+          Navigator.of(context).pop();
+          setState(() {
+            _pendingDelegatedTasks = [];
+          });
+        },
+      ),
+    );
+  }
+
+  Future<void> _acceptDelegatedTask(int taskId) async {
+    final taskInfo = _pendingDelegatedTasks.firstWhere((t) => t.id == taskId);
+    final taskDate = taskInfo.taskDate;
+    
+    try {
+      await _delegatedTaskRepository.acceptDelegatedTask(taskId);
+      setState(() {
+        _pendingDelegatedTasks.removeWhere((t) => t.id == taskId);
+      });
+      // Переключаемся на дату задачи
+      setState(() {
+        _selectedDate = taskDate;
+      });
+      _loadTasksForDate(taskDate);
+      _loadWeekTasks();
+      _loadTodayCounts();
+      if (mounted) {
+        CustomSnackBar.show(context, 'Задача принята');
+      }
+      // Если задач больше нет, закрываем модальное окно
+      if (_pendingDelegatedTasks.isEmpty) {
+        Navigator.of(context).pop();
+      } else {
+        // Обновляем модальное окно, убрав принятую задачу
+        Navigator.of(context).pop();
+        _showAcceptModal();
+      }
+    } catch (e) {
+      _showError('Ошибка при принятии задачи: $e');
+    }
+  }
+
+  Future<void> _declineDelegatedTask(int taskId) async {
+    try {
+      await _delegatedTaskRepository.declineDelegatedTask(taskId);
+      setState(() {
+        _pendingDelegatedTasks.removeWhere((t) => t.id == taskId);
+      });
+      if (mounted) {
+        CustomSnackBar.show(context, 'Задача отклонена');
+      }
+      // Если задач больше нет, закрываем модальное окно
+      if (_pendingDelegatedTasks.isEmpty) {
+        Navigator.of(context).pop();
+      } else {
+        // Обновляем модальное окно, убрав отклоненную задачу
+        Navigator.of(context).pop();
+        _showAcceptModal();
+      }
+    } catch (e) {
+      _showError('Ошибка при отклонении задачи: $e');
+    }
   }
 
   @override

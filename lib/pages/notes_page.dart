@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:math' as math;
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/bottom_navigation.dart';
@@ -32,6 +33,7 @@ class _NotesPageState extends State<NotesPage> {
   late final NoteRepository _noteRepository;
   int? _frontNoteId;
   bool _isAligning = false;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -89,9 +91,29 @@ class _NotesPageState extends State<NotesPage> {
     final userId = UserSession.currentUserId;
     if (userId == null) return;
 
+    final isNewNote = note.id == null;
     await _noteRepository.saveNote(note, userId);
     await _loadNotes();
     _closeEditor();
+    
+    // Если новая заметка и все выравнены, прокручиваем к ней
+    if (isNewNote && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          // Находим новую заметку
+          final newNote = _notes.firstWhere(
+            (n) => n.x != 0 && n.y != 0,
+            orElse: () => _notes.first,
+          );
+          final targetY = newNote.y - 100; // Отступ сверху
+          _scrollController.animateTo(
+            targetY.clamp(0.0, _scrollController.position.maxScrollExtent),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
   }
 
   Future<void> _saveNoteWithoutReload(NoteModel note) async {
@@ -330,15 +352,72 @@ class _NotesPageState extends State<NotesPage> {
         final extraPadding = crossAxisCount == 1 ? 40.0 : 0.0;
         final itemWidth = (screenWidth - padding * 2 - spacing * (crossAxisCount - 1) - extraPadding) / crossAxisCount;
 
+        // Проверяем, выравнены ли все стикеры
+        bool allAligned = true;
+        if (_notes.isNotEmpty) {
+          // Проверяем, находятся ли все стикеры в выровненной сетке
+          final expectedXPositions = List.generate(crossAxisCount, (col) {
+            return padding + col * (itemWidth + spacing);
+          });
+          
+          for (final note in _notes) {
+            if (note.x == 0 && note.y == 0) {
+              allAligned = false;
+              break;
+            }
+            // Проверяем, находится ли стикер на одной из ожидаемых X позиций
+            final isOnExpectedX = expectedXPositions.any((expectedX) => 
+              (note.x - expectedX).abs() < 1.0
+            );
+            if (!isOnExpectedX) {
+              allAligned = false;
+              break;
+            }
+          }
+        }
+
         // Инициализируем позиции для новых заметок
         final notesWithPositions = _notes.map((note) {
           if (note.x == 0 && note.y == 0) {
-            // Вычисляем начальную позицию в сетке
-            final index = _notes.indexOf(note);
-            final row = index ~/ crossAxisCount;
-            final col = index % crossAxisCount;
-            final x = padding + col * (itemWidth + spacing);
-            final y = padding + row * 200.0;
+            double x, y;
+            
+            if (allAligned && _notes.length > 1) {
+              // Если все выравнены, создаем под самым нижним
+              double maxY = 0;
+              for (final existingNote in _notes) {
+                if (existingNote.id != note.id) {
+                  final bottom = existingNote.y + existingNote.height;
+                  if (bottom > maxY) {
+                    maxY = bottom;
+                  }
+                }
+              }
+              
+              // Находим столбец с минимальной высотой
+              final columnHeights = List.generate(crossAxisCount, (col) {
+                double colHeight = padding;
+                for (final existingNote in _notes) {
+                  if (existingNote.id != note.id) {
+                    final expectedX = padding + col * (itemWidth + spacing);
+                    if ((existingNote.x - expectedX).abs() < 1.0) {
+                      colHeight = math.max(colHeight, existingNote.y + existingNote.height + spacing);
+                    }
+                  }
+                }
+                return colHeight;
+              });
+              
+              final minColIndex = columnHeights.indexOf(columnHeights.reduce(math.min));
+              x = padding + minColIndex * (itemWidth + spacing);
+              y = columnHeights[minColIndex];
+            } else {
+              // Если не выравнены, создаем по центру экрана
+              final screenHeight = MediaQuery.of(context).size.height;
+              final centerY = (screenHeight / 2) - 100; // Центр минус половина высоты стикера
+              x = (screenWidth / 2) - (itemWidth / 2);
+              y = centerY.clamp(padding, double.infinity);
+            }
+            
             return note.copyWith(
               x: x,
               y: y,
@@ -374,6 +453,7 @@ class _NotesPageState extends State<NotesPage> {
         final contentHeight = maxHeight + padding + 100;
 
         return SingleChildScrollView(
+          controller: _scrollController,
           child: Container(
             padding: EdgeInsets.all(padding),
             height: contentHeight,

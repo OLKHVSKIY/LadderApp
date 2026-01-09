@@ -1,3 +1,5 @@
+import 'attached_file.dart';
+
 class NoteModel {
   final int? id;
   final String title;
@@ -9,6 +11,7 @@ class NoteModel {
   final String color; // Цвет заметки (hex)
   final bool isLocked; // Закреплена ли заметка
   final String? drawingData; // JSON данные для рисунка
+  final List<AttachedFile>? attachedFiles;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -23,6 +26,7 @@ class NoteModel {
     this.color = '#FFEB3B', // Желтый по умолчанию
     this.isLocked = false,
     this.drawingData,
+    this.attachedFiles,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -38,6 +42,7 @@ class NoteModel {
     String? color,
     bool? isLocked,
     String? drawingData,
+    List<AttachedFile>? attachedFiles,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -52,6 +57,7 @@ class NoteModel {
       color: color ?? this.color,
       isLocked: isLocked ?? this.isLocked,
       drawingData: drawingData ?? this.drawingData,
+      attachedFiles: attachedFiles ?? this.attachedFiles,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

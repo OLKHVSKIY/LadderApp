@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/task.dart';
+import '../models/attached_file.dart';
 import 'apple_calendar.dart';
 import 'custom_snackbar.dart';
+import 'file_attachment_picker.dart';
 
 class TaskCreateModal extends StatefulWidget {
   final VoidCallback onClose;
@@ -39,6 +41,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
   late Animation<Offset> _slideAnimation;
   String _previousTitleText = '';
   String _previousDescriptionText = '';
+  List<AttachedFile> _attachedFiles = [];
 
   @override
   void initState() {
@@ -53,6 +56,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       _startDate = t.date;
       _endDate = t.endDate;
       _isDateRange = t.endDate != null;
+      _attachedFiles = t.attachedFiles ?? [];
     } else if (widget.initialDate != null) {
       // Если передана начальная дата (выбранная дата из календаря), используем её
       _selectedDate = widget.initialDate!;
@@ -227,6 +231,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       date: _isDateRange ? (_startDate ?? _selectedDate) : _selectedDate,
       endDate: _isDateRange ? (_endDate ?? _startDate ?? _selectedDate) : null,
       isCompleted: widget.initialTask?.isCompleted ?? false,
+      attachedFiles: _attachedFiles.isNotEmpty ? _attachedFiles : null,
     );
 
     widget.onSave(task);
@@ -341,6 +346,16 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                               ),
                             ),
                             const SizedBox(height: 24),
+                            // Прикрепленные файлы
+                            FileAttachmentPicker(
+                              initialFiles: _attachedFiles,
+                              onFilesChanged: (files) {
+                                setState(() {
+                                  _attachedFiles = files;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 24),
                             // Тип даты
                             _buildDateTypeSelector(),
                             const SizedBox(height: 24),
@@ -422,53 +437,55 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     double? maxWidth,
     int? maxLinesLimit,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF666666),
+    const borderColor = Color(0xFFB0B0B0);
+    const labelColor = Color(0xFF666666);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: borderColor, width: 1),
+              color: Colors.white,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              child: TextField(
+                controller: controller,
+                maxLength: maxLength,
+                maxLines: maxLinesLimit ?? 1,
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  hintText: hint,
+                  hintStyle: const TextStyle(color: Color(0xFF999999), fontSize: 16),
+                  border: InputBorder.none,
+                  counterText: null,
+                ),
+                style: const TextStyle(fontSize: 18, color: Colors.black),
+                cursorColor: Colors.black,
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          maxLength: maxLength,
-          maxLines: maxLinesLimit ?? null,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(
-              color: Color(0xFF999999),
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFFE5E5E5),
+          Positioned(
+            left: 16,
+            top: -11,
+            child: Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: labelColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFFE5E5E5),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Colors.black,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
-            counterText: null,
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -480,53 +497,55 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     double? maxWidth,
     int? maxLinesLimit,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF666666),
+    const borderColor = Color(0xFFB0B0B0);
+    const labelColor = Color(0xFF666666);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: borderColor, width: 1),
+              color: Colors.white,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              child: TextField(
+                controller: controller,
+                maxLength: maxLength,
+                maxLines: maxLinesLimit ?? 8,
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  hintText: hint,
+                  hintStyle: const TextStyle(color: Color(0xFF999999), fontSize: 16),
+                  border: InputBorder.none,
+                  counterText: null,
+                ),
+                style: const TextStyle(fontSize: 18, color: Colors.black),
+                cursorColor: Colors.black,
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          maxLength: maxLength,
-          maxLines: maxLinesLimit ?? 8,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(
-              color: Color(0xFF999999),
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFFE5E5E5),
+          Positioned(
+            left: 16,
+            top: -11,
+            child: Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: labelColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFFE5E5E5),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Colors.black,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-            counterText: null,
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

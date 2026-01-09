@@ -631,17 +631,11 @@ class _PlanPageState extends State<PlanPage> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 24),
-              TextField(
+              _buildGoalInputField(
                 controller: titleCtrl,
+                label: 'Название задачи',
+                hint: '',
                 maxLength: 60,
-                decoration: InputDecoration(
-                  hintText: 'Название задачи',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Colors.black, width: 1.5),
-                  ),
-                  counterText: '',
-                ),
               ),
               const SizedBox(height: 12),
               Column(
@@ -1029,30 +1023,10 @@ class _PlanPageState extends State<PlanPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
+                    _buildGoalInputField(
                       controller: _goalInputController,
-                      decoration: InputDecoration(
-                        hintText: 'Например: Подготовка к марафону',
-                        hintStyle: const TextStyle(color: Color(0xFF999999)),
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide:
-                              const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide:
-                              const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: Colors.black, width: 2),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
+                      label: 'Название цели',
+                      hint: 'Например: Подготовка к марафону',
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
@@ -1125,10 +1099,12 @@ class _PlanPageState extends State<PlanPage> {
                   Flexible(
                     flex: 3,
                     child: (!goal.isSaved || _isEditMode)
-                        ? TextField(
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: TextField(
                             controller: _goalTitleController,
                             autofocus: !goal.isSaved && goal.title.isEmpty,
-                            maxLines: 2,
+                            maxLines: 3,
                             minLines: 1,
                             maxLength: 40,
                             cursorHeight: 20,
@@ -1136,11 +1112,13 @@ class _PlanPageState extends State<PlanPage> {
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
                               color: Colors.black,
+                              height: 1.0,
                             ),
                             decoration: InputDecoration(
-                              hintText: 'Введите название цели',
+                              hintText: 'Название цели',
                               hintStyle: const TextStyle(
                                 color: Color(0xFF999999),
+                                height: 1.0,
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -1155,9 +1133,16 @@ class _PlanPageState extends State<PlanPage> {
                                 borderSide: const BorderSide(color: Colors.black, width: 1),
                               ),
                               filled: false,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                              isDense: false,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              isDense: true,
                               counterText: '',
+                              constraints: const BoxConstraints(
+                                minHeight: 40,
+                                maxHeight: 88,
+                              ),
+                            ),
+                            textInputAction: TextInputAction.done,
+                            buildCounter: (BuildContext context, {required int currentLength, required int? maxLength, required bool isFocused}) => null,
                             ),
                           )
                         : Align(
@@ -1325,6 +1310,75 @@ class _PlanPageState extends State<PlanPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildGoalInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    bool autofocus = false,
+    int? maxLines,
+    int? minLines,
+    int? maxLength,
+    double? fontSize,
+    FontWeight? fontWeight,
+  }) {
+    const borderColor = Color(0xFFB0B0B0);
+    const labelColor = Color(0xFF666666);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: borderColor, width: 1),
+              color: Colors.white,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              child: TextField(
+                controller: controller,
+                autofocus: autofocus,
+                maxLines: maxLines,
+                minLines: minLines,
+                maxLength: maxLength,
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  hintText: hint.isNotEmpty ? hint : null,
+                  hintStyle: hint.isNotEmpty ? const TextStyle(color: Color(0xFF999999), fontSize: 16) : null,
+                  border: InputBorder.none,
+                  counterText: '',
+                ),
+                style: TextStyle(
+                  fontSize: fontSize ?? 18,
+                  fontWeight: fontWeight ?? FontWeight.normal,
+                  color: Colors.black,
+                ),
+                cursorColor: Colors.black,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            top: -11,
+            child: Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: labelColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import '../models/note_model.dart';
+import '../models/attached_file.dart';
+import 'file_attachment_picker.dart';
+import 'file_attachment_display.dart';
 
 class NoteEditor extends StatefulWidget {
   final NoteModel? note;
@@ -27,6 +30,7 @@ class _NoteEditorState extends State<NoteEditor> {
   bool _isItalic = false;
   bool _isUnderline = false;
   TextAlign _textAlign = TextAlign.left;
+  List<AttachedFile> _attachedFiles = [];
 
   @override
   void initState() {
@@ -35,6 +39,7 @@ class _NoteEditorState extends State<NoteEditor> {
       text: widget.note?.content ?? widget.note?.title ?? '',
     );
     _controller.addListener(_updateSelection);
+    _attachedFiles = widget.note?.attachedFiles ?? [];
   }
 
   void _updateSelection() {
@@ -465,18 +470,42 @@ class _NoteEditorState extends State<NoteEditor> {
             ? (screenWidth - 60) / 2 - 10
             : (screenWidth - 60) / 3 - 10;
 
+    // Вычисляем высоту на основе текста
+    final text = _controller.text;
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text.isEmpty ? ' ' : text,
+        style: const TextStyle(fontSize: 16, height: 1.5),
+      ),
+      maxLines: null,
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout(maxWidth: defaultWidth.clamp(200.0, screenWidth < 768 ? screenWidth - 60 : 395.0) - 24); // -24 для padding
+    
+    // Минимальная высота: заголовок (48) + контент + дата (30) + файлы (если есть) + отступы
+    final headerHeight = 48.0;
+    final dateHeight = 30.0;
+    final padding = 24.0; // padding сверху и снизу
+    final filesHeight = _attachedFiles.isNotEmpty ? (_attachedFiles.length * 50.0) : 0.0;
+    final calculatedHeight = textPainter.size.height + headerHeight + dateHeight + padding + filesHeight;
+    final minHeight = 150.0;
+    final maxHeight = 600.0;
+    final finalHeight = calculatedHeight.clamp(minHeight, maxHeight);
+
     final note = (widget.note ?? NoteModel(
       title: _controller.text.split('\n').first,
       content: _controller.text,
       x: 0,
       y: 0,
       width: defaultWidth.clamp(200.0, screenWidth < 768 ? screenWidth - 60 : 395.0),
-      height: 150,
+      height: finalHeight,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     )).copyWith(
       title: _controller.text.split('\n').first,
       content: _controller.text,
+      attachedFiles: _attachedFiles.isNotEmpty ? _attachedFiles : null,
+      height: finalHeight,
       updatedAt: DateTime.now(),
     );
     widget.onSave(note);
@@ -606,6 +635,36 @@ class _NoteEditorState extends State<NoteEditor> {
                                         onTap: () => _applyList('number'),
                                       ),
                                     ]),
+                                    const SizedBox(width: 12),
+                                    // Кнопка прикрепления файлов
+                                    _buildToolbarButton(
+                                      icon: Icons.attach_file,
+                                      onTap: () {
+                                        // Закрываем клавиатуру при нажатии на прикрепление файла
+                                        FocusScope.of(context).unfocus();
+                                        // Показываем диалог для выбора файлов
+                                        showModalBottomSheet(
+                                          context: context,
+                                          backgroundColor: Colors.transparent,
+                                          builder: (context) => Container(
+                                            decoration: const BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                            ),
+                                            padding: const EdgeInsets.all(20),
+                                            child: FileAttachmentPicker(
+                                              initialFiles: _attachedFiles,
+                                              onFilesChanged: (files) {
+                                                setState(() {
+                                                  _attachedFiles = files;
+                                                });
+                                                Navigator.pop(context);
+                                              },
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ),
                               ),
@@ -638,43 +697,64 @@ class _NoteEditorState extends State<NoteEditor> {
                       ),
                       // Область редактирования
                       Expanded(
-                        child: Stack(
+                        child: Column(
                           children: [
-                            // Текстовое поле с форматированием
-                            Container(
-                              padding: const EdgeInsets.all(20),
+                            Expanded(
                               child: Stack(
                                 children: [
-                                  // Форматированный текст (для отображения)
-                                  if (!_focusNode.hasFocus && _controller.text.isNotEmpty)
-                                    Positioned.fill(
-                                      child: SingleChildScrollView(
-                                        child: _parseAndDisplayText(_controller.text),
-                                      ),
-                                    ),
-                                  // Поле ввода (для редактирования)
-                                  TextField(
-                                    controller: _controller,
-                                    focusNode: _focusNode,
-                                    maxLines: null,
-                                    expands: true,
-                                    textAlign: _textAlign,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      height: 1.6,
-                                      color: _focusNode.hasFocus ? Colors.black : Colors.transparent,
-                                    ),
-                                    decoration: const InputDecoration(
-                                      hintText: 'Начните писать...',
-                                      hintStyle: TextStyle(
-                                        color: Color(0xFF999999),
-                                      ),
-                                      border: InputBorder.none,
+                                  // Текстовое поле с форматированием
+                                  Container(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Stack(
+                                      children: [
+                                        // Форматированный текст (для отображения)
+                                        if (!_focusNode.hasFocus && _controller.text.isNotEmpty)
+                                          Positioned.fill(
+                                            child: SingleChildScrollView(
+                                              child: _parseAndDisplayText(_controller.text),
+                                            ),
+                                          ),
+                                        // Поле ввода (для редактирования)
+                                        TextField(
+                                          controller: _controller,
+                                          focusNode: _focusNode,
+                                          maxLines: null,
+                                          expands: true,
+                                          textAlign: _textAlign,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            height: 1.6,
+                                            color: _focusNode.hasFocus ? Colors.black : Colors.transparent,
+                                          ),
+                                          decoration: const InputDecoration(
+                                            hintText: 'Начните писать...',
+                                            hintStyle: TextStyle(
+                                              color: Color(0xFF999999),
+                                            ),
+                                            border: InputBorder.none,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
                             ),
+                            // Отображение прикрепленных файлов
+                            if (_attachedFiles.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF8F8F8),
+                                  border: Border(
+                                    top: BorderSide(color: Color(0xFFE5E5E5), width: 1),
+                                  ),
+                                ),
+                                child: FileAttachmentDisplay(
+                                  files: _attachedFiles,
+                                  isCompact: true,
+                                ),
+                              ),
                           ],
                         ),
                       ),

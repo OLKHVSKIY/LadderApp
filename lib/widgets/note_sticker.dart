@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:convert';
 import '../models/note_model.dart';
+import 'file_attachment_display.dart';
 
 class NoteSticker extends StatefulWidget {
   final NoteModel note;
@@ -538,7 +539,23 @@ class _NoteStickerState extends State<NoteSticker> {
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(12),
-                  child: _buildContent(textColor),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildContent(textColor),
+                      ),
+                      // Отображение прикрепленных файлов
+                      if (widget.note.attachedFiles != null && widget.note.attachedFiles!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        FileAttachmentDisplay(
+                          files: widget.note.attachedFiles!,
+                          isCompact: true,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
               // Дата создания

@@ -1,3 +1,5 @@
+import 'attached_file.dart';
+
 class Task {
   final String id;
   final String title;
@@ -7,6 +9,7 @@ class Task {
   final DateTime date;
   final DateTime? endDate; // для периода
   final bool isCompleted;
+  final List<AttachedFile>? attachedFiles;
 
   Task({
     required this.id,
@@ -17,6 +20,7 @@ class Task {
     required this.date,
     this.endDate,
     this.isCompleted = false,
+    this.attachedFiles,
   });
 
   // Mock данные для тестирования

@@ -28,6 +28,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
   double _currentTopPadding = 0.0; // Текущий верхний отступ для плавной анимации
   Set<int> _vibratedBenefits = {}; // Отслеживание вибрированных блоков
   bool _isUpdating = false; // Флаг для предотвращения множественных обновлений
+  bool _headerWasSticked = false; // Флаг, что заголовок уже был закреплен
 
   @override
   void initState() {
@@ -61,7 +62,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
     // Контроллер для анимации topPadding
     _paddingAnimationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 1200),
     );
 
 
@@ -114,53 +115,10 @@ class _SubscriptionPageState extends State<SubscriptionPage>
       _maxScrollOffset = scrollOffset;
     }
     
-    // Определяем, был ли скролл вниз (прокрутили больше чем на половину экрана)
-    final hasScrolledDown = _maxScrollOffset > screenHeight * 0.3;
-    
     // Вычисляем реальную позицию элементов с учетом верхнего отступа
     final headerHeight = 120.0; // Заголовок (текст + отступы)
     
-    // Вычисляем целевой topPadding в зависимости от того, скроллили ли вниз
-    final targetTopPadding = hasScrolledDown 
-        ? 20.0 // Маленький отступ рядом с хедером
-        : ((screenHeight - headerHeight) / 2).clamp(60.0, 200.0); // Центрирование при первом открытии
-    
-    // Плавно анимируем переход topPadding
-    if (_currentTopPadding == 0.0) {
-      // Первая инициализация
-      _currentTopPadding = targetTopPadding;
-      if (mounted) setState(() {});
-    } else if ((_currentTopPadding - targetTopPadding).abs() > 1.0 && !_paddingAnimationController.isAnimating) {
-      // Анимируем только если значение изменилось и анимация не идет
-      _paddingAnimationController.reset();
-      final animation = Tween<double>(
-        begin: _currentTopPadding,
-        end: targetTopPadding,
-      ).animate(CurvedAnimation(
-        parent: _paddingAnimationController,
-        curve: Curves.easeInOut,
-      ));
-      
-      animation.addListener(() {
-        if (mounted && !_isUpdating) {
-          _isUpdating = true;
-          _currentTopPadding = animation.value;
-          // Обновляем только один раз за кадр
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _isUpdating = false;
-              setState(() {});
-            }
-          });
-        } else if (mounted) {
-          // Просто обновляем значение без setState
-          _currentTopPadding = animation.value;
-        }
-      });
-      _paddingAnimationController.forward();
-    }
-    
-    final dynamicTopPadding = _currentTopPadding > 0 ? _currentTopPadding : targetTopPadding;
+    final dynamicTopPadding = _currentTopPadding > 0 ? _currentTopPadding : ((screenHeight - headerHeight) / 2).clamp(60.0, 200.0);
     
     // Высота элементов
     const benefitItemHeight = 100.0; // Одно преимущество (примерно)
@@ -205,7 +163,56 @@ class _SubscriptionPageState extends State<SubscriptionPage>
     
     // Цены появляются когда последнее преимущество прошло центр экрана
     final lastBenefitTop = benefitsStartY + (_benefits.length * (benefitItemHeight + spacing));
+    // Начинаем закрепление заголовка заранее, до появления блока цен
     final showPricesNow = visibleCenter >= lastBenefitTop + 200;
+    final shouldStartSticking = visibleCenter >= lastBenefitTop - 100; // Начинаем закрепление раньше
+    
+    // Вычисляем целевой topPadding в зависимости от того, появился ли блок цен
+    // Начинаем закрепление заранее для плавности
+    final shouldStickHeader = _showPrices || showPricesNow || shouldStartSticking;
+    
+    // Если заголовок уже был закреплен, он остается сверху даже при скролле вверх
+    if (shouldStickHeader && !_headerWasSticked) {
+      _headerWasSticked = true;
+    }
+    
+    final targetTopPadding = (_headerWasSticked || shouldStickHeader)
+        ? 20.0 // Маленький отступ рядом с хедером
+        : ((screenHeight - headerHeight) / 2).clamp(60.0, 200.0); // Центрирование при первом открытии
+    
+    // Плавно анимируем переход topPadding с более плавной кривой
+    if (_currentTopPadding == 0.0) {
+      // Первая инициализация
+      _currentTopPadding = targetTopPadding;
+      if (mounted) setState(() {});
+    } else if ((_currentTopPadding - targetTopPadding).abs() > 1.0 && !_paddingAnimationController.isAnimating) {
+      // Анимируем только если значение изменилось и анимация не идет
+      _paddingAnimationController.reset();
+      final animation = Tween<double>(
+        begin: _currentTopPadding,
+        end: targetTopPadding,
+      ).animate(CurvedAnimation(
+        parent: _paddingAnimationController,
+        curve: Curves.easeOutCubic, // Более плавная кривая
+      ));
+      
+      animation.addListener(() {
+        if (mounted) {
+          _currentTopPadding = animation.value;
+          // Обновляем состояние без лишних вызовов
+          if (!_isUpdating) {
+            _isUpdating = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _isUpdating = false;
+                setState(() {});
+              }
+            });
+          }
+        }
+      });
+      _paddingAnimationController.forward();
+    }
     
     if (showPricesNow != _showPrices) {
       _showPrices = showPricesNow;
@@ -357,6 +364,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
           const SizedBox(height: 40),
           // Кнопка продолжить
           if (_showPrices) _buildContinueButton(),
+          if (_showPrices) _buildFooterLinks(),
           const SizedBox(height: 60),
           // Условия использования
           if (_showTerms) _buildTerms(),
@@ -479,7 +487,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             _buildPlanCard(
               plan: 'yearly',
               title: 'Годовая',
-              price: '2199.00Р',
+              price: '2199.00₽',
               subtitle: '',
               savings: 'Экономия 40%',
               isPopular: true,
@@ -488,15 +496,26 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             _buildPlanCard(
               plan: 'monthly',
               title: 'Месячная',
-              price: '490.00Р',
+              price: '490.00₽',
               subtitle: 'Подписка на Ladder Pro',
             ),
             const SizedBox(height: 12),
             _buildPlanCard(
               plan: 'weekly',
               title: 'Недельная',
-              price: '149.00Р',
+              price: '149.00₽',
               subtitle: 'Подписка на Ladder Pro',
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Попробуй 3-х дневный период, а дальше\n2199 ₽/год',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white70,
+                ),
+              ),
             ),
           ],
         ),
@@ -681,13 +700,77 @@ class _SubscriptionPageState extends State<SubscriptionPage>
               }
             : null,
         child: Text(
-          'Продолжить',
+          'Оформить',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
             color: _selectedPlan != null ? Colors.black : Colors.grey,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFooterLinks() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TextButton(
+            onPressed: () {
+              // TODO: Реализовать восстановление покупок
+            },
+            child: const Text(
+              'Лицензия',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Container(
+            width: 4,
+            height: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: const BoxDecoration(
+              color: Colors.white54,
+              shape: BoxShape.circle,
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              // TODO: Реализовать помощь
+            },
+            child: const Text(
+              'Код',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Container(
+            width: 4,
+            height: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: const BoxDecoration(
+              color: Colors.white54,
+              shape: BoxShape.circle,
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+            },
+            child: const Text(
+              'Помощь',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
