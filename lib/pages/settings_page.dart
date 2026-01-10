@@ -99,11 +99,35 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       _emailController.text = user.email;
       
       // Проверяем, что файл аватара существует
+      // ВАЖНО: На iOS путь к Documents может изменяться, поэтому всегда извлекаем имя файла
+      // и пересоздаем полный путь используя актуальный путь к Documents
       String? validAvatarPath = user.avatarUrl;
       if (validAvatarPath != null && validAvatarPath.isNotEmpty) {
-        final avatarFile = File(validAvatarPath);
-        if (!await avatarFile.exists()) {
-          debugPrint('Файл аватара не существует: $validAvatarPath, очищаем путь в БД');
+        // Извлекаем имя файла из пути (работает и с полными путями, и с именами файлов)
+        final fileName = path.basename(validAvatarPath);
+        
+        // Всегда пересоздаем полный путь используя актуальный путь к Documents
+        final appDir = await getApplicationDocumentsDirectory();
+        final avatarDir = Directory(path.join(appDir.path, 'avatars'));
+        final fullPath = path.join(avatarDir.path, fileName);
+        
+        debugPrint('Проверяем аватар по пути: $fullPath (из БД было: $validAvatarPath)');
+        
+        final avatarFile = File(fullPath);
+        if (await avatarFile.exists()) {
+          validAvatarPath = fullPath;
+          // Если в БД был сохранен полный путь, обновляем на имя файла для будущего
+          if (path.isAbsolute(user.avatarUrl!) && user.avatarUrl!.contains('Documents')) {
+            await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
+              UsersCompanion(
+                avatarUrl: dr.Value(fileName), // Сохраняем только имя файла
+                updatedAt: dr.Value(DateTime.now()),
+              ),
+            );
+            debugPrint('Обновлен путь в БД: сохранено только имя файла $fileName');
+          }
+        } else {
+          debugPrint('Файл аватара не существует: $fullPath, очищаем путь в БД');
           // Очищаем несуществующий путь из БД
           await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
             UsersCompanion(
@@ -477,19 +501,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         
         debugPrint('Аватар установлен в состояние: $_avatarPath');
         
-        // ВАЖНО: Сохраняем путь к аватару в БД сразу после выбора
+        // ВАЖНО: Сохраняем только имя файла в БД (не полный путь)
+        // Это позволит пересоздавать путь при каждом запуске приложения
         final userId = UserSession.currentUserId;
         if (userId != null) {
           try {
+            // Сохраняем только имя файла, чтобы путь можно было пересоздать при следующем запуске
+            final fileName = path.basename(finalPath);
             await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
               UsersCompanion(
-                avatarUrl: dr.Value(finalPath),
+                avatarUrl: dr.Value(fileName), // Сохраняем только имя файла
                 updatedAt: dr.Value(DateTime.now()),
               ),
             );
-            debugPrint('Путь к аватару сохранен в БД: $finalPath');
+            debugPrint('Имя файла аватара сохранено в БД: $fileName (полный путь: $finalPath)');
           } catch (e) {
-            debugPrint('Ошибка сохранения пути к аватару в БД: $e');
+            debugPrint('Ошибка сохранения имени файла аватара в БД: $e');
             if (mounted) {
               CustomSnackBar.show(context, 'Аватар обновлен, но не сохранен в профиле');
             }

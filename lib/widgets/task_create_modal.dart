@@ -306,7 +306,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                                 return _buildTextField(
                                   label: 'Название',
                                   controller: _titleController,
-                                  hint: 'Название задачи',
+                                  hint: '',
                                   maxLength: 70,
                                   maxWidth: constraints.maxWidth,
                                   maxLinesLimit: 3,
@@ -320,7 +320,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                                 return _buildTextArea(
                                   label: 'Описание',
                                   controller: _descriptionController,
-                                  hint: 'Описание задачи (необязательно)',
+                                  hint: '(Необязательно)',
                                   maxLength: 200,
                                   maxWidth: constraints.maxWidth,
                                   maxLinesLimit: 8,

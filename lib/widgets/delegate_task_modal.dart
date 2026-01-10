@@ -190,7 +190,7 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                                   ],
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Дата: ${widget.task.date.day}.${widget.task.date.month}.${widget.task.date.year}',
+                                    'Дата: ${widget.task.date.day.toString().padLeft(2, '0')}.${widget.task.date.month.toString().padLeft(2, '0')}.${widget.task.date.year}',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.grey[600],
@@ -316,7 +316,7 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   isCollapsed: true,
-                  hintText: 'you@example.com',
+                  hintText: 'whom@example.com',
                   hintStyle: TextStyle(color: Color(0xFF999999), fontSize: 16),
                   border: InputBorder.none,
                 ),

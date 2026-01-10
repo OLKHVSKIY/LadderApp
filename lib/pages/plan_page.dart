@@ -66,7 +66,7 @@ class PlanPage extends StatefulWidget {
   State<PlanPage> createState() => _PlanPageState();
 }
 
-class _PlanPageState extends State<PlanPage> {
+class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin {
   bool _isSidebarOpen = false;
   bool _isAiMenuOpen = false;
   final _goalInputController = TextEditingController();
@@ -79,6 +79,9 @@ class _PlanPageState extends State<PlanPage> {
   bool _isEditMode = false;
   bool _isLoading = true; // Флаг загрузки данных
   final TextEditingController _goalTitleController = TextEditingController();
+
+  late final AnimationController _gptIconController;
+  late final Animation<double> _gptIconScale;
 
   GoalModel? get _activeGoal {
     if (_goals.isEmpty) return null;
@@ -117,6 +120,7 @@ class _PlanPageState extends State<PlanPage> {
     _goalInputController.dispose();
     _goalTitleController.dispose();
     _scrollController.dispose();
+    _gptIconController.dispose();
     super.dispose();
   }
 
@@ -128,6 +132,16 @@ class _PlanPageState extends State<PlanPage> {
     _activeGoalId = widget.initialGoalIdToOpen;
     _isEditMode = false;
     _isLoading = true;
+    
+    // Инициализация анимации пульсации для иконки GPT
+    _gptIconController = AnimationController(
+      duration: const Duration(milliseconds: 1600),
+      vsync: this,
+    )..repeat(reverse: true);
+    _gptIconScale = Tween<double>(begin: 1.0, end: 1.09).animate(
+      CurvedAnimation(parent: _gptIconController, curve: Curves.easeInOut),
+    );
+    
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromDb());
   }
 
@@ -859,11 +873,57 @@ class _PlanPageState extends State<PlanPage> {
             onTasksTap: () => _navigateTo(const TasksPage()),
             onChatTap: () => _navigateTo(const ChatPage()),
           ),
+          // Фиксированная кнопка GPT справа снизу (только для списка целей)
+          if (_activeGoalId == null && savedGoals.isNotEmpty)
+            Positioned(
+              right: 20,
+              bottom: MediaQuery.of(context).padding.bottom + 60, // Выше панели навигации (опущено на 15px)
+              child: GestureDetector(
+                onTap: _openAiPlan,
+                child: AnimatedBuilder(
+                  animation: _gptIconScale,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _gptIconScale.value,
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFFE0E0E0),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Image.asset(
+                            'assets/icon/gpt.png',
+                            width: 28,
+                            height: 28,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
           BottomNavigation(
             currentIndex: 2,
             onAddTask: _activeGoalId == null ? _createGoal : null,
             isSidebarOpen: _isSidebarOpen,
-            onGptTap: _openAiMenu,
+            onGptTap: () {
+              _navigateTo(const GptPlanPage(), slideFromRight: true);
+            },
             onPlanTap: () {
               // При нажатии на "План" всегда показываем список планов
               setState(() {
@@ -944,11 +1004,53 @@ class _PlanPageState extends State<PlanPage> {
               onTasksTap: () => _navigateTo(const TasksPage()),
               onChatTap: () => _navigateTo(const ChatPage()),
             ),
+            // Фиксированная кнопка GPT справа снизу (для списка в SwipeBackWrapper)
+            if (savedGoals.isNotEmpty)
+              Positioned(
+                right: 20,
+                bottom: MediaQuery.of(context).padding.bottom + 95, // Выше панели навигации (60px высота + 15px отступ + 20px зазор)
+                child: GestureDetector(
+                  onTap: _openAiPlan,
+                  child: AnimatedBuilder(
+                    animation: _gptIconScale,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: _gptIconScale.value,
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Image.asset(
+                              'assets/icon/gpt.png',
+                              width: 28,
+                              height: 28,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
             BottomNavigation(
               currentIndex: 2,
               onAddTask: _createGoal,
               isSidebarOpen: _isSidebarOpen,
-              onGptTap: _openAiMenu,
+              onGptTap: () {
+              _navigateTo(const GptPlanPage(), slideFromRight: true);
+            },
               onPlanTap: () {
                 setState(() {
                   _activeGoalId = null;

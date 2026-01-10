@@ -176,7 +176,7 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                               ],
                                               const SizedBox(height: 8),
                                               Text(
-                                                'Дата: ${taskInfo.taskDate.day}.${taskInfo.taskDate.month}.${taskInfo.taskDate.year}',
+                                                'Дата: ${taskInfo.taskDate.day.toString().padLeft(2, '0')}.${taskInfo.taskDate.month.toString().padLeft(2, '0')}.${taskInfo.taskDate.year}',
                                                 textAlign: TextAlign.left,
                                                 style: TextStyle(
                                                   fontSize: 12,

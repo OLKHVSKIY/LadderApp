@@ -641,7 +641,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       }
       
       final successMessage = _SpotlightChatMessage(
-        text: 'Задача "$title" успешно создана на ${date.day}.${date.month}.${date.year} с приоритетом $priority 🌿',
+        text: 'Задача "$title" успешно создана на ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year} с приоритетом $priority 🌿',
         isUser: false,
         timestamp: DateTime.now(),
       );

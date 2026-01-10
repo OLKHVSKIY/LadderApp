@@ -10,7 +10,6 @@ import '../widgets/task_list.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/task_create_modal.dart';
 import '../widgets/sidebar.dart';
-import '../widgets/ai_menu_modal.dart';
 import '../widgets/ios_page_route.dart';
 import '../widgets/apple_calendar.dart';
 import 'plan_page.dart';
@@ -41,7 +40,6 @@ class _TasksPageState extends State<TasksPage> {
   bool _isGreetingPanelOpen = false;
   bool _isSidebarOpen = false;
   bool _isTaskModalOpen = false;
-  bool _isAiMenuOpen = false;
   bool _navHidden = false;
   late DateTime _selectedDate;
   List<Task> _tasks = [];
@@ -159,27 +157,6 @@ class _TasksPageState extends State<TasksPage> {
     });
   }
 
-  void _openAiMenu() {
-    setState(() {
-      _isAiMenuOpen = true;
-    });
-  }
-
-  void _closeAiMenu() {
-    setState(() {
-      _isAiMenuOpen = false;
-    });
-  }
-
-  void _openAiChat() {
-    _closeAiMenu();
-    _navigateTo(const ChatPage());
-  }
-
-  void _openAiPlan() {
-    _closeAiMenu();
-    _navigateTo(const GptPlanPage());
-  }
 
   void _openTaskModal({Task? task}) {
     setState(() {
@@ -743,7 +720,9 @@ class _TasksPageState extends State<TasksPage> {
               currentIndex: 0,
               onAddTask: () => _openTaskModal(),
               isSidebarOpen: _isSidebarOpen || _navHidden,
-              onGptTap: _openAiMenu,
+              onGptTap: () {
+                _navigateTo(const GptPlanPage());
+              },
               onPlanTap: () {
                 _navigateTo(const PlanPage());
               },
@@ -751,7 +730,9 @@ class _TasksPageState extends State<TasksPage> {
                 _navigateTo(const NotesPage());
               },
               onIndexChanged: (index) {
-                if (index == 2) {
+                if (index == 1) {
+                  _navigateTo(const GptPlanPage());
+                } else if (index == 2) {
                   _navigateTo(const PlanPage());
                 } else if (index == 3) {
                   _navigateTo(const NotesPage());
@@ -767,13 +748,6 @@ class _TasksPageState extends State<TasksPage> {
                 isEdit: _editingTask != null,
                 initialDate: _editingTask == null ? _selectedDate : null,
               ),
-            // AI меню
-            AiMenuModal(
-              isOpen: _isAiMenuOpen,
-              onClose: _closeAiMenu,
-              onChat: _openAiChat,
-              onPlan: _openAiPlan,
-            ),
           ],
         ),
       ),
@@ -841,6 +815,24 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
+  String _getMonthName(int month) {
+    const months = [
+      'янв.',
+      'фев.',
+      'мар.',
+      'апр.',
+      'май',
+      'июн.',
+      'июл.',
+      'авг.',
+      'сен.',
+      'окт.',
+      'ноя.',
+      'дек.',
+    ];
+    return months[month - 1];
+  }
+
   Widget _buildSelectedDate() {
     final day = _selectedDate.day;
     final month = _getMonthName(_selectedDate.month);
@@ -876,23 +868,6 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
-  String _getMonthName(int month) {
-    const months = [
-      'янв.',
-      'фев.',
-      'мар.',
-      'апр.',
-      'май',
-      'июн.',
-      'июл.',
-      'авг.',
-      'сен.',
-      'окт.',
-      'ноя.',
-      'дек.',
-    ];
-    return months[month - 1];
-  }
 }
 
 // Виджет меню в Overlay

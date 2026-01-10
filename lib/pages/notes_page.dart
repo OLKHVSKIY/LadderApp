@@ -14,6 +14,7 @@ import '../data/user_session.dart';
 import 'tasks_page.dart';
 import 'chat_page.dart';
 import 'plan_page.dart';
+import 'gpt_plan_page.dart';
 import 'settings_page.dart';
 
 class NotesPage extends StatefulWidget {
@@ -305,7 +306,9 @@ class _NotesPageState extends State<NotesPage> {
             onPlanTap: () {
               _navigateTo(const PlanPage());
             },
-            onGptTap: () {},
+            onGptTap: () {
+              _navigateTo(GptPlanPage());
+            },
             onNotesTap: () {}, // Уже на странице заметок
             onAddTask: () {
               _openEditor();

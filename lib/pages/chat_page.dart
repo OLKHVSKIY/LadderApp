@@ -269,7 +269,7 @@ class _ChatPageState extends State<ChatPage> {
       await taskRepository.addTask(task);
       
       final successMessage = _ChatMessage(
-        text: 'Задача "$title" успешно создана на ${date.day}.${date.month}.${date.year} с приоритетом $priority 🌿',
+        text: 'Задача "$title" успешно создана на ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year} с приоритетом $priority 🌿',
         isUser: false,
         timestamp: DateTime.now(),
       );

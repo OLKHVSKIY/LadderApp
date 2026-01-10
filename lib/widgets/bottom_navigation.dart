@@ -152,27 +152,31 @@ class _BottomNavigationState extends State<BottomNavigation> {
                       label: 'Задачи',
                       isActive: widget.currentIndex == 0,
                       onTap: widget.onTasksTap,
+                      iconSize: 23, // Увеличиваем на 1px
+                      spacing: 3, // Уменьшаем на 1px, чтобы текст остался на месте
                     ),
                   ),
                   const SizedBox(width: 5),
-                  // GPT
+                  // GPT (переименован в Список)
                   Expanded(
                     child: _buildNavItemContent(
-                      iconPath: 'assets/icon/gpt.png',
-                      label: 'GPT',
+                      iconPath: 'assets/icon/notes.png',
+                      label: 'Список',
                     isActive: widget.currentIndex == 1,
                     onTap: widget.onGptTap,
                     ),
                   ),
                   // Пустое место для кнопки
                   const SizedBox(width: 85),
-                  // План
+                  // План (Цели)
                   Expanded(
                     child: _buildNavItemContent(
                       iconPath: 'assets/icon/draft.png',
                       label: 'Цели',
                       isActive: widget.currentIndex == 2,
                       onTap: widget.onPlanTap,
+                      iconSize: 23, // Увеличиваем на 1px
+                      spacing: 3, // Уменьшаем на 1px, чтобы текст остался на месте
                     ),
                   ),
                   const SizedBox(width: 5),
@@ -181,10 +185,12 @@ class _BottomNavigationState extends State<BottomNavigation> {
                     child: Padding(
                       padding: const EdgeInsets.only(left: 4),
                       child: _buildNavItemContent(
-                        iconPath: 'assets/icon/notes.png',
+                        iconPath: 'assets/icon/notes-icon.png',
                         label: 'Заметки',
                         isActive: widget.currentIndex == 3,
                         onTap: widget.onNotesTap,
+                        iconSize: 26, // Увеличиваем размер иконки Заметок
+                        spacing: 2, // Уменьшаем отступ между иконкой и текстом на 2px
                       ),
                     ),
                   ),
@@ -341,6 +347,8 @@ class _BottomNavigationState extends State<BottomNavigation> {
     required String label,
     required bool isActive,
     VoidCallback? onTap,
+    double iconSize = 22, // Размер иконки по умолчанию
+    double spacing = 4, // Отступ между иконкой и текстом по умолчанию
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -361,12 +369,12 @@ class _BottomNavigationState extends State<BottomNavigation> {
               ),
               child: Image.asset(
                 iconPath,
-                width: 22,
-                height: 22,
+                width: iconSize,
+                height: iconSize,
                 fit: BoxFit.contain,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: spacing),
             Text(
               label,
               style: TextStyle(
