@@ -33,8 +33,11 @@ class BottomNavigation extends StatefulWidget {
 }
 
 class _BottomNavigationState extends State<BottomNavigation> {
+  final GlobalKey _stackKey = GlobalKey();
   double? _dragOffset;
   double? _initialDragX;
+  double? _initialLeftPosition;
+  bool _isDragging = false;
   bool _previousShouldHide = false;
   bool _isInitialBuild = true;
   
@@ -48,6 +51,16 @@ class _BottomNavigationState extends State<BottomNavigation> {
     if (oldShouldHide != newShouldHide) {
       _previousShouldHide = oldShouldHide;
       _isInitialBuild = false;
+    }
+    
+    // Если изменился currentIndex (нажали на кнопку), сбрасываем состояние перетаскивания
+    if (oldWidget.currentIndex != widget.currentIndex) {
+      setState(() {
+        _dragOffset = null;
+        _initialDragX = null;
+        _initialLeftPosition = null;
+        _isDragging = false;
+      });
     }
   }
 
@@ -134,6 +147,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
           ],
         ),
         child: Stack(
+          key: _stackKey,
           clipBehavior: Clip.none,
           children: [
             // Активные индикаторы (ПОД контентом)
@@ -227,9 +241,160 @@ class _BottomNavigationState extends State<BottomNavigation> {
                 ),
               ),
             ),
+            // Невидимый слой для перехвата событий перетаскивания
+            ..._buildDragHandler(context),
           ],
         ),
     );
+  }
+
+  // Вычисляет процент перекрытия овала с кнопкой
+  double _calculateOverlap(double ovalLeft, double ovalRight, double buttonLeft, double buttonRight, double ovalWidth) {
+    // Вычисляем область перекрытия
+    final overlapLeft = ovalLeft > buttonLeft ? ovalLeft : buttonLeft;
+    final overlapRight = ovalRight < buttonRight ? ovalRight : buttonRight;
+    
+    // Если нет перекрытия
+    if (overlapLeft >= overlapRight) {
+      return 0.0;
+    }
+    
+    // Вычисляем длину перекрытия
+    final overlapWidth = overlapRight - overlapLeft;
+    
+    // Возвращаем процент перекрытия относительно ширины овала
+    return overlapWidth / ovalWidth;
+  }
+
+  // Метод для построения невидимого обработчика перетаскивания
+  List<Widget> _buildDragHandler(BuildContext context) {
+    if (widget.currentIndex < 0 || widget.currentIndex > 3) {
+      return [];
+    }
+    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final containerLeft = 22.0;
+    final paddingHorizontal = 20.0;
+    final buttonSpacing = 85.0;
+    final buttonGap = 5.0;
+    final containerWidth = screenWidth - containerLeft * 2;
+    final contentWidth = containerWidth - paddingHorizontal * 2;
+    final buttonWidth = (contentWidth - buttonSpacing - buttonGap * 2) / 4;
+    
+    double leftPosition = 0;
+    
+    // Вычисляем позицию центра каждой кнопки
+    switch (widget.currentIndex) {
+      case 0: // Задачи - первая кнопка
+        leftPosition = paddingHorizontal + buttonWidth / 2 - widget.activeIndicatorWidth / 2;
+        break;
+      case 1: // GPT - вторая кнопка (после SizedBox(5))
+        leftPosition = paddingHorizontal + buttonWidth + buttonGap + buttonWidth / 2 - widget.activeIndicatorWidth / 2;
+        break;
+      case 2: // План - третья кнопка (после SizedBox(85))
+        leftPosition = paddingHorizontal + buttonWidth * 2 + buttonGap + buttonSpacing + buttonWidth / 2 - widget.activeIndicatorWidth / 2 - 2;
+        break;
+      case 3: // Заметки - четвертая кнопка (после SizedBox(5))
+        leftPosition = paddingHorizontal + buttonWidth * 3 + buttonGap * 2 + buttonSpacing + buttonWidth / 2 - widget.activeIndicatorWidth / 2;
+        break;
+    }
+    
+    // Вычисляем текущую позицию с учетом перетаскивания
+    double currentLeft = leftPosition;
+    if (_dragOffset != null && _initialLeftPosition != null) {
+      currentLeft = _initialLeftPosition! + _dragOffset!;
+    }
+    
+    return [
+      Positioned(
+        left: currentLeft,
+        top: (62 - 55) / 2,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (details) {
+            setState(() {
+              _initialDragX = details.localPosition.dx;
+              _initialLeftPosition = leftPosition;
+              _dragOffset = 0;
+              _isDragging = true;
+            });
+          },
+          onPanUpdate: (details) {
+            setState(() {
+              final deltaX = details.localPosition.dx - (_initialDragX ?? 0);
+              _dragOffset = deltaX;
+            });
+          },
+          onPanEnd: (details) {
+            final finalLeftPosition = (_initialLeftPosition ?? leftPosition) + (_dragOffset ?? 0);
+            final ovalLeft = finalLeftPosition;
+            final ovalRight = finalLeftPosition + widget.activeIndicatorWidth;
+            
+            // Вычисляем позиции кнопок относительно Stack (с учетом padding)
+            final buttonLeft0 = paddingHorizontal + 0.0;
+            final buttonRight0 = paddingHorizontal + buttonWidth;
+            final buttonLeft1 = paddingHorizontal + buttonWidth + buttonGap;
+            final buttonRight1 = paddingHorizontal + buttonWidth + buttonGap + buttonWidth;
+            final buttonLeft2 = paddingHorizontal + buttonWidth * 2 + buttonGap + buttonSpacing;
+            final buttonRight2 = paddingHorizontal + buttonWidth * 2 + buttonGap + buttonSpacing + buttonWidth;
+            final buttonLeft3 = paddingHorizontal + buttonWidth * 3 + buttonGap * 2 + buttonSpacing;
+            final buttonRight3 = paddingHorizontal + buttonWidth * 3 + buttonGap * 2 + buttonSpacing + buttonWidth;
+            
+            // Вычисляем перекрытие овала с каждой кнопкой
+            final overlaps = [
+              _calculateOverlap(ovalLeft, ovalRight, buttonLeft0, buttonRight0, widget.activeIndicatorWidth),
+              _calculateOverlap(ovalLeft, ovalRight, buttonLeft1, buttonRight1, widget.activeIndicatorWidth),
+              _calculateOverlap(ovalLeft, ovalRight, buttonLeft2, buttonRight2, widget.activeIndicatorWidth),
+              _calculateOverlap(ovalLeft, ovalRight, buttonLeft3, buttonRight3, widget.activeIndicatorWidth),
+            ];
+            
+            // Находим максимальное перекрытие
+            final maxOverlap = overlaps.reduce((a, b) => a > b ? a : b);
+            final maxIndex = overlaps.indexOf(maxOverlap);
+            
+            // Если овал перекрывает кнопку на 40% или более, переключаемся на неё
+            if (maxOverlap >= 0.4) {
+              if (maxIndex != widget.currentIndex && widget.onIndexChanged != null) {
+                // Сначала сбрасываем перетаскивание, чтобы овал плавно уменьшился
+                setState(() {
+                  _dragOffset = null;
+                  _initialDragX = null;
+                  _initialLeftPosition = null;
+                  _isDragging = false;
+                });
+                // Затем переключаемся на новую кнопку (овал плавно переместится)
+                Future.delayed(const Duration(milliseconds: 50), () {
+                  if (mounted) {
+                    widget.onIndexChanged!(maxIndex);
+                  }
+                });
+                return;
+              }
+            }
+            
+            setState(() {
+              _dragOffset = null;
+              _initialDragX = null;
+              _initialLeftPosition = null;
+              _isDragging = false;
+            });
+          },
+          onPanCancel: () {
+            setState(() {
+              _dragOffset = null;
+              _initialDragX = null;
+              _initialLeftPosition = null;
+              _isDragging = false;
+            });
+          },
+          child: Container(
+            width: widget.activeIndicatorWidth,
+            height: 55,
+            color: Colors.transparent, // Невидимый, но перехватывает события
+          ),
+        ),
+      ),
+    ];
   }
 
   // Метод для построения активных индикаторов
@@ -270,67 +435,32 @@ class _BottomNavigationState extends State<BottomNavigation> {
       leftPosition += _dragOffset!;
     }
     
+    // Вычисляем текущую позицию с учетом перетаскивания
+    double currentLeft = leftPosition;
+    if (_dragOffset != null && _initialLeftPosition != null) {
+      currentLeft = _initialLeftPosition! + _dragOffset!;
+    }
+    
+    // Вычисляем размер овала (увеличивается при удержании)
+    final baseWidth = widget.activeIndicatorWidth;
+    final baseHeight = 55.0;
+    final scale = _isDragging ? 1.15 : 1.0;
+    final currentWidth = baseWidth * scale;
+    final currentHeight = baseHeight * scale;
+    
     return [
       AnimatedPositioned(
         duration: _dragOffset != null ? Duration.zero : const Duration(milliseconds: 450),
         curve: Curves.easeInOutCubic,
-        left: leftPosition,
-        top: (62 - 55) / 2, // Центрируем вертикально: (высота панели - высота овала) / 2
-        child: GestureDetector(
-          onPanStart: (details) {
-            setState(() {
-              _initialDragX = details.localPosition.dx;
-              _dragOffset = 0;
-            });
-          },
-          onPanUpdate: (details) {
-            setState(() {
-              _dragOffset = details.localPosition.dx - (_initialDragX ?? 0);
-            });
-          },
-          onPanEnd: (details) {
-            // Вычисляем финальную позицию центра овала относительно Stack
-            final finalLeftPosition = leftPosition + (_dragOffset ?? 0);
-            final finalCenterX = finalLeftPosition + widget.activeIndicatorWidth / 2;
-            
-            // Вычисляем позицию относительно начала контента (после padding)
-            final relativeX = finalCenterX - paddingHorizontal;
-            
-            // Определяем, над какой кнопкой находится центр овала
-            int? newIndex;
-            final buttonCenter0 = buttonWidth / 2;
-            final buttonCenter1 = buttonWidth + buttonGap + buttonWidth / 2;
-            final buttonCenter2 = buttonWidth * 2 + buttonGap + buttonSpacing + buttonWidth / 2;
-            final buttonCenter3 = buttonWidth * 3 + buttonGap * 2 + buttonSpacing + buttonWidth / 2;
-            
-            // Находим ближайшую кнопку
-            final distances = [
-              (relativeX - buttonCenter0).abs(),
-              (relativeX - buttonCenter1).abs(),
-              (relativeX - buttonCenter2).abs(),
-              (relativeX - buttonCenter3).abs(),
-            ];
-            
-            final minDistance = distances.reduce((a, b) => a < b ? a : b);
-            final minIndex = distances.indexOf(minDistance);
-            
-            // Если овал достаточно близко к какой-то кнопке, переключаемся на неё
-            if (minDistance < buttonWidth / 2) {
-              newIndex = minIndex;
-            }
-            
-            if (newIndex != null && newIndex != widget.currentIndex && widget.onIndexChanged != null) {
-              widget.onIndexChanged!(newIndex);
-            }
-            
-            setState(() {
-              _dragOffset = null;
-              _initialDragX = null;
-            });
-          },
-          child: Container(
-            width: widget.activeIndicatorWidth,
-            height: 55, // Высота овала
+        left: currentLeft - (currentWidth - baseWidth) / 2, // Компенсируем увеличение размера
+        top: (62 - currentHeight) / 2, // Центрируем вертикально
+        child: IgnorePointer(
+          ignoring: true, // Игнорируем события касания, чтобы они проходили к кнопкам
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            width: currentWidth,
+            height: currentHeight,
             decoration: BoxDecoration(
               color: const Color(0xFFEFEEF2).withOpacity(0.77),
               borderRadius: BorderRadius.circular(40),

@@ -13,7 +13,7 @@ import '../widgets/sidebar.dart';
 import '../widgets/ios_page_route.dart';
 import '../widgets/apple_calendar.dart';
 import 'plan_page.dart';
-import 'gpt_plan_page.dart';
+import 'list_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
 import 'notes_page.dart';
@@ -721,7 +721,7 @@ class _TasksPageState extends State<TasksPage> {
               onAddTask: () => _openTaskModal(),
               isSidebarOpen: _isSidebarOpen || _navHidden,
               onGptTap: () {
-                _navigateTo(const GptPlanPage());
+                _navigateTo(const ListPage());
               },
               onPlanTap: () {
                 _navigateTo(const PlanPage());
@@ -731,7 +731,7 @@ class _TasksPageState extends State<TasksPage> {
               },
               onIndexChanged: (index) {
                 if (index == 1) {
-                  _navigateTo(const GptPlanPage());
+                  _navigateTo(const ListPage());
                 } else if (index == 2) {
                   _navigateTo(const PlanPage());
                 } else if (index == 3) {

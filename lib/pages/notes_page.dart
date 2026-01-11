@@ -14,7 +14,7 @@ import '../data/user_session.dart';
 import 'tasks_page.dart';
 import 'chat_page.dart';
 import 'plan_page.dart';
-import 'gpt_plan_page.dart';
+import 'list_page.dart';
 import 'settings_page.dart';
 
 class NotesPage extends StatefulWidget {
@@ -307,11 +307,21 @@ class _NotesPageState extends State<NotesPage> {
               _navigateTo(const PlanPage());
             },
             onGptTap: () {
-              _navigateTo(GptPlanPage());
+              _navigateTo(ListPage());
             },
             onNotesTap: () {}, // Уже на странице заметок
             onAddTask: () {
               _openEditor();
+            },
+            onIndexChanged: (index) {
+              if (index == 0) {
+                _navigateTo(const TasksPage(animateNavIn: true));
+              } else if (index == 1) {
+                _navigateTo(ListPage());
+              } else if (index == 2) {
+                _navigateTo(const PlanPage());
+              }
+              // index == 3 - уже на странице заметок, ничего не делаем
             },
             isSidebarOpen: _isSidebarOpen,
             isEditorOpen: _isEditorOpen,

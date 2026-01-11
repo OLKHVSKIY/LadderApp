@@ -15,6 +15,7 @@ import '../widgets/ios_page_route.dart';
 import '../widgets/spotlight_search.dart';
 import 'tasks_page.dart';
 import 'gpt_plan_page.dart';
+import 'list_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
 import 'notes_page.dart';
@@ -59,8 +60,9 @@ String _getTaskWord(int count) {
 
 class PlanPage extends StatefulWidget {
   final String? initialGoalIdToOpen;
+  final String? initialGoalTitle;
   
-  const PlanPage({super.key, this.initialGoalIdToOpen});
+  const PlanPage({super.key, this.initialGoalIdToOpen, this.initialGoalTitle});
 
   @override
   State<PlanPage> createState() => _PlanPageState();
@@ -128,10 +130,18 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   void initState() {
     super.initState();
     _planRepo = PlanRepository(appDatabase);
-    // Если есть цель для открытия, устанавливаем её ID
-    _activeGoalId = widget.initialGoalIdToOpen;
-    _isEditMode = false;
-    _isLoading = true;
+    // Если есть название для нового плана, создаем его
+    if (widget.initialGoalTitle != null && widget.initialGoalTitle!.isNotEmpty) {
+      _goalTitleController.text = widget.initialGoalTitle!;
+      _createGoalFromTitle(widget.initialGoalTitle!);
+      _isEditMode = false;
+      _isLoading = false;
+    } else {
+      // Если есть цель для открытия, устанавливаем её ID
+      _activeGoalId = widget.initialGoalIdToOpen;
+      _isEditMode = false;
+      _isLoading = true;
+    }
     
     // Инициализация анимации пульсации для иконки GPT
     _gptIconController = AnimationController(
@@ -142,7 +152,28 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       CurvedAnimation(parent: _gptIconController, curve: Curves.easeInOut),
     );
     
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromDb());
+    if (widget.initialGoalTitle == null || widget.initialGoalTitle!.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadFromDb());
+    }
+  }
+
+  void _createGoalFromTitle(String title) {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    final goal = GoalModel(
+      id: _uuid.v4(),
+      title: title,
+      isSaved: false,
+      isActive: true,
+      dates: [],
+      createdAt: DateTime.now(),
+      dbId: null,
+    );
+    setState(() {
+      _goals.add(goal);
+      _activeGoalId = goal.id;
+      _isEditMode = false;
+    });
   }
 
   void _toggleSidebar() {
@@ -922,7 +953,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             onAddTask: _activeGoalId == null ? _createGoal : null,
             isSidebarOpen: _isSidebarOpen,
             onGptTap: () {
-              _navigateTo(const GptPlanPage(), slideFromRight: true);
+              _navigateTo(const ListPage(), slideFromRight: true);
             },
             onPlanTap: () {
               // При нажатии на "План" всегда показываем список планов
@@ -940,7 +971,13 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             },
             onTasksTap: () => _navigateTo(const TasksPage()),
             onIndexChanged: (index) {
-              if (index == 0) _navigateTo(const TasksPage());
+              if (index == 0) {
+                _navigateTo(const TasksPage());
+              } else if (index == 1) {
+                _navigateTo(const ListPage(), slideFromRight: true);
+              } else if (index == 3) {
+                _navigateTo(const NotesPage());
+              }
             },
           ),
           if (_isAiMenuOpen)
@@ -1049,7 +1086,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               onAddTask: _createGoal,
               isSidebarOpen: _isSidebarOpen,
               onGptTap: () {
-              _navigateTo(const GptPlanPage(), slideFromRight: true);
+              _navigateTo(const ListPage(), slideFromRight: true);
             },
               onPlanTap: () {
                 setState(() {
