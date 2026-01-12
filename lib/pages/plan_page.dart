@@ -594,7 +594,6 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _showAddDateDialog() async {
-    DateTime selected = DateTime.now();
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -621,26 +620,19 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               AppleCalendar(
                 initialDate: DateTime.now(),
                 onDateSelected: (d) {
-                  selected = d;
-                },
-                onClose: () {},
-                tasks: const [],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: MediaQuery.of(ctx).size.width * 0.6,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () {
+                  if (Navigator.of(ctx).canPop()) {
                     Navigator.of(ctx).pop();
-                    _addDate(selected);
-                  },
-                  child: const Text('Добавить'),
-                ),
+                  }
+                  if (mounted) {
+                    _addDate(d);
+                  }
+                },
+                onClose: () {
+                  if (Navigator.of(ctx).canPop()) {
+                    Navigator.of(ctx).pop();
+                  }
+                },
+                tasks: const [],
               ),
               const SizedBox(height: 12),
             ],
@@ -905,7 +897,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             onChatTap: () => _navigateTo(const ChatPage()),
           ),
           // Фиксированная кнопка GPT справа снизу (только для списка целей)
-          if (_activeGoalId == null && savedGoals.isNotEmpty)
+          if (_activeGoalId == null && savedGoals.isNotEmpty && !_isSidebarOpen)
             Positioned(
               right: 20,
               bottom: MediaQuery.of(context).padding.bottom + 60, // Выше панели навигации (опущено на 15px)
@@ -1042,7 +1034,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               onChatTap: () => _navigateTo(const ChatPage()),
             ),
             // Фиксированная кнопка GPT справа снизу (для списка в SwipeBackWrapper)
-            if (savedGoals.isNotEmpty)
+            if (savedGoals.isNotEmpty && !_isSidebarOpen)
               Positioned(
                 right: 20,
                 bottom: MediaQuery.of(context).padding.bottom + 95, // Выше панели навигации (60px высота + 15px отступ + 20px зазор)
@@ -1309,7 +1301,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                         ),
                         const SizedBox(width: 8),
                       ],
-                      _iconButton(Icons.delete_outline, onTap: () => _showDeleteConfirmDialog(goal.id), iconSize: 22),
+                      _trashIconButton(onTap: () => _showDeleteConfirmDialog(goal.id)),
                     ],
                   ),
                 ],
@@ -1570,6 +1562,38 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     );
   }
 
+  Widget _trashIconButton({required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: 17,
+            height: 17,
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              child: Image.asset(
+                'assets/icon/trash.png',
+                cacheWidth: 68,
+                cacheHeight: 68,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showRenameDialog(GoalModel goal) async {
     final ctrl = TextEditingController(text: goal.title);
     await showModalBottomSheet(
@@ -1740,7 +1764,7 @@ class _DateCard extends StatelessWidget {
                 if (isEditMode)
                   Row(
                     children: [
-                      _smallIcon(Icons.delete_outline, onTap: onDeleteDate, iconSize: 18),
+                      _smallTrashIcon(onTap: onDeleteDate),
                     ],
                   ),
               ],
@@ -1809,6 +1833,38 @@ class _DateCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: iconSize, color: Colors.black),
+      ),
+    );
+  }
+
+  Widget _smallTrashIcon({required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: 17,
+            height: 17,
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              child: Image.asset(
+                'assets/icon/trash.png',
+                cacheWidth: 68,
+                cacheHeight: 68,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1933,7 +1989,24 @@ class _TaskTileState extends State<_TaskTile> {
               duration: const Duration(milliseconds: 200),
               child: GestureDetector(
                 onTap: widget.onDelete,
-                child: const Icon(Icons.delete_outline, size: 20, color: Color(0xFF666666)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(
+                    width: 17,
+                    height: 17,
+                    child: ColorFiltered(
+                      colorFilter: const ColorFilter.mode(
+                        Color(0xFF666666),
+                        BlendMode.srcIn,
+                      ),
+                      child: Image.asset(
+                        'assets/icon/trash.png',
+                        cacheWidth: 68,
+                        cacheHeight: 68,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 6),
@@ -2024,7 +2097,7 @@ class _SavedCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Row(
                     children: [
-                      _smallIcon(Icons.delete_outline, onTap: onDelete, iconSize: 18),
+                      _smallTrashIcon(onTap: onDelete),
                     ],
                   ),
                 ],
@@ -2086,6 +2159,38 @@ class _SavedCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: iconSize, color: Colors.black),
+      ),
+    );
+  }
+
+  Widget _smallTrashIcon({required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: 17,
+            height: 17,
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              child: Image.asset(
+                'assets/icon/trash.png',
+                cacheWidth: 68,
+                cacheHeight: 68,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

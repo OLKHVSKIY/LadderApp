@@ -468,10 +468,23 @@ class _NoteStickerState extends State<NoteSticker> {
                             color: Colors.white.withOpacity(0.7),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Icon(
-                            Icons.grid_view,
-                            size: 16,
-                            color: Colors.black,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: ColorFiltered(
+                                colorFilter: const ColorFilter.mode(
+                                  Colors.black,
+                                  BlendMode.srcIn,
+                                ),
+                                child: Image.asset(
+                                  'assets/icon/center.png',
+                                  cacheWidth: 68,
+                                  cacheHeight: 68,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -488,10 +501,23 @@ class _NoteStickerState extends State<NoteSticker> {
                           color: Colors.white.withOpacity(0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Icon(
-                          Icons.palette,
-                          size: 16,
-                          color: Colors.black,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: ColorFiltered(
+                              colorFilter: const ColorFilter.mode(
+                                Colors.black,
+                                BlendMode.srcIn,
+                              ),
+                              child: Image.asset(
+                                'assets/icon/paint-palette.png',
+                                cacheWidth: 68,
+                                cacheHeight: 68,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -506,10 +532,23 @@ class _NoteStickerState extends State<NoteSticker> {
                           color: Colors.white.withOpacity(0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Icon(
-                          Icons.edit,
-                          size: 16,
-                          color: Colors.black,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: ColorFiltered(
+                              colorFilter: const ColorFilter.mode(
+                                Colors.black,
+                                BlendMode.srcIn,
+                              ),
+                              child: Image.asset(
+                                'assets/icon/pencil.png',
+                                cacheWidth: 68,
+                                cacheHeight: 68,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -524,10 +563,23 @@ class _NoteStickerState extends State<NoteSticker> {
                           color: Colors.white.withOpacity(0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Icon(
-                          Icons.delete,
-                          size: 16,
-                          color: Colors.black,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: ColorFiltered(
+                              colorFilter: const ColorFilter.mode(
+                                Colors.black,
+                                BlendMode.srcIn,
+                              ),
+                              child: Image.asset(
+                                'assets/icon/trash.png',
+                                cacheWidth: 68,
+                                cacheHeight: 68,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),

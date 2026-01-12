@@ -696,6 +696,41 @@ class _TasksPageState extends State<TasksPage> {
                   ),
                 ),
               ),
+            // Невидимая область для открытия шторки свайпом вниз (когда закрыта)
+            if (!_isGreetingPanelOpen)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 100, // Область для открытия свайпом
+                child: GestureDetector(
+                  onPanStart: (details) {
+                    _headerDragDistance = 0.0;
+                  },
+                  onPanUpdate: (details) {
+                    // Обрабатываем только движение вниз
+                    if (details.delta.dy > 0) {
+                      _headerDragDistance += details.delta.dy;
+                    }
+                  },
+                  onPanEnd: (details) {
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final totalHeight = screenHeight * 0.4;
+                    final threshold = totalHeight * 0.2;
+                    
+                    // Если перетащили достаточно или скорость высокая вниз - открываем
+                    if (_headerDragDistance > threshold || details.velocity.pixelsPerSecond.dy > 200) {
+                      if (!_isGreetingPanelOpen) {
+                        _toggleGreetingPanel();
+                      }
+                    }
+                    _headerDragDistance = 0.0;
+                  },
+                  child: Container(
+                    color: Colors.transparent,
+                  ),
+                ),
+              ),
             // Шторка с приветствием
             GreetingPanel(
               isOpen: _isGreetingPanelOpen,
@@ -755,7 +790,6 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> _showCalendarDialog() async {
-    DateTime selected = _selectedDate;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -782,30 +816,23 @@ class _TasksPageState extends State<TasksPage> {
               AppleCalendar(
                 initialDate: _selectedDate,
                 onDateSelected: (d) {
-                  selected = d;
-                },
-                onClose: () {},
-                tasks: _weekTasks,
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: MediaQuery.of(ctx).size.width * 0.6,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () {
+                  if (Navigator.of(ctx).canPop()) {
                     Navigator.of(ctx).pop();
+                  }
+                  if (mounted) {
                     setState(() {
-                      _selectedDate = selected;
+                      _selectedDate = d;
                       _loadTasksForDate(_selectedDate);
                       _loadWeekTasks();
                     });
-                  },
-                  child: const Text('Выбрать'),
-                ),
+                  }
+                },
+                onClose: () {
+                  if (Navigator.of(ctx).canPop()) {
+                    Navigator.of(ctx).pop();
+                  }
+                },
+                tasks: _weekTasks,
               ),
               const SizedBox(height: 12),
             ],

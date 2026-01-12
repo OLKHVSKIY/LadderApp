@@ -161,19 +161,9 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                   ),
                   child: Column(
                     children: [
-                      // Индикатор перетаскивания
-                      Container(
-                        margin: const EdgeInsets.only(top: 12, bottom: 8),
-                        width: 36,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE5E5E5),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
                       // Заголовок
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        padding: const EdgeInsets.all(20),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -187,24 +177,15 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                             ),
                             GestureDetector(
                               onTap: _handleClose,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF5F5F5),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 18,
-                                  color: Color(0xFF666666),
-                                ),
+                              child: const Icon(
+                                Icons.close,
+                                size: 24,
+                                color: Color(0xFF999999),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Divider(height: 1, color: Color(0xFFE5E5E5)),
                       // Форма
                       Expanded(
                         child: SingleChildScrollView(
@@ -214,16 +195,16 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                             children: [
                               // Блок "Связать с элементом"
                               _buildLinkElementBlock(),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 32),
                               // Выбор цвета (14 цветов)
                               _buildColorPicker(),
                               const SizedBox(height: 32),
                               // Блок с иконкой и названием
                               _buildIconAndTitleBlock(),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 32),
                               // Инструменты
                               _buildToolsBlock(),
-                              SizedBox(height: _isLinkDropdownOpen ? 32 : 24),
+                              SizedBox(height: _isLinkDropdownOpen ? 40 : 32),
                               // Кнопка "Прикрепить"
                               SizedBox(
                                 width: double.infinity,

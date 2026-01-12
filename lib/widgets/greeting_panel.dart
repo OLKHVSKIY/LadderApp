@@ -27,6 +27,7 @@ class _GreetingPanelState extends State<GreetingPanel>
     with TickerProviderStateMixin {
   double _dragOffset = 0.0;
   bool _isDragging = false;
+  Offset? _panStartPosition;
   AnimationController? _twinkleController;
   AnimationController? _fallingController;
   Timer? _fallingTimer;
@@ -145,6 +146,7 @@ class _GreetingPanelState extends State<GreetingPanel>
       setState(() {
         _isDragging = false;
         _dragOffset = 0.0;
+        _panStartPosition = null;
       });
     }
   }
@@ -152,52 +154,76 @@ class _GreetingPanelState extends State<GreetingPanel>
   void _handlePanStart(DragStartDetails details) {
     setState(() {
       _isDragging = true;
+      _panStartPosition = details.globalPosition;
+      _dragOffset = 0.0;
     });
   }
 
   void _handlePanUpdate(DragUpdateDetails details) {
-    setState(() {
-      final screenHeight = MediaQuery.of(context).size.height;
-      final totalHeight = screenHeight * 0.45; // 45% экрана
-      
-      // Обновляем offset в зависимости от направления перетаскивания
-      if (widget.isOpen) {
-        // При открытой панели: разрешаем только перетаскивание вверх (закрытие)
-        // delta.dy положительный при перетаскивании вверх
-        if (details.delta.dy > 0) {
-          _dragOffset = (_dragOffset + details.delta.dy).clamp(0.0, totalHeight);
-        }
-        // Игнорируем перетаскивание вниз (delta.dy < 0)
-      } else {
-        // При закрытой панели: разрешаем только перетаскивание вниз (открытие)
-        // delta.dy отрицательный при перетаскивании вниз
-        if (details.delta.dy < 0) {
-          _dragOffset = (_dragOffset - details.delta.dy).clamp(0.0, totalHeight);
-        }
-        // Игнорируем перетаскивание вверх (delta.dy > 0)
+    if (!_isDragging || _panStartPosition == null) return;
+    
+    final screenHeight = MediaQuery.of(context).size.height;
+    final totalHeight = screenHeight * 0.4; // 40% экрана
+    
+    // Вычисляем смещение от начальной позиции
+    // При движении вверх globalPosition.dy уменьшается (deltaY отрицательный)
+    // При движении вниз globalPosition.dy увеличивается (deltaY положительный)
+    final deltaY = details.globalPosition.dy - _panStartPosition!.dy;
+    
+    if (widget.isOpen) {
+      // При открытой панели: разрешаем только перетаскивание вверх (закрытие)
+      // deltaY отрицательный при перетаскивании вверх (dy уменьшается)
+      if (deltaY > 0) {
+        // Движение вниз - игнорируем
+        return;
       }
-    });
+      // deltaY отрицательный - движение вверх, закрываем
+      setState(() {
+        _dragOffset = (-deltaY).clamp(0.0, totalHeight);
+      });
+    } else {
+      // При закрытой панели: разрешаем только перетаскивание вниз (открытие)
+      // deltaY положительный при перетаскивании вниз (dy увеличивается)
+      if (deltaY < 0) {
+        // Движение вверх - игнорируем
+        return;
+      }
+      // deltaY положительный - движение вниз, открываем
+      setState(() {
+        _dragOffset = deltaY.clamp(0.0, totalHeight);
+      });
+    }
   }
 
   void _handlePanEnd(DragEndDetails details) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final totalHeight = screenHeight * 0.45; // 45% экрана
+    if (!_isDragging) {
+      // Если не было перетаскивания, просто сбрасываем состояние
+      setState(() {
+        _isDragging = false;
+        _dragOffset = 0.0;
+        _panStartPosition = null;
+      });
+      return;
+    }
     
-    // Определяем, нужно ли открыть или закрыть панель
-    final threshold = totalHeight * 0.3; // 30% от высоты панели
+    final screenHeight = MediaQuery.of(context).size.height;
+    final totalHeight = screenHeight * 0.4; // 40% экрана
+    
+    // Определяем, нужно ли переключить состояние панели
+    final threshold = totalHeight * 0.2; // 20% от высоты панели
     
     bool shouldToggle = false;
     
     if (widget.isOpen) {
       // Если панель открыта и перетащена больше порога вверх - закрываем
-      // При перетаскивании вверх velocity будет положительной
-      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy > 300) {
+      // При перетаскивании вверх velocity будет положительной (вниз по экрану)
+      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy > 200) {
         shouldToggle = true;
       }
     } else {
       // Если панель закрыта и перетащена больше порога вниз - открываем
-      // При перетаскивании вниз velocity будет отрицательной
-      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy < -300) {
+      // При перетаскивании вниз velocity будет положительной
+      if (_dragOffset > threshold || details.velocity.pixelsPerSecond.dy > 200) {
         shouldToggle = true;
       }
     }
@@ -207,12 +233,14 @@ class _GreetingPanelState extends State<GreetingPanel>
       setState(() {
         _isDragging = false;
         _dragOffset = 0.0;
+        _panStartPosition = null;
       });
     } else {
       // Если не переключаем, возвращаем панель в исходное состояние с анимацией
       setState(() {
         _isDragging = false;
         _dragOffset = 0.0;
+        _panStartPosition = null;
       });
     }
   }
@@ -305,8 +333,8 @@ class _GreetingPanelState extends State<GreetingPanel>
     // Вычисляем позицию с учетом перетаскивания
     double topPosition;
     if (widget.isOpen) {
-      // При открытой панели: начинаем с 0, перетаскивание вверх увеличивает topPosition
-      topPosition = _dragOffset;
+      // При открытой панели: начинаем с 0, перетаскивание вверх уменьшает topPosition (шторка уходит вверх)
+      topPosition = -_dragOffset;
     } else {
       // При закрытой панели: начинаем с -totalHeight, перетаскивание вниз уменьшает отрицательное значение
       // _dragOffset будет отрицательным при перетаскивании вниз
@@ -321,6 +349,7 @@ class _GreetingPanelState extends State<GreetingPanel>
       right: 0,
       height: totalHeight,
       child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
         onPanStart: _handlePanStart,
         onPanUpdate: _handlePanUpdate,
         onPanEnd: _handlePanEnd,
@@ -438,6 +467,30 @@ class _GreetingPanelState extends State<GreetingPanel>
                   ],
                 ),
               ),
+              // Полоска для перетаскивания внизу
+              if (widget.isOpen)
+                Positioned(
+                  bottom: -7,
+                  left: 0,
+                  right: 0,
+                  child: GestureDetector(
+                    onPanStart: _handlePanStart,
+                    onPanUpdate: _handlePanUpdate,
+                    onPanEnd: _handlePanEnd,
+                    child: Container(
+                      height: 40,
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

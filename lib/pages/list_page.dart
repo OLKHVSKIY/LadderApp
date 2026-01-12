@@ -85,8 +85,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   double _attachingNoteHeight = 0.0;
   double _attachingNoteWidth = 0.0; // Ширина заметки (от левого края)
   double _attachingNoteDragOffsetY = 0.0;
+  DateTime? _attachingNoteDragStartTime; // Начальное время при начале перетаскивания
   double _previousNoteHeight = 0.0; // Для отслеживания изменения размера для вибрации
   double _previousNoteWidth = 0.0; // Для отслеживания изменения размера для вибрации
+  Timer? _autoScrollTimer; // Таймер для автоматического скролла
+  Offset? _panStartPosition; // Начальная позиция жеста для определения скролла или перетаскивания
+  bool _isDraggingNote = false; // Флаг перетаскивания заметки
   
   // Сохраненные заметки списка
   List<Map<String, dynamic>> _timelineNotes = [];
@@ -185,6 +189,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     _dayContentScrollController.dispose();
     _weekScrollController.dispose();
     _timeUpdateTimer?.cancel();
+    _autoScrollTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _removeNoteMenuOverlay();
@@ -267,7 +272,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       final minutesPerLine = _getMinutesPerLine();
       final duration = endTime.difference(startTime);
       _attachingNoteHeight = (duration.inMinutes / minutesPerLine) * lineHeight;
-      _attachingNoteWidth = MediaQuery.of(context).size.width - 60; // Ширина минус отступ блока времени
+      _attachingNoteWidth = MediaQuery.of(context).size.width - 61; // Ширина минус отступ блока времени
       _attachingNoteDragOffsetY = 0.0;
     });
     
@@ -619,10 +624,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       _attachingNoteStartTime = startTime;
       _attachingNoteEndTime = endTime;
       _attachingNoteHeight = initialHeight;
-      _attachingNoteWidth = MediaQuery.of(context).size.width - 60; // Ширина минус отступ блока времени
+      _attachingNoteWidth = MediaQuery.of(context).size.width - 61; // Ширина минус отступ блока времени
       _attachingNoteDragOffsetY = 0.0;
       _previousNoteHeight = initialHeight;
-      _previousNoteWidth = MediaQuery.of(context).size.width - 60;
+      _previousNoteWidth = MediaQuery.of(context).size.width - 61;
       
       // Переключаемся на сегодня, если выбран другой день
       if (!_isSameDay(_selectedDate, DateTime.now())) {
@@ -653,6 +658,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   }
 
   void _cancelAttachingNote() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
     setState(() {
       _isAttachingNote = false;
       if (_isEditingNote) {
@@ -669,8 +676,11 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       _attachingNoteHeight = 0.0;
       _attachingNoteWidth = 0.0;
       _attachingNoteDragOffsetY = 0.0;
+      _attachingNoteDragStartTime = null;
       _previousNoteHeight = 0.0;
       _previousNoteWidth = 0.0;
+      _panStartPosition = null;
+      _isDraggingNote = false;
     });
   }
 
@@ -794,6 +804,86 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       return '${hours}ч ${minutes}м';
     }
     return '${minutes}м';
+  }
+
+  // Автоматический скролл при приближении заметки к краям экрана
+  void _checkAutoScroll(BuildContext context, double notePosition) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final scrollThreshold = 200.0; // Расстояние от края, на котором начинается скролл (увеличено для большего удобства)
+    final baseScrollSpeed = 2.5; // Базовая скорость скролла в пикселях за тик (уменьшена для плавности)
+    
+    // Проверяем, близко ли заметка к нижнему краю
+    final noteBottom = notePosition + _attachingNoteHeight;
+    final distanceFromBottom = screenHeight - noteBottom;
+    
+    if (distanceFromBottom < scrollThreshold && distanceFromBottom > 0) {
+      // Увеличиваем скорость скролла при приближении к краю (чем ближе, тем быстрее)
+      final speedMultiplier = 1.0 + ((scrollThreshold - distanceFromBottom) / scrollThreshold) * 2.0; // От 1x до 3x
+      final scrollSpeed = baseScrollSpeed * speedMultiplier;
+      
+      // Запускаем или продолжаем автоскролл вниз
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+        if (!mounted || _attachingNoteDragStartTime == null) {
+          timer.cancel();
+          return;
+        }
+        
+        if (_listViewType == ListViewType.oneDay && _dayContentScrollController.hasClients) {
+          final currentOffset = _dayContentScrollController.offset;
+          final maxScroll = _dayContentScrollController.position.maxScrollExtent;
+          
+          if (currentOffset < maxScroll) {
+            final newOffset = (currentOffset + scrollSpeed).clamp(0.0, maxScroll);
+            final scrollDelta = newOffset - currentOffset;
+            _dayContentScrollController.jumpTo(newOffset);
+            setState(() {
+              _currentScrollOffset = newOffset;
+              // Компенсируем смещение заметки, чтобы она оставалась с пальцем на месте
+              // При скролле вниз список движется вверх, заметка должна компенсировать это смещением вниз
+              _attachingNoteDragOffsetY -= scrollDelta;
+            });
+          } else {
+            timer.cancel();
+          }
+        }
+      });
+    } else if (notePosition < scrollThreshold && notePosition > -_attachingNoteHeight) {
+      // Увеличиваем скорость скролла при приближении к краю (чем ближе, тем быстрее)
+      final speedMultiplier = 1.0 + ((scrollThreshold - notePosition) / scrollThreshold) * 2.0; // От 1x до 3x
+      final scrollSpeed = baseScrollSpeed * speedMultiplier;
+      
+      // Запускаем или продолжаем автоскролл вверх
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+        if (!mounted || _attachingNoteDragStartTime == null) {
+          timer.cancel();
+          return;
+        }
+        
+        if (_listViewType == ListViewType.oneDay && _dayContentScrollController.hasClients) {
+          final currentOffset = _dayContentScrollController.offset;
+          
+          if (currentOffset > 0) {
+            final newOffset = (currentOffset - scrollSpeed).clamp(0.0, double.infinity);
+            final scrollDelta = currentOffset - newOffset;
+            _dayContentScrollController.jumpTo(newOffset);
+            setState(() {
+              _currentScrollOffset = newOffset;
+              // Компенсируем смещение заметки, чтобы она оставалась с пальцем на месте
+              // При скролле вверх список движется вниз, заметка должна компенсировать это смещением вверх
+              _attachingNoteDragOffsetY += scrollDelta;
+            });
+          } else {
+            timer.cancel();
+          }
+        }
+      });
+    } else {
+      // Останавливаем автоскролл, если заметка далеко от краев
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = null;
+    }
   }
 
   void _openSettings() {
@@ -1360,15 +1450,17 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           if ((_isAttachingNote || _isEditingNote) && _attachingNoteStartTime != null && _attachingNoteEndTime != null)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 200),
-              left: MediaQuery.of(context).size.width / 2 - 80,
-              bottom: bottomPosition + 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
+              left: 0,
+              right: 0,
+              bottom: bottomPosition,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 18),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -1410,6 +1502,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
             ),
@@ -1626,7 +1719,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   );
                 },
               ),
-            // Индикатор текущего времени (черная полоса с кругом)
+            // Сохраненные заметки на таймлайне
+            ..._buildSavedTimelineNotes(context, lineHeight),
+            // Блок-превью заметки в режиме прикрепления/редактирования
+            if ((_isAttachingNote || _isEditingNote) && _attachingNoteStartTime != null && _listViewType == ListViewType.oneDay && (_isSameDay(_selectedDate, DateTime.now()) || (_isEditingNote && _attachingNoteStartTime != null && _isSameDay(_selectedDate, _attachingNoteStartTime!))))
+              _buildAttachingNotePreview(context, lineHeight),
+            // Индикатор текущего времени (черная полоса с кругом) - поверх заметок
             // Показываем только для сегодняшнего дня
             // Позиция вычисляется относительно прокрученного контента
             if (_shouldShowCurrentTimeIndicator())
@@ -1679,11 +1777,6 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-            // Блок-превью заметки в режиме прикрепления/редактирования
-            if ((_isAttachingNote || _isEditingNote) && _attachingNoteStartTime != null && _listViewType == ListViewType.oneDay && (_isSameDay(_selectedDate, DateTime.now()) || (_isEditingNote && _attachingNoteStartTime != null && _isSameDay(_selectedDate, _attachingNoteStartTime!))))
-              _buildAttachingNotePreview(context, lineHeight),
-            // Сохраненные заметки на таймлайне
-            ..._buildSavedTimelineNotes(context, lineHeight),
             ],
           ),
         ),
@@ -1743,14 +1836,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       final color = _getColorFromHex(colorHex);
       final iconData = _getIconData(iconKey);
       
-      // Вычисляем максимальную высоту для размера иконки
-      const hoursInDay = 24;
-      final maxHeight = hourHeight * hoursInDay;
-      final iconSize = 16.0 + (height / maxHeight * 8).clamp(0.0, 8.0);
-      
       return Positioned(
         top: startPosition,
-        left: 60,
+        left: 61,
         right: 0,
         height: height,
         child: _NoteWidget(
@@ -1758,7 +1846,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           title: title,
           color: color,
           iconData: iconData,
-          iconSize: iconSize,
+          iconSize: 24.0, // Не используется, размер вычисляется динамически на основе noteHeight
+          noteHeight: height,
+          duration: duration,
           onLongPress: (noteId) => _handleNoteLongPress(context, noteId),
         ),
       );
@@ -1770,19 +1860,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       return const SizedBox.shrink();
     }
 
-    // Используем сохраненное время заметки, а не текущее время
-    final startPosition = _getTimePositionForDateTime(context, _attachingNoteStartTime!, _selectedDate) - _currentScrollOffset + _attachingNoteDragOffsetY;
+    // Используем начальное время при перетаскивании, если оно есть, иначе используем текущее время
+    final baseTime = _attachingNoteDragStartTime ?? _attachingNoteStartTime!;
+    final startPosition = _getTimePositionForDateTime(context, baseTime, _selectedDate) - _currentScrollOffset + _attachingNoteDragOffsetY;
     final color = _getColorFromHex(_attachingNoteColor);
     final iconData = _getIconData(_attachingNoteIcon);
     final minutesPerLine = _getMinutesPerLine();
-    
-    // Вычисляем максимальную высоту (весь день)
-    const hoursInDay = 24;
-    final hourHeight = _getHourHeight(context);
-    final maxHeight = hourHeight * hoursInDay;
-    
-    // Размер иконки зависит от размера заметки (базовый 16, увеличивается с размером)
-    final iconSize = 16.0 + (_attachingNoteHeight / maxHeight * 8).clamp(0.0, 8.0);
     
     // Скрываем заметку, если она полностью выше или ниже видимой области
     final screenHeight = MediaQuery.of(context).size.height;
@@ -1792,63 +1875,227 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     
     return Positioned(
       top: startPosition,
-      left: 60,
-      width: _attachingNoteWidth.clamp(100.0, MediaQuery.of(context).size.width - 60),
+      left: 61,
+      width: _attachingNoteWidth.clamp(100.0, MediaQuery.of(context).size.width - 61),
       height: _attachingNoteHeight,
       child: GestureDetector(
         onPanStart: (details) {
-          // Сбрасываем смещение при начале жеста
-          _attachingNoteDragOffsetY = 0.0;
+          // Сохраняем начальное время при начале жеста и сбрасываем смещение
+          setState(() {
+            _attachingNoteDragStartTime = _attachingNoteStartTime;
+            _attachingNoteDragOffsetY = 0.0;
+            _panStartPosition = details.globalPosition;
+            _isDraggingNote = false;
+          });
         },
         onPanUpdate: (details) {
-          setState(() {
-            _attachingNoteDragOffsetY += details.delta.dy;
-            // Пересчитываем время на основе новой позиции
-            final basePosition = _getTimePositionForDateTime(context, _attachingNoteStartTime!, _selectedDate) - _currentScrollOffset;
-            final newPosition = basePosition + _attachingNoteDragOffsetY;
-            final totalMinutes = (newPosition / lineHeight) * minutesPerLine;
-            final hours = (totalMinutes ~/ 60).floor();
-            final minutes = (totalMinutes % 60).floor();
-            final newStartTime = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, hours, minutes);
-            
-            // Обновляем время и сбрасываем смещение, чтобы избежать накопления ошибок
-            _attachingNoteStartTime = newStartTime;
-            _attachingNoteDragOffsetY = 0.0; // Сбрасываем после обновления времени
-            
-            final minutesToAdd = (_attachingNoteHeight / lineHeight * minutesPerLine).round();
-            _attachingNoteEndTime = _attachingNoteStartTime!.add(Duration(minutes: minutesToAdd));
-          });
+          if (!_isDraggingNote && _panStartPosition != null) {
+            final delta = details.globalPosition - _panStartPosition!;
+            // Если движение в основном вертикальное (больше вертикального, чем горизонтального) и достаточно большое
+            if (delta.dy.abs() > delta.dx.abs() && delta.dy.abs() > 15) {
+              // Скроллим список программно
+              if (_listViewType == ListViewType.oneDay && _dayContentScrollController.hasClients) {
+                final currentOffset = _dayContentScrollController.offset;
+                final maxScroll = _dayContentScrollController.position.maxScrollExtent;
+                final newOffset = (currentOffset - details.delta.dy).clamp(0.0, maxScroll);
+                _dayContentScrollController.jumpTo(newOffset);
+                setState(() {
+                  _currentScrollOffset = newOffset;
+                });
+              }
+              return; // Не обрабатываем как перетаскивание заметки
+            } else if (delta.dx.abs() > 10 || delta.dy.abs() > 10) {
+              // Начинаем перетаскивание заметки
+              _isDraggingNote = true;
+            }
+          }
+          
+          if (_isDraggingNote) {
+            setState(() {
+              // Накапливаем смещение относительно начальной позиции
+              _attachingNoteDragOffsetY += details.delta.dy;
+              
+              // Вычисляем время для отображения в овальном блоке, но НЕ обновляем основное время
+              if (_attachingNoteDragStartTime != null) {
+                final basePosition = _getTimePositionForDateTime(context, _attachingNoteDragStartTime!, _selectedDate) - _currentScrollOffset;
+                final newPosition = basePosition + _attachingNoteDragOffsetY;
+                final totalMinutes = (newPosition / lineHeight) * minutesPerLine;
+                final hours = (totalMinutes ~/ 60).floor();
+                final minutes = (totalMinutes % 60).floor();
+                final displayStartTime = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, hours, minutes);
+                final minutesToAdd = (_attachingNoteHeight / lineHeight * minutesPerLine).round();
+                final displayEndTime = displayStartTime.add(Duration(minutes: minutesToAdd));
+                
+                // Обновляем время только для отображения в овальном блоке (временные переменные)
+                _attachingNoteStartTime = displayStartTime;
+                _attachingNoteEndTime = displayEndTime;
+                
+                // Автоматический скролл при приближении к краям экрана
+                _checkAutoScroll(context, newPosition);
+              }
+            });
+          }
+        },
+        onPanEnd: (details) {
+          // Финализируем время после завершения жеста: обновляем основное время на основе смещения
+          // Используем абсолютную позицию (без учета скролла) для вычисления времени, чтобы избежать проблем с округлением
+          _autoScrollTimer?.cancel();
+          _autoScrollTimer = null;
+          if (_isDraggingNote && _attachingNoteDragStartTime != null) {
+            setState(() {
+              // Вычисляем абсолютную позицию (без учета скролла)
+              final basePositionAbsolute = _getTimePositionForDateTime(context, _attachingNoteDragStartTime!, _selectedDate);
+              final finalPositionAbsolute = basePositionAbsolute + _attachingNoteDragOffsetY;
+              final totalMinutes = (finalPositionAbsolute / lineHeight) * minutesPerLine;
+              final hours = (totalMinutes ~/ 60).floor();
+              final minutes = (totalMinutes % 60).floor();
+              _attachingNoteStartTime = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, hours, minutes);
+              final minutesToAdd = (_attachingNoteHeight / lineHeight * minutesPerLine).round();
+              _attachingNoteEndTime = _attachingNoteStartTime!.add(Duration(minutes: minutesToAdd));
+              
+              // Сбрасываем смещение и очищаем начальное время
+              _attachingNoteDragOffsetY = 0.0;
+              _attachingNoteDragStartTime = null;
+            });
+          }
+          _panStartPosition = null;
+          _isDraggingNote = false;
+        },
+        onPanCancel: () {
+          _autoScrollTimer?.cancel();
+          _autoScrollTimer = null;
+          _panStartPosition = null;
+          _isDraggingNote = false;
         },
         child: Container(
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.5),
+            color: color.withValues(alpha: 0.75),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+            border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
           ),
           child: Stack(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    if (iconData != null) ...[
-                      Icon(iconData, size: iconSize, color: Colors.black87),
-                      const SizedBox(width: 8),
-                    ],
-                    if (_attachingNoteTitle != null && _attachingNoteTitle!.isNotEmpty)
-                      Expanded(
-                        child: Text(
-                          _attachingNoteTitle!,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black87,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Адаптивные размеры в зависимости от высоты заметки
+                  final availableHeight = constraints.maxHeight;
+                  final minPadding = 4.0;
+                  final maxPadding = 12.0;
+                  final padding = maxPadding; // Одинаковый padding для всех заметок
+                  
+                  // Вычисляем длительность заметки в минутах
+                  final noteDurationMinutes = _attachingNoteStartTime != null && _attachingNoteEndTime != null
+                      ? _attachingNoteEndTime!.difference(_attachingNoteStartTime!).inMinutes
+                      : 0;
+                  
+                  // Для заметок 10 минут и меньше - показываем время в одну строку с названием
+                  final isSmallNote = noteDurationMinutes <= 10;
+                  
+                  // Размер иконки адаптивный к высоте (с учетом отступов)
+                  final iconMaxSize = 48.0;
+                  final iconMinSize = 16.0;
+                  final iconSize = (availableHeight - padding * 2).clamp(iconMinSize, iconMaxSize);
+                  
+                  // Размер шрифта названия адаптивный
+                  final titleMaxFontSize = 16.0;
+                  final titleMinFontSize = 10.0;
+                  final titleFontSize = (availableHeight * 0.35).clamp(titleMinFontSize, titleMaxFontSize);
+                  
+                  // Размер шрифта длительности адаптивный
+                  final durationMaxFontSize = 12.0;
+                  final durationMinFontSize = 8.0;
+                  final durationFontSize = (availableHeight * 0.25).clamp(durationMinFontSize, durationMaxFontSize);
+                  
+                  // Расстояние между элементами
+                  final spacing = availableHeight > 40 ? 12.0 : (availableHeight * 0.15).clamp(4.0, 12.0);
+                  final durationSpacing = availableHeight > 50 ? 2.0 : (availableHeight <= 35 ? 0.0 : 1.0);
+                  
+                  return Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (iconData != null) ...[
+                                SizedBox(
+                                  width: iconSize,
+                                  height: iconSize,
+                                  child: Icon(
+                                    iconData,
+                                    size: iconSize,
+                                    color: Color.lerp(color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? color.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                                SizedBox(width: spacing),
+                              ],
+                              if (_attachingNoteTitle != null && _attachingNoteTitle!.isNotEmpty)
+                                Expanded(
+                                  child: isSmallNote || availableHeight <= 35
+                                      ? Row(
+                                          mainAxisAlignment: MainAxisAlignment.start,
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                _attachingNoteTitle!,
+                                                style: TextStyle(
+                                                  fontSize: titleFontSize,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.black87,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ),
+                                            if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
+                                              SizedBox(width: spacing * 0.5),
+                                              Text(
+                                                _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
+                                                style: TextStyle(
+                                                  fontSize: durationFontSize,
+                                                  fontWeight: FontWeight.w400,
+                                                  color: Colors.black87.withValues(alpha: 0.7),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        )
+                                      : Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Flexible(
+                                              fit: FlexFit.loose,
+                                              child: Text(
+                                                _attachingNoteTitle!,
+                                                style: TextStyle(
+                                                  fontSize: titleFontSize,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.black87,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: availableHeight > 50 ? 2 : 1,
+                                              ),
+                                            ),
+                                            if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
+                                              if (durationSpacing > 0) SizedBox(height: durationSpacing),
+                                              Text(
+                                                _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
+                                                style: TextStyle(
+                                                  fontSize: durationFontSize,
+                                                  fontWeight: FontWeight.w400,
+                                                  color: Colors.black87.withValues(alpha: 0.7),
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                ),
+                            ],
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
+                  );
+                },
               ),
               // Черточка для изменения высоты (снизу по центру)
               Positioned(
@@ -1860,6 +2107,13 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   },
                   onPanUpdate: (details) {
                     setState(() {
+                      final hourHeight = _getHourHeight(context);
+                      final linesPerHour = _getTimeLinesCount();
+                      final lineHeight = hourHeight / linesPerHour;
+                      const hoursInDay = 24;
+                      final maxHeight = hourHeight * hoursInDay;
+                      final minutesPerLine = _getMinutesPerLine();
+                      
                       _attachingNoteHeight += details.delta.dy;
                       _attachingNoteHeight = _attachingNoteHeight.clamp(lineHeight, maxHeight);
                       // Пересчитываем время окончания
@@ -2099,7 +2353,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                 );
               },
             ),
-            // Индикатор текущего времени (черная полоса с кругом) для недельного вида
+            // Блок-превью заметки в режиме прикрепления (для недельного вида)
+            if (_isAttachingNote && _attachingNoteStartTime != null && _listViewType == ListViewType.week && _shouldShowCurrentTimeIndicator())
+              _buildAttachingNotePreview(context, lineHeight),
+            // Индикатор текущего времени (черная полоса с кругом) для недельного вида - поверх заметок
             // Показываем только для сегодняшнего дня
             // Позиция вычисляется относительно прокрученного контента
             if (_shouldShowCurrentTimeIndicator())
@@ -2152,9 +2409,6 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-            // Блок-превью заметки в режиме прикрепления (для недельного вида)
-            if (_isAttachingNote && _attachingNoteStartTime != null && _listViewType == ListViewType.week && _shouldShowCurrentTimeIndicator())
-              _buildAttachingNotePreview(context, lineHeight),
           ],
         ),
       ),
@@ -2387,6 +2641,8 @@ class _NoteWidget extends StatefulWidget {
   final Color color;
   final IconData? iconData;
   final double iconSize;
+  final double noteHeight;
+  final Duration duration;
   final Function(String?) onLongPress;
 
   const _NoteWidget({
@@ -2395,6 +2651,8 @@ class _NoteWidget extends StatefulWidget {
     required this.color,
     required this.iconData,
     required this.iconSize,
+    required this.noteHeight,
+    required this.duration,
     required this.onLongPress,
   });
 
@@ -2432,39 +2690,149 @@ class _NoteWidgetState extends State<_NoteWidget> {
     _longPressTimer?.cancel();
   }
 
+  String _formatDurationWidget(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours > 0) {
+      return '${hours}ч ${minutes}м';
+    }
+    return '${minutes}м';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: _handleTapDown,
-      onTapUp: _handleTapUp,
-      onTapCancel: _handleTapCancel,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        final renderBox = context.findRenderObject() as RenderBox?;
+        final localPosition = renderBox != null ? renderBox.globalToLocal(event.position) : event.localPosition;
+        _handleTapDown(TapDownDetails(globalPosition: event.position, localPosition: localPosition, kind: PointerDeviceKind.touch));
+      },
+      onPointerUp: (event) {
+        final renderBox = context.findRenderObject() as RenderBox?;
+        final localPosition = renderBox != null ? renderBox.globalToLocal(event.position) : event.localPosition;
+        _handleTapUp(TapUpDetails(globalPosition: event.position, localPosition: localPosition, kind: PointerDeviceKind.touch));
+      },
+      onPointerCancel: (event) {
+        _handleTapCancel();
+      },
       child: Container(
         decoration: BoxDecoration(
-          color: widget.color,
+          color: widget.color.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: widget.color.withValues(alpha: 0.3), width: 1),
+          border: Border.all(color: widget.color.withValues(alpha: 0.5), width: 1),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            children: [
-              if (widget.iconData != null) ...[
-                Icon(widget.iconData, size: widget.iconSize, color: Colors.black87),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Адаптивные размеры в зависимости от высоты заметки
+            final availableHeight = constraints.maxHeight;
+            final minPadding = 4.0;
+            final maxPadding = 12.0;
+            final padding = maxPadding; // Одинаковый padding для всех заметок
+            
+            // Вычисляем длительность заметки в минутах
+            final noteDurationMinutes = widget.duration.inMinutes;
+            
+            // Для заметок 10 минут и меньше - показываем время в одну строку с названием
+            final isSmallNote = noteDurationMinutes <= 10;
+            
+            // Размер иконки адаптивный к высоте (с учетом отступов)
+            final iconMaxSize = 48.0;
+            final iconMinSize = 16.0;
+            final iconSize = (availableHeight - padding * 2).clamp(iconMinSize, iconMaxSize);
+            
+            // Размер шрифта названия адаптивный
+            final titleMaxFontSize = 16.0;
+            final titleMinFontSize = 10.0;
+            final titleFontSize = (availableHeight * 0.35).clamp(titleMinFontSize, titleMaxFontSize);
+            
+            // Размер шрифта длительности адаптивный
+            final durationMaxFontSize = 12.0;
+            final durationMinFontSize = 8.0;
+            final durationFontSize = (availableHeight * 0.25).clamp(durationMinFontSize, durationMaxFontSize);
+            
+            // Расстояние между элементами
+            final spacing = availableHeight > 40 ? 12.0 : (availableHeight * 0.15).clamp(4.0, 12.0);
+            final durationSpacing = availableHeight > 50 ? 2.0 : (availableHeight <= 35 ? 0.0 : 1.0);
+            
+            return Padding(
+              padding: EdgeInsets.all(padding),
+              child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (widget.iconData != null) ...[
+                          SizedBox(
+                            width: iconSize,
+                            height: iconSize,
+                            child: Icon(
+                              widget.iconData,
+                              size: iconSize,
+                              color: Color.lerp(widget.color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? widget.color.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          SizedBox(width: spacing),
+                        ],
+                        Expanded(
+                          child: isSmallNote || availableHeight <= 35
+                              ? Row(
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        widget.title,
+                                        style: TextStyle(
+                                          fontSize: titleFontSize,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.black87,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                    SizedBox(width: spacing * 0.5),
+                                    Text(
+                                      _formatDurationWidget(widget.duration),
+                                      style: TextStyle(
+                                        fontSize: durationFontSize,
+                                        fontWeight: FontWeight.w400,
+                                        color: Colors.black87.withValues(alpha: 0.7),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      widget.title,
+                                      style: TextStyle(
+                                        fontSize: titleFontSize,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: availableHeight > 50 ? 2 : 1,
+                                    ),
+                                    if (durationSpacing > 0) SizedBox(height: durationSpacing),
+                                    Text(
+                                      _formatDurationWidget(widget.duration),
+                                      style: TextStyle(
+                                        fontSize: durationFontSize,
+                                        fontWeight: FontWeight.w400,
+                                        color: Colors.black87.withValues(alpha: 0.7),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
+            );
+          },
         ),
       ),
     );

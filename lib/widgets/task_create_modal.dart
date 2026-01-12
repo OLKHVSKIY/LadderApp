@@ -766,28 +766,21 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                               AppleCalendar(
                                 initialDate: _startDate ?? DateTime.now(),
                                 onDateSelected: (d) {
-                                  selected = d;
-                                },
-                                onClose: () {},
-                                tasks: const [],
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: MediaQuery.of(ctx).size.width * 0.6,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                  ),
-                                  onPressed: () {
+                                  if (Navigator.of(ctx).canPop()) {
                                     Navigator.of(ctx).pop();
+                                  }
+                                  if (mounted) {
                                     setState(() {
-                                      _startDate = selected;
+                                      _startDate = d;
                                     });
-                                  },
-                                  child: const Text('Выбрать'),
-                                ),
+                                  }
+                                },
+                                onClose: () {
+                                  if (Navigator.of(ctx).canPop()) {
+                                    Navigator.of(ctx).pop();
+                                  }
+                                },
+                                tasks: const [],
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -864,28 +857,21 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                               AppleCalendar(
                                 initialDate: _endDate ?? _startDate!,
                                 onDateSelected: (d) {
-                                  selected = d;
-                                },
-                                onClose: () {},
-                                tasks: const [],
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: MediaQuery.of(ctx).size.width * 0.6,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                  ),
-                                  onPressed: () {
+                                  if (Navigator.of(ctx).canPop()) {
                                     Navigator.of(ctx).pop();
+                                  }
+                                  if (mounted) {
                                     setState(() {
-                                      _endDate = selected;
+                                      _endDate = d;
                                     });
-                                  },
-                                  child: const Text('Выбрать'),
-                                ),
+                                  }
+                                },
+                                onClose: () {
+                                  if (Navigator.of(ctx).canPop()) {
+                                    Navigator.of(ctx).pop();
+                                  }
+                                },
+                                tasks: const [],
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -946,7 +932,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
           const SizedBox(height: 8),
           GestureDetector(
             onTap: () async {
-              DateTime selected = _selectedDate;
               await showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
@@ -973,28 +958,21 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                         AppleCalendar(
                           initialDate: _selectedDate,
                           onDateSelected: (d) {
-                            selected = d;
-                          },
-                          onClose: () {},
-                          tasks: const [],
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: MediaQuery.of(ctx).size.width * 0.6,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ),
-                            onPressed: () {
+                            if (Navigator.of(ctx).canPop()) {
                               Navigator.of(ctx).pop();
+                            }
+                            if (mounted) {
                               setState(() {
-                                _selectedDate = selected;
+                                _selectedDate = d;
                               });
-                            },
-                            child: const Text('Выбрать'),
-                          ),
+                            }
+                          },
+                          onClose: () {
+                            if (Navigator.of(ctx).canPop()) {
+                              Navigator.of(ctx).pop();
+                            }
+                          },
+                          tasks: const [],
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -1003,66 +981,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                 },
               );
             },
-            child: GestureDetector(
-              onTap: () async {
-                DateTime selected = _selectedDate;
-                await showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.white,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  builder: (ctx) {
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        bottom: MediaQuery.of(ctx).viewInsets.bottom,
-                        left: 20,
-                        right: 20,
-                        top: 20,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Выберите дату',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 12),
-                          AppleCalendar(
-                            initialDate: _selectedDate,
-                            onDateSelected: (d) {
-                              selected = d;
-                            },
-                            onClose: () {},
-                            tasks: const [],
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: MediaQuery.of(ctx).size.width * 0.6,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              ),
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                setState(() {
-                                  _selectedDate = selected;
-                                });
-                              },
-                              child: const Text('Выбрать'),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-              child: Container(
+            child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
@@ -1102,7 +1021,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
                 ),
               ),
             ),
-          ),
         ],
       );
     }
