@@ -687,8 +687,13 @@ class _TasksPageState extends State<TasksPage> {
               ),
             ),
             // Обработчик нажатия вне шторки (закрывает шторку при нажатии на фон)
+            // Исключаем область хедера из обработки нажатий
             if (_isGreetingPanelOpen)
-              Positioned.fill(
+              Positioned(
+                top: MediaQuery.of(context).padding.top - 10 + 60, // Ниже хедера
+                left: 0,
+                right: 0,
+                bottom: 0,
                 child: GestureDetector(
                   onTap: _toggleGreetingPanel,
                   child: Container(
@@ -697,9 +702,10 @@ class _TasksPageState extends State<TasksPage> {
                 ),
               ),
             // Невидимая область для открытия шторки свайпом вниз (когда закрыта)
+            // Размещаем ниже хедера, чтобы не перекрывать кнопки
             if (!_isGreetingPanelOpen)
               Positioned(
-                top: 0,
+                top: MediaQuery.of(context).padding.top - 10 + 60, // Ниже хедера (60px высота)
                 left: 0,
                 right: 0,
                 height: 100, // Область для открытия свайпом
