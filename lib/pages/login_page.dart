@@ -11,9 +11,11 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
   late final AuthRepository _authRepository;
   bool _isLoading = false;
   String? _error;
@@ -22,6 +24,8 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   late final AnimationController _animController;
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
+  AnimationController? _whiteBlockController;
+  Animation<double>? _whiteBlockAnimation;
 
   @override
   void initState() {
@@ -36,13 +40,49 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
     );
     _animController.forward();
+    
+    // Анимация для белого блока
+    _initializeWhiteBlockAnimation();
+  }
+
+  void _initializeWhiteBlockAnimation() {
+    if (_whiteBlockController == null) {
+      _whiteBlockController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 400),
+      );
+      _whiteBlockAnimation = CurvedAnimation(
+        parent: _whiteBlockController!,
+        curve: Curves.easeInOutCubic,
+      );
+      
+      // Слушатели фокуса
+      _emailFocusNode.addListener(() {
+        if (_emailFocusNode.hasFocus || _passwordFocusNode.hasFocus) {
+          _whiteBlockController?.forward();
+        } else {
+          _whiteBlockController?.reverse();
+        }
+      });
+      
+      _passwordFocusNode.addListener(() {
+        if (_emailFocusNode.hasFocus || _passwordFocusNode.hasFocus) {
+          _whiteBlockController?.forward();
+        } else {
+          _whiteBlockController?.reverse();
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _animController.dispose();
+    _whiteBlockController?.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -135,6 +175,16 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     final bottom = MediaQuery.of(context).padding.bottom;
     final top = MediaQuery.of(context).padding.top;
     final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Определяем, является ли устройство телефоном (не планшетом и не ПК)
+    // Обычно телефоны имеют ширину меньше 600px
+    final isPhone = screenWidth < 600;
+    
+    // Инициализируем анимацию белого блока, если еще не инициализирована
+    if (isPhone) {
+      _initializeWhiteBlockAnimation();
+    }
     
     // Вычисляем высоту черного блока
     final blackBlockHeight = top + 40 + 43 + 10 + 16 + 40; // top padding + title + spacing + subtitle + bottom padding
@@ -204,12 +254,51 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                 ),
               ),
               // Светлая карточка с формой входа - занимает 65% экрана
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: screenHeight * 0.69,
-                child: Container(
+              isPhone && _whiteBlockAnimation != null
+                  ? AnimatedBuilder(
+                      animation: _whiteBlockAnimation!,
+                      builder: (context, child) {
+                        // Вычисляем позицию блока
+                        // Когда поднят: почти до текста "Войдите, чтобы продолжить"
+                        // Текст находится на top + 40 + 43 + 10 + 20 = top + 113
+                        // Блок должен начинаться примерно на top + 150 (на 20 пикселей ниже)
+                        final raisedTop = top + 150;
+                        final blockHeight = screenHeight * 0.69;
+                        
+                        // Когда анимация = 0: блок внизу (top = screenHeight - blockHeight)
+                        // Когда анимация = 1: блок поднят (top = raisedTop)
+                        final normalTop = screenHeight - blockHeight;
+                        final currentTop = normalTop + (raisedTop - normalTop) * _whiteBlockAnimation!.value;
+                        
+                        // Вычисляем высоту блока так, чтобы он всегда доходил до низа экрана
+                        final currentHeight = screenHeight - currentTop;
+                        
+                        return Positioned(
+                          top: currentTop,
+                          left: 0,
+                          right: 0,
+                          height: currentHeight,
+                          child: child!,
+                        );
+                      },
+                      child: _buildWhiteBlockContent(context, bottom),
+                    )
+                  : Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: screenHeight * 0.69,
+                      child: _buildWhiteBlockContent(context, bottom),
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWhiteBlockContent(BuildContext context, double bottom) {
+    return Container(
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.only(
@@ -228,6 +317,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                             _buildField(
                               label: 'Email',
                               controller: _emailController,
+                              focusNode: _emailFocusNode,
                               hint: 'you@example.com',
                               keyboardType: TextInputType.emailAddress,
                             ),
@@ -235,6 +325,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     _buildField(
                       label: 'Пароль',
                       controller: _passwordController,
+                      focusNode: _passwordFocusNode,
                       hint: '••••••••',
                       obscure: _obscurePassword,
                     ),
@@ -332,18 +423,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                       ),
                     ),
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
   Widget _buildField({
     required String label,
     required TextEditingController controller,
+    required FocusNode focusNode,
     String? hint,
     bool obscure = false,
     TextInputType? keyboardType,
@@ -364,6 +450,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               child: TextField(
                 controller: controller,
+                focusNode: focusNode,
                 obscureText: obscure,
                 keyboardType: keyboardType,
                 decoration: InputDecoration(

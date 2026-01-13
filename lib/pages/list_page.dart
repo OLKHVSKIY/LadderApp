@@ -51,6 +51,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   TimeStep _timeStep = TimeStep.tenMinutes;
   DateTime _selectedDate = DateTime.now();
   DateTime? _previousSelectedDate;
+  double _weekSwipeDistance = 0.0; // Для обработки свайпов по заголовку недели
   
   late final ScrollController _dayContentScrollController;
   late final ScrollController _weekScrollController;
@@ -508,54 +509,70 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
 
   Widget _buildWeekDaysHeader() {
     final weekDates = _getWeekDates();
-    return Container(
-      padding: const EdgeInsets.only(left: 55, right: 16, top: 12, bottom: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: weekDates.map((date) {
-          final isSelected = _isSameDay(date, _selectedDate);
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedDate = date;
-                });
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // День недели
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.black : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _getDayName(date.weekday),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected ? Colors.white : const Color(0xFF666666),
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Ограничиваем смещение, чтобы не было слишком сильного сдвига
+    final clampedSwipeDistance = _weekSwipeDistance.clamp(-screenWidth * 0.3, screenWidth * 0.3);
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutQuart,
+      transform: Matrix4.translationValues(clampedSwipeDistance, 0, 0),
+      child: Container(
+          padding: const EdgeInsets.only(left: 55, right: 16, top: 12, bottom: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: weekDates.map((date) {
+              // Выделяем только текущий день (сегодня), а не выбранный день
+              final isSelected = _isSameDay(date, DateTime.now());
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedDate = date;
+                    });
+                  },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // День недели
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.black : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _getDayName(date.weekday),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected ? Colors.white : const Color(0xFF666666),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      // Дата
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
+                          color: isSelected ? Colors.black : const Color(0xFF666666),
+                        ),
+                        child: Text(
+                          date.day.toString().padLeft(2, '0'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  // Дата
-                  Text(
-                    date.day.toString().padLeft(2, '0'),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
-                      color: isSelected ? Colors.black : const Color(0xFF666666),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
     );
   }
 
@@ -1256,41 +1273,120 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         children: [
           Padding(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top - 10),
-            child: Column(
-              children: [
-                // Слайдер дней/недели/месяца (скрыт для недельного вида)
-                if (_listViewType != ListViewType.week)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: _buildWeekSlider(),
-                  ),
-                // Заголовок дней недели (только для недельного вида)
-                if (_listViewType == ListViewType.week)
-                  _buildWeekDaysHeader(),
-                // Основной контент
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      final offsetAnimation = Tween<Offset>(
-                        begin: _previousSelectedDate != null && _previousSelectedDate!.isBefore(_selectedDate)
-                            ? const Offset(1.0, 0.0)
-                            : const Offset(-1.0, 0.0),
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
-                      return SlideTransition(
-                        position: offsetAnimation,
-                        child: child,
-                      );
+            child: _listViewType == ListViewType.week
+                ? GestureDetector(
+                    onPanStart: (details) {
+                      setState(() {
+                        _weekSwipeDistance = 0.0;
+                      });
                     },
-                    child: _buildTimelineView(),
+                    onPanUpdate: (details) {
+                      // Обрабатываем только горизонтальные свайпы
+                      if (details.delta.dx.abs() > details.delta.dy.abs()) {
+                        setState(() {
+                          _weekSwipeDistance += details.delta.dx;
+                        });
+                      }
+                    },
+                    onPanEnd: (details) {
+                      final threshold = 20.0; // Уменьшен порог для более легкого свайпа
+                      final velocity = details.velocity.pixelsPerSecond.dx;
+                      final shouldSwitch = _weekSwipeDistance.abs() > threshold || velocity.abs() > 150;
+                      final swipeDirection = _weekSwipeDistance > 0 || velocity > 0;
+                      
+                      if (shouldSwitch) {
+                        // Сохраняем направление перед сбросом
+                        final direction = swipeDirection;
+                        
+                        // Плавно сбрасываем смещение
+                        setState(() {
+                          _weekSwipeDistance = 0.0;
+                        });
+                        
+                        // Переключаем неделю после небольшой задержки для плавности
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          if (mounted) {
+                            setState(() {
+                              _previousSelectedDate = _selectedDate;
+                              if (direction) {
+                                // Свайп вправо - предыдущая неделя
+                                _selectedDate = _selectedDate.subtract(const Duration(days: 7));
+                              } else {
+                                // Свайп влево - следующая неделя
+                                _selectedDate = _selectedDate.add(const Duration(days: 7));
+                              }
+                              if (_weekScrollController.hasClients) {
+                                _weekScrollController.jumpTo(0);
+                              }
+                            });
+                          }
+                        });
+                      } else {
+                        // Плавно возвращаем на место, если свайп недостаточный
+                        setState(() {
+                          _weekSwipeDistance = 0.0;
+                        });
+                      }
+                    },
+                    behavior: HitTestBehavior.translucent,
+                    child: Column(
+                      children: [
+                        // Заголовок дней недели (только для недельного вида)
+                        _buildWeekDaysHeader(),
+                        // Основной контент
+                        Expanded(
+                          child: _buildTimelineView(),
+                        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      // Слайдер дней/недели/месяца (скрыт для недельного вида)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: _buildWeekSlider(),
+                      ),
+                      // Основной контент
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            final offsetAnimation = Tween<Offset>(
+                              begin: _previousSelectedDate != null && _previousSelectedDate!.isBefore(_selectedDate)
+                                  ? const Offset(1.0, 0.0)
+                                  : const Offset(-1.0, 0.0),
+                              end: Offset.zero,
+                            ).animate(CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            ));
+                            
+                            // Добавляем fade эффект для большей плавности
+                            final fadeAnimation = Tween<double>(
+                              begin: 0.0,
+                              end: 1.0,
+                            ).animate(CurvedAnimation(
+                              parent: animation,
+                              curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+                            ));
+                            
+                            return FadeTransition(
+                              opacity: fadeAnimation,
+                              child: SlideTransition(
+                                position: offsetAnimation,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _buildTimelineView(),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
             ),
-          ),
           // Кнопка поиска с полем ввода (трансформируется из круга в овал)
           AnimatedPositioned(
             duration: isKeyboardClosing ? Duration.zero : const Duration(milliseconds: 150),
@@ -1912,9 +2008,26 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       final duration = endTime.difference(startTime);
       final height = (duration.inMinutes / minutesPerLine) * lineHeightCalc;
       
-      // Скрываем заметку, если она полностью выше или ниже видимой области
+      // Вычисляем высоту хедера дней недели для корректного скрытия заметок
+      final headerHeight = 60.0; // Примерная высота хедера дней недели
+      final topPadding = MediaQuery.of(context).padding.top - 10;
+      final totalHeaderHeight = topPadding + headerHeight;
+      
+      // Скрываем заметку, если она полностью выше хедера или ниже видимой области
       final screenHeight = MediaQuery.of(context).size.height;
-      if (startPosition + height < 0 || startPosition > screenHeight) {
+      // Заметки не должны заходить на хедер - скрываем, если они выше видимой области с учетом хедера
+      if (startPosition + height < 0 || startPosition > screenHeight - totalHeaderHeight) {
+        return const SizedBox.shrink();
+      }
+      
+      // Если заметка частично заходит на хедер, обрезаем её верхнюю часть
+      final adjustedTop = startPosition < 0 ? 0.0 : startPosition;
+      final adjustedHeight = startPosition < 0 
+          ? height + startPosition // Уменьшаем высоту на величину, на которую заметка заходит на хедер
+          : height;
+      
+      // Если после обрезки заметка стала невидимой, не показываем её
+      if (adjustedHeight <= 0) {
         return const SizedBox.shrink();
       }
       
@@ -1925,12 +2038,13 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       final left = timeColumnWidth + (dayIndex * dayColumnWidth);
       
       return Positioned(
-        top: startPosition,
+        top: adjustedTop,
         left: left,
         width: dayColumnWidth,
-        height: height,
+        height: adjustedHeight,
         child: _WeekNoteWidget(
           noteId: noteId,
+          title: title,
           color: color,
           iconData: iconData,
           noteHeight: height,
@@ -2077,6 +2191,11 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   // Для заметок 10 минут и меньше - показываем время в одну строку с названием
                   final isSmallNote = noteDurationMinutes <= 10;
                   
+                  // Вычисляем высоту 3.5 полос
+                  final threeAndHalfLinesHeight = lineHeight * 3.5;
+                  // До 3.5 полос по высоте - название и время в одну строку
+                  final shouldShowInOneLine = availableHeight <= threeAndHalfLinesHeight;
+                  
                   // Размер иконки адаптивный к высоте (с учетом отступов)
                   final iconMaxSize = 48.0;
                   final iconMinSize = 16.0;
@@ -2096,9 +2215,88 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   final spacing = availableHeight > 40 ? 12.0 : (availableHeight * 0.15).clamp(4.0, 12.0);
                   final durationSpacing = availableHeight > 50 ? 2.0 : (availableHeight <= 35 ? 0.0 : 1.0);
                   
+                  final horizontalPadding = 8.0; // Одинаковый отступ слева для всех заметок
+                  
+                  // Для самых маленьких заметок не поднимаем текст, чтобы иконка центрировалась
+                  final isVerySmallNote = availableHeight <= 20;
+                  
                   return Padding(
-                    padding: EdgeInsets.all(padding),
-                    child: Row(
+                    padding: EdgeInsets.only(left: horizontalPadding, right: padding, top: padding, bottom: padding),
+                    child: isSmallNote || availableHeight <= 35 || shouldShowInOneLine
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              if (iconData != null) ...[
+                                Icon(
+                                  iconData,
+                                  size: iconSize,
+                                  color: Color.lerp(color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? color.withValues(alpha: 0.7),
+                                ),
+                                SizedBox(width: spacing),
+                              ],
+                              if (_attachingNoteTitle != null && _attachingNoteTitle!.isNotEmpty)
+                                Flexible(
+                                  child: isVerySmallNote
+                                      ? Text(
+                                          _attachingNoteTitle!,
+                                          style: TextStyle(
+                                            fontSize: titleFontSize,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.black87,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        )
+                                      : Transform.translate(
+                                          offset: const Offset(0, -10),
+                                          child: Text(
+                                            _attachingNoteTitle!,
+                                            style: TextStyle(
+                                              fontSize: titleFontSize,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black87,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
+                                        ),
+                                ),
+                              if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
+                                SizedBox(width: spacing),
+                                isVerySmallNote
+                                    ? Padding(
+                                        padding: const EdgeInsets.only(top: 2.0),
+                                        child: Text(
+                                          _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
+                                          style: TextStyle(
+                                            fontSize: durationFontSize,
+                                            fontWeight: FontWeight.w400,
+                                            color: Colors.black87.withValues(alpha: 0.7),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      )
+                                    : Transform.translate(
+                                        offset: const Offset(0, -10),
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(top: 2.0),
+                                          child: Text(
+                                            _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
+                                            style: TextStyle(
+                                              fontSize: durationFontSize,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.black87.withValues(alpha: 0.7),
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
+                                        ),
+                                      ),
+                              ],
+                            ],
+                          )
+                        : Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (iconData != null) ...[
@@ -2115,68 +2313,42 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                               ],
                               if (_attachingNoteTitle != null && _attachingNoteTitle!.isNotEmpty)
                                 Expanded(
-                                  child: isSmallNote || availableHeight <= 35
-                                      ? Row(
-                                          mainAxisAlignment: MainAxisAlignment.start,
-                                          crossAxisAlignment: CrossAxisAlignment.center,
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                _attachingNoteTitle!,
-                                                style: TextStyle(
-                                                  fontSize: titleFontSize,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.black87,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                            ),
-                                            if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
-                                              SizedBox(width: spacing * 0.5),
-                                              Text(
-                                                _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
-                                                style: TextStyle(
-                                                  fontSize: durationFontSize,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: Colors.black87.withValues(alpha: 0.7),
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        )
-                                      : Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Flexible(
-                                              fit: FlexFit.loose,
-                                              child: Text(
-                                                _attachingNoteTitle!,
-                                                style: TextStyle(
-                                                  fontSize: titleFontSize,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.black87,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: availableHeight > 50 ? 2 : 1,
-                                              ),
-                                            ),
-                                            if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
-                                              if (durationSpacing > 0) SizedBox(height: durationSpacing),
-                                              Text(
-                                                _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
-                                                style: TextStyle(
-                                                  fontSize: durationFontSize,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: Colors.black87.withValues(alpha: 0.7),
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                            ],
-                                          ],
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Flexible(
+                                        fit: FlexFit.loose,
+                                        child: Text(
+                                          _attachingNoteTitle!,
+                                          style: TextStyle(
+                                            fontSize: titleFontSize,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.black87,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: availableHeight > 50 ? 2 : 1,
                                         ),
+                                      ),
+                                      if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
+                                        if (durationSpacing > 0) SizedBox(height: durationSpacing),
+                                        Flexible(
+                                          fit: FlexFit.loose,
+                                          child: Text(
+                                            _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
+                                            style: TextStyle(
+                                              fontSize: durationFontSize,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.black87.withValues(alpha: 0.7),
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                             ],
                           ),
@@ -2226,43 +2398,6 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-              // Черточка для изменения ширины (слева по центру)
-              Positioned(
-                left: 0,
-                top: (_attachingNoteHeight / 2 - 10).clamp(0.0, double.infinity),
-                child: GestureDetector(
-                  onPanStart: (details) {
-                    _previousNoteWidth = _attachingNoteWidth;
-                  },
-                  onPanUpdate: (details) {
-                    setState(() {
-                      final screenWidth = MediaQuery.of(context).size.width;
-                      final minWidth = 100.0;
-                      final maxWidth = screenWidth - 60; // Ширина минус отступ блока времени
-                      
-                      _attachingNoteWidth += details.delta.dx;
-                      _attachingNoteWidth = _attachingNoteWidth.clamp(minWidth, maxWidth);
-                      
-                      // Вибрация при изменении на каждые 20 пикселей
-                      final currentStep = (_attachingNoteWidth / 20).round();
-                      final previousStep = (_previousNoteWidth / 20).round();
-                      if (currentStep != previousStep) {
-                        HapticFeedback.selectionClick();
-                        _previousNoteWidth = _attachingNoteWidth;
-                      }
-                    });
-                  },
-                  child: Container(
-                    width: 4,
-                    height: 20,
-                    margin: const EdgeInsets.only(left: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -2290,9 +2425,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           }
           return false;
         },
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
+        child: ClipRect(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
             ListView.builder(
               controller: _weekScrollController,
               padding: EdgeInsets.only(
@@ -2435,9 +2571,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
               ),
             ),
           ],
-                  ),
-                );
-              },
+                ),
+              );
+            },
             ),
             // Сохраненные заметки для недельного вида
             ..._buildWeekTimelineNotes(context, lineHeight),
@@ -2498,6 +2634,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                 ),
               ),
           ],
+          ),
         ),
       ),
     );
@@ -2906,12 +3043,15 @@ class _NoteWidgetState extends State<_NoteWidget> {
                                     ),
                                     if (availableHeight > 25) ...[
                                       SizedBox(width: spacing * 0.5),
-                                      Text(
-                                        _formatDurationWidget(widget.duration),
-                                        style: TextStyle(
-                                          fontSize: durationFontSize,
-                                          fontWeight: FontWeight.w400,
-                                          color: Colors.black87.withValues(alpha: 0.7),
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2.0),
+                                        child: Text(
+                                          _formatDurationWidget(widget.duration),
+                                          style: TextStyle(
+                                            fontSize: durationFontSize,
+                                            fontWeight: FontWeight.w400,
+                                            color: Colors.black87.withValues(alpha: 0.7),
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -2958,6 +3098,7 @@ class _NoteWidgetState extends State<_NoteWidget> {
 // Упрощенный виджет заметки для недельного вида - только иконка сверху
 class _WeekNoteWidget extends StatefulWidget {
   final String? noteId;
+  final String? title;
   final Color color;
   final IconData? iconData;
   final double noteHeight;
@@ -2966,6 +3107,7 @@ class _WeekNoteWidget extends StatefulWidget {
 
   const _WeekNoteWidget({
     required this.noteId,
+    this.title,
     required this.color,
     required this.iconData,
     required this.noteHeight,
@@ -3049,53 +3191,243 @@ class _WeekNoteWidgetState extends State<_WeekNoteWidget> {
               );
             }
             
-            // Иконка и продолжительность по центру
-            final iconSize = (availableHeight * 0.35).clamp(12.0, 24.0);
-            final topPadding = (availableHeight * 0.1).clamp(2.0, 8.0);
-            final spacing = (availableHeight * 0.05).clamp(2.0, 6.0);
-            final durationFontSize = (availableHeight * 0.15).clamp(8.0, 12.0);
+            // Для заметок, которые уходят под хедер (очень маленькая высота) - упрощенный вид
+            if (availableHeight < 20) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Container(
+                    width: availableWidth * 0.8,
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color: widget.color,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+              );
+            }
             
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(height: topPadding),
-                if (widget.iconData != null)
-                  Center(
-                    child: Icon(
+            // Определяем, маленькая ли заметка (меньше 35px)
+            final isSmallNote = availableHeight <= 35;
+            
+            // Вычисляем примерную высоту одной полосы (обычно 20-30px)
+            // Используем widget.noteHeight для более точного расчета
+            // До 3.5 полос по высоте - название и время в одну строку
+            final estimatedLineHeight = widget.noteHeight / ((widget.duration.inMinutes / 10).ceil()); // Примерная высота полосы
+            final threeAndHalfLinesHeight = estimatedLineHeight * 3.5;
+            final shouldShowInOneLine = availableHeight <= threeAndHalfLinesHeight || widget.noteHeight <= threeAndHalfLinesHeight;
+            
+            // Размеры для маленьких заметок
+            final iconSize = isSmallNote 
+                ? (availableHeight * 0.5).clamp(10.0, 16.0)
+                : (availableHeight * 0.35).clamp(12.0, 24.0);
+            final titleFontSize = isSmallNote
+                ? (availableHeight * 0.4).clamp(8.0, 12.0)
+                : (availableHeight * 0.25).clamp(10.0, 14.0);
+            final durationFontSize = isSmallNote
+                ? (availableHeight * 0.35).clamp(7.0, 10.0)
+                : (availableHeight * 0.15).clamp(8.0, 12.0);
+            final spacing = isSmallNote ? 4.0 : (availableHeight * 0.05).clamp(2.0, 6.0);
+            
+            // Для маленьких заметок и заметок >= 3 полос - все в одну строчку слева
+            final horizontalPadding = 8.0; // Одинаковый отступ слева для всех заметок
+            if ((isSmallNote || shouldShowInOneLine) && widget.title != null && widget.title!.isNotEmpty) {
+              // Для самых маленьких заметок не поднимаем текст, чтобы иконка центрировалась
+              final isVerySmallNote = availableHeight <= 20;
+              
+              return Padding(
+                padding: EdgeInsets.only(left: horizontalPadding, right: 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (widget.iconData != null) ...[
+                      Icon(
+                        widget.iconData,
+                        size: iconSize,
+                        color: Color.lerp(widget.color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? widget.color.withValues(alpha: 0.7),
+                      ),
+                      SizedBox(width: spacing),
+                    ],
+                    Flexible(
+                      child: isVerySmallNote
+                          ? Text(
+                              widget.title!,
+                              style: TextStyle(
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            )
+                          : Transform.translate(
+                              offset: const Offset(0, -10),
+                              child: Text(
+                                widget.title!,
+                                style: TextStyle(
+                                  fontSize: titleFontSize,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                    ),
+                    SizedBox(width: spacing),
+                    isVerySmallNote
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 2.0),
+                            child: Text(
+                              _formatDurationWidget(widget.duration),
+                              style: TextStyle(
+                                fontSize: durationFontSize,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.black87.withValues(alpha: 0.7),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          )
+                        : Transform.translate(
+                            offset: const Offset(0, -10),
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Text(
+                                _formatDurationWidget(widget.duration),
+                                style: TextStyle(
+                                  fontSize: durationFontSize,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.black87.withValues(alpha: 0.7),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
+              );
+            }
+            
+            // Для больших заметок - если >= 3 полос, то название и время в одну строку
+            if (shouldShowInOneLine && widget.title != null && widget.title!.isNotEmpty) {
+              return Padding(
+                padding: EdgeInsets.only(left: horizontalPadding, right: 4.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    if (widget.iconData != null) ...[
+                      Icon(
+                        widget.iconData,
+                        size: iconSize,
+                        color: Color.lerp(widget.color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? widget.color.withValues(alpha: 0.7),
+                      ),
+                      SizedBox(width: spacing),
+                    ],
+                    Flexible(
+                      child: Transform.translate(
+                        offset: const Offset(0, -10),
+                        child: Text(
+                          widget.title!,
+                          style: TextStyle(
+                            fontSize: titleFontSize,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: spacing),
+                    Transform.translate(
+                      offset: const Offset(0, -10),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2.0),
+                        child: Text(
+                          _formatDurationWidget(widget.duration),
+                          style: TextStyle(
+                            fontSize: durationFontSize,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.black87.withValues(alpha: 0.7),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            
+            // Для больших заметок - вертикальная компоновка
+            final topPadding = (availableHeight * 0.1).clamp(2.0, 8.0);
+            
+            return Padding(
+              padding: EdgeInsets.only(left: horizontalPadding, right: 4.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: topPadding),
+                  if (widget.iconData != null)
+                    Icon(
                       widget.iconData,
                       size: iconSize,
                       color: Color.lerp(widget.color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? widget.color.withValues(alpha: 0.7),
+                    )
+                  else
+                    // Если нет иконки, показываем цветную полоску сверху на всю ширину
+                    Container(
+                      width: availableWidth - horizontalPadding - 4.0,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: widget.color,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  )
-                else
-                  // Если нет иконки, показываем цветную полоску сверху на всю ширину
-                  Container(
-                    width: availableWidth,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: widget.color,
-                      borderRadius: BorderRadius.circular(2),
+                  if (widget.title != null && widget.title!.isNotEmpty && availableHeight > 40) ...[
+                    SizedBox(height: spacing),
+                    Flexible(
+                      child: Text(
+                        widget.title!,
+                        style: TextStyle(
+                          fontSize: titleFontSize,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                        textAlign: TextAlign.start,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: availableHeight > 60 ? 2 : 1,
+                      ),
                     ),
-                  ),
-                if (widget.iconData != null && availableHeight > 25) ...[
-                  SizedBox(height: spacing),
-                  Center(
-                    child: Text(
+                  ],
+                  if (widget.iconData != null && availableHeight > 25) ...[
+                    SizedBox(height: spacing),
+                    Text(
                       _formatDurationWidget(widget.duration),
                       style: TextStyle(
                         fontSize: durationFontSize,
                         fontWeight: FontWeight.w500,
                         color: Colors.black87.withValues(alpha: 0.7),
                       ),
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.start,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                  ],
+                  if (availableHeight > 30) const Spacer(),
                 ],
-                const Spacer(),
-              ],
+              ),
             );
           },
         ),
