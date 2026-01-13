@@ -103,7 +103,7 @@ class _MainHeaderState extends State<MainHeader> {
               Positioned.fill(
                 child: Center(
                   child: Text(
-                    widget.title ?? 'Все задачи',
+                    widget.title ?? 'Мои задачи',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,

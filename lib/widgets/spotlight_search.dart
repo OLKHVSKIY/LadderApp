@@ -1091,7 +1091,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при открытии файла: $e')),
-      );
+        );
     }
   }
 
@@ -1103,18 +1103,18 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         children: [
           // Затемнение на весь экран - занимает весь экран без белых полос
           Positioned.fill(
-            child: GestureDetector(
-              onTap: _close,
+      child: GestureDetector(
+        onTap: _close,
               child: Container(
                 color: Colors.black.withOpacity(0.75),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                   child: Container(
                     color: Colors.transparent,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
           ),
           // Контент Spotlight с анимацией
           AnimatedBuilder(
@@ -1125,10 +1125,10 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                 child: Transform.scale(
                   scale: _scaleAnimation.value,
                   child: child!,
-                ),
-              );
-            },
-            child: LayoutBuilder(
+              ),
+            );
+          },
+          child: LayoutBuilder(
             builder: (context, constraints) {
               final screenHeight = MediaQuery.of(context).size.height;
               // Фиксированная позиция - центр экрана минус половина высоты контейнера
@@ -1136,22 +1136,22 @@ class _SpotlightSearchState extends State<SpotlightSearch>
               final fixedTop = (screenHeight / 2) - 270;
               
               return Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    top: fixedTop.clamp(0.0, double.infinity),
-                  ),
-                  child: GestureDetector(
-                    onTap: () {}, // Предотвращаем закрытие при клике на контент
-                    child: Container(
-                      width: MediaQuery.of(context).size.width * 0.94,
-                      constraints: const BoxConstraints(maxWidth: 600),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(28),
+                            alignment: Alignment.topCenter,
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                top: fixedTop.clamp(0.0, double.infinity),
+                              ),
+                              child: GestureDetector(
+                                onTap: () {}, // Предотвращаем закрытие при клике на контент
+                                child: Container(
+                                  width: MediaQuery.of(context).size.width * 0.94,
+                                  constraints: const BoxConstraints(maxWidth: 600),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                  child: Material(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(28),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [

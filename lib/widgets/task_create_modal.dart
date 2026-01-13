@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../models/task.dart';
 import '../models/attached_file.dart';
 import 'apple_calendar.dart';
 import 'custom_snackbar.dart';
-import 'file_attachment_picker.dart';
 
 class TaskCreateModal extends StatefulWidget {
   final VoidCallback onClose;
@@ -26,22 +30,29 @@ class TaskCreateModal extends StatefulWidget {
   State<TaskCreateModal> createState() => _TaskCreateModalState();
 }
 
-class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProviderStateMixin {
+class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderStateMixin {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _tagsController = TextEditingController();
-  int _selectedPriority = 1;
-  bool _isDateRange = false;
+  final _titleFocusNode = FocusNode();
+  final _descriptionFocusNode = FocusNode();
+  int _selectedPriority = 0; // 0 = не выбран, 1 = красный, 2 = желтый, 3 = синий
   DateTime _selectedDate = DateTime.now();
-  DateTime? _startDate;
-  DateTime? _endDate;
-  bool _isStartDateCalendarOpen = false;
-  bool _isEndDateCalendarOpen = false;
   late AnimationController _animationController;
+  late AnimationController _wavesAnimationController;
+  AnimationController? _buttonsSlideController;
   late Animation<Offset> _slideAnimation;
+  late Animation<double> _wavesAnimation;
+  Animation<Offset> _buttonsSlideAnimation = const AlwaysStoppedAnimation(Offset.zero);
   String _previousTitleText = '';
   String _previousDescriptionText = '';
   List<AttachedFile> _attachedFiles = [];
+  bool _isTagsExpanded = false;
+  final ScrollController _chipsScrollController = ScrollController();
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  bool _speechInitialized = false;
+  String _selectedField = ''; // 'title' or 'description'
 
   @override
   void initState() {
@@ -53,17 +64,21 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       _tagsController.text = t.tags.join(' ');
       _selectedPriority = t.priority;
       _selectedDate = t.date;
-      _startDate = t.date;
-      _endDate = t.endDate;
-      _isDateRange = t.endDate != null;
       _attachedFiles = t.attachedFiles ?? [];
     } else if (widget.initialDate != null) {
-      // Если передана начальная дата (выбранная дата из календаря), используем её
       _selectedDate = widget.initialDate!;
-      _startDate = widget.initialDate!;
     }
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _wavesAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat();
+    _buttonsSlideController = AnimationController(
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
     _slideAnimation = Tween<Offset>(
@@ -73,25 +88,65 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       parent: _animationController,
       curve: Curves.easeOutCubic,
     ));
+    _wavesAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _wavesAnimationController,
+      curve: Curves.easeInOut,
+    ));
+    _buttonsSlideAnimation = Tween<Offset>(
+      begin: const Offset(1, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _buttonsSlideController!,
+      curve: Curves.easeOutCubic,
+    ));
     _animationController.forward();
     
-    // Инициализируем предыдущие значения
+    // Отслеживание фокуса полей
+    _titleFocusNode.addListener(_onTitleFocusChange);
+    _descriptionFocusNode.addListener(_onDescriptionFocusChange);
+    
     _previousTitleText = _titleController.text;
     _previousDescriptionText = _descriptionController.text;
     
-    // Добавляем слушатели для ограничения количества строк
     _titleController.addListener(_limitTitleLines);
     _descriptionController.addListener(_limitDescriptionLines);
+    
+    // Фокусируемся на поле названия после анимации
+    _animationController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _titleFocusNode.requestFocus();
+          }
+        });
+      }
+    });
   }
   
   void _limitTitleLines() {
     if (!mounted) return;
     final text = _titleController.text;
     
-    // Используем TextPainter для определения реального количества строк
-    final textStyle = const TextStyle(fontSize: 16, fontWeight: FontWeight.w500);
+    // Проверка на максимальное количество символов (70)
+    if (text.length > 70) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _titleController.text != _previousTitleText) {
+          _titleController.value = TextEditingValue(
+            text: _previousTitleText,
+            selection: TextSelection.collapsed(offset: _previousTitleText.length),
+          );
+          HapticFeedback.mediumImpact();
+        }
+      });
+      return;
+    }
+    
+    final textStyle = const TextStyle(fontSize: 24, fontWeight: FontWeight.w600);
     final screenWidth = MediaQuery.of(context).size.width;
-    final maxWidth = screenWidth * 0.8 - 32; // Примерная ширина поля
+    final maxWidth = screenWidth - 40; // Учитываем padding 20px с каждой стороны
     
     final tp = TextPainter(
       text: TextSpan(text: text, style: textStyle),
@@ -102,21 +157,18 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     final lineHeight = tp.preferredLineHeight;
     final actualLines = (tp.size.height / lineHeight).ceil();
     
-    // Если превышен лимит строк, блокируем ввод и вибрируем
+    // Проверка на максимальное количество строк (3)
     if (actualLines > 3) {
-      // Откатываем к предыдущему значению
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _titleController.text != _previousTitleText) {
           _titleController.value = TextEditingValue(
             text: _previousTitleText,
             selection: TextSelection.collapsed(offset: _previousTitleText.length),
           );
-          // Вибрация при попытке ввести больше 3 строк
           HapticFeedback.mediumImpact();
         }
       });
     } else {
-      // Сохраняем текущее значение как предыдущее
       _previousTitleText = text;
     }
   }
@@ -125,10 +177,23 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     if (!mounted) return;
     final text = _descriptionController.text;
     
-    // Используем TextPainter для определения реального количества строк
-    final textStyle = const TextStyle(fontSize: 14);
+    // Проверка на максимальное количество символов (200)
+    if (text.length > 200) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _descriptionController.text != _previousDescriptionText) {
+          _descriptionController.value = TextEditingValue(
+            text: _previousDescriptionText,
+            selection: TextSelection.collapsed(offset: _previousDescriptionText.length),
+          );
+          HapticFeedback.mediumImpact();
+        }
+      });
+      return;
+    }
+    
+    final textStyle = const TextStyle(fontSize: 16, fontWeight: FontWeight.w400);
     final screenWidth = MediaQuery.of(context).size.width;
-    final maxWidth = screenWidth * 0.8 - 32; // Примерная ширина поля
+    final maxWidth = screenWidth - 40; // Учитываем padding 20px с каждой стороны
     
     final tp = TextPainter(
       text: TextSpan(text: text, style: textStyle),
@@ -139,63 +204,120 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     final lineHeight = tp.preferredLineHeight;
     final actualLines = (tp.size.height / lineHeight).ceil();
     
-    // Если превышен лимит строк, блокируем ввод и вибрируем
+    // Проверка на максимальное количество строк (8)
     if (actualLines > 8) {
-      // Откатываем к предыдущему значению
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _descriptionController.text != _previousDescriptionText) {
           _descriptionController.value = TextEditingValue(
             text: _previousDescriptionText,
             selection: TextSelection.collapsed(offset: _previousDescriptionText.length),
           );
-          // Вибрация при попытке ввести больше 8 строк
           HapticFeedback.mediumImpact();
         }
       });
     } else {
-      // Сохраняем текущее значение как предыдущее
       _previousDescriptionText = text;
-    }
-  }
-  
-  void _limitTextFieldLines(TextEditingController controller, String value, double maxWidth, int maxLines) {
-    if (!mounted) return;
-    
-    // Используем TextPainter для определения реального количества строк с учетом автоматических переносов
-    final textStyle = const TextStyle(fontSize: 16, fontWeight: FontWeight.w500);
-    final tp = TextPainter(
-      text: TextSpan(text: value, style: textStyle),
-      textDirection: TextDirection.ltr,
-      maxLines: null,
-    )..layout(minWidth: 0, maxWidth: maxWidth - 32); // Учитываем padding (16px с каждой стороны)
-    
-    final lineHeight = tp.preferredLineHeight;
-    final actualLines = (tp.size.height / lineHeight).ceil();
-    
-    if (actualLines > maxLines) {
-      // Находим позицию, где заканчивается maxLines-я строка
-      double targetY = (maxLines - 1) * lineHeight + lineHeight / 2;
-      final position = tp.getPositionForOffset(Offset(0, targetY));
-      
-      // Обрезаем текст до этой позиции
-      final limitedText = value.substring(0, position.offset);
-      
-      if (controller.text != limitedText) {
-        controller.value = TextEditingValue(
-          text: limitedText,
-          selection: TextSelection.collapsed(offset: limitedText.length),
-        );
-      }
     }
   }
 
   @override
   void dispose() {
     _animationController.dispose();
+    _wavesAnimationController.dispose();
+    _buttonsSlideController?.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
     _tagsController.dispose();
+    _titleFocusNode.dispose();
+    _descriptionFocusNode.dispose();
+    _chipsScrollController.dispose();
+    _speech.stop();
     super.dispose();
+  }
+
+  void _onTitleFocusChange() {
+    if (_titleFocusNode.hasFocus) {
+      setState(() {
+        _selectedField = 'title';
+      });
+    }
+  }
+
+  void _onDescriptionFocusChange() {
+    if (_descriptionFocusNode.hasFocus) {
+      setState(() {
+        _selectedField = 'description';
+      });
+    }
+  }
+
+  Future<bool> _initializeSpeech() async {
+    if (_speechInitialized) {
+      return true;
+    }
+    
+    try {
+      bool available = await _speech.initialize(
+        onError: (error) {
+          debugPrint('Speech recognition error: $error');
+          if (mounted) {
+            setState(() {
+              _speechInitialized = false;
+              _isListening = false;
+            });
+          }
+        },
+        onStatus: (status) {
+          debugPrint('Speech recognition status: $status');
+          if (status == 'listening') {
+            // Запись успешно началась - подтверждаем состояние
+            if (mounted && !_isListening) {
+              setState(() {
+                _isListening = true;
+              });
+              _wavesAnimationController.repeat();
+            }
+          } else if (status == 'done' || status == 'notListening') {
+            if (mounted) {
+              setState(() {
+                _isListening = false;
+              });
+              _wavesAnimationController.stop();
+              _buttonsSlideController?.reverse();
+            }
+          } else if (status == 'error') {
+            if (mounted) {
+              setState(() {
+                _isListening = false;
+              });
+              _wavesAnimationController.stop();
+              _buttonsSlideController?.reverse();
+            }
+          }
+        },
+      );
+      
+      if (mounted) {
+        setState(() {
+          _speechInitialized = available;
+        });
+      }
+      
+      if (!available) {
+        debugPrint('Speech recognition not available');
+        return false;
+      }
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error initializing speech recognition: $e');
+      if (mounted) {
+        setState(() {
+          _speechInitialized = false;
+        });
+      }
+      return false;
+    }
   }
 
   void _showMessage(String msg) {
@@ -204,8 +326,15 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
   }
 
   void _handleClose() {
-    _animationController.reverse().then((_) {
-      widget.onClose();
+    // Закрываем клавиатуру перед анимацией
+    FocusScope.of(context).unfocus();
+    // Задержка для синхронизации с закрытием клавиатуры
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _animationController.reverse().then((_) {
+          widget.onClose();
+        });
+      }
     });
   }
 
@@ -213,6 +342,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     if (_titleController.text.trim().isEmpty) {
       return;
     }
+
+    // Если приоритет не выбран, используем 2 по умолчанию
+    final priority = _selectedPriority == 0 ? 2 : _selectedPriority;
 
     final tags = _tagsController.text
         .split(' ')
@@ -226,16 +358,205 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
       description: _descriptionController.text.trim().isEmpty
           ? null
           : _descriptionController.text.trim(),
-      priority: _selectedPriority,
+      priority: priority,
       tags: tags,
-      date: _isDateRange ? (_startDate ?? _selectedDate) : _selectedDate,
-      endDate: _isDateRange ? (_endDate ?? _startDate ?? _selectedDate) : null,
+      date: _selectedDate,
+      endDate: null,
       isCompleted: widget.initialTask?.isCompleted ?? false,
       attachedFiles: _attachedFiles.isNotEmpty ? _attachedFiles : null,
     );
 
     widget.onSave(task);
     _handleClose();
+  }
+
+  void _togglePriority() {
+    setState(() {
+      if (_selectedPriority == 0) {
+        _selectedPriority = 1;
+      } else if (_selectedPriority == 1) {
+        _selectedPriority = 2;
+      } else if (_selectedPriority == 2) {
+        _selectedPriority = 3;
+      } else {
+        _selectedPriority = 1;
+      }
+    });
+  }
+
+  Color _getPriorityColor() {
+    switch (_selectedPriority) {
+      case 1:
+        return Colors.red;
+      case 2:
+        return const Color(0xFFFFB800); // Более видимый желтый вместо кислотного
+      case 3:
+        return const Color(0xFF0066FF);
+      default:
+        return const Color(0xFF666666); // Серый для нейтрального
+    }
+  }
+
+  String _getPriorityIconPath() {
+    switch (_selectedPriority) {
+      case 1:
+        return 'assets/icon/thunder-red.png';
+      case 2:
+        return 'assets/icon/thunder-yellow.png';
+      case 3:
+        return 'assets/icon/thunder-blue.png';
+      default:
+        return 'assets/icon/thunder-red.png'; // Для нейтрального используем серый через ColorFilter
+    }
+  }
+
+  String _getPriorityText() {
+    if (_selectedPriority == 0) {
+      return 'Приоритет';
+    }
+    return 'Приоритет $_selectedPriority';
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря',
+    ];
+    return months[month - 1];
+  }
+
+  String _getDayName(int weekday) {
+    const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+    return days[weekday - 1];
+  }
+
+  Future<void> _openCalendar() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Выберите дату',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              AppleCalendar(
+                initialDate: _selectedDate,
+                onDateSelected: (d) {
+                  if (Navigator.of(ctx).canPop()) {
+                    Navigator.of(ctx).pop();
+                  }
+                  if (mounted) {
+                    setState(() {
+                      _selectedDate = d;
+                    });
+                  }
+                },
+                onClose: () {
+                  if (Navigator.of(ctx).canPop()) {
+                    Navigator.of(ctx).pop();
+                  }
+                },
+                tasks: const [],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _handleDictate() async {
+    if (_selectedField.isEmpty) {
+      // Если поле не выбрано, просто возвращаемся
+      return;
+    }
+
+    // Проверяем инициализацию
+    if (!_speechInitialized) {
+      bool initialized = await _initializeSpeech();
+      if (!initialized) {
+        _showMessage('Распознавание речи недоступно. Убедитесь, что приложение перезапущено.');
+        return;
+      }
+    }
+
+    if (_isListening) {
+      // Останавливаем запись
+      try {
+        await _speech.stop();
+        setState(() {
+          _isListening = false;
+        });
+        _wavesAnimationController.stop();
+        _buttonsSlideController?.reverse();
+      } catch (e) {
+        debugPrint('Error stopping speech: $e');
+        setState(() {
+          _isListening = false;
+        });
+        _wavesAnimationController.stop();
+      }
+    } else {
+      // Вибрация при начале записи
+      HapticFeedback.mediumImpact();
+      
+      // Начинаем запись
+      try {
+        await _speech.listen(
+          onResult: (result) {
+            String text = result.recognizedWords;
+            if (_selectedField == 'title') {
+              _titleController.text = text;
+            } else if (_selectedField == 'description') {
+              _descriptionController.text = text;
+            }
+          },
+          localeId: 'ru_RU',
+          listenMode: stt.ListenMode.dictation,
+          cancelOnError: true,
+          partialResults: true,
+        );
+        
+        // Устанавливаем состояние сразу, статус подтвердится через onStatus
+        setState(() {
+          _isListening = true;
+        });
+        _wavesAnimationController.repeat();
+        _buttonsSlideController?.forward();
+      } catch (e) {
+        debugPrint('Error starting speech: $e');
+        _showMessage('Ошибка при запуске записи');
+        setState(() {
+          _isListening = false;
+        });
+      }
+    }
   }
 
   @override
@@ -250,7 +571,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
             GestureDetector(
               onTap: _handleClose,
               child: Container(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withValues(alpha: 0.4),
               ),
             ),
             SlideTransition(
@@ -258,170 +579,288 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Container(
-                  height: MediaQuery.of(context).size.height * 0.9,
-                  decoration: const BoxDecoration(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.8,
+                  ),
+                  decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.only(
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(24),
                       topRight: Radius.circular(24),
                     ),
                   ),
-                  child: Column(
-                    children: [
-                    // Заголовок
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            widget.isEdit ? 'Редактировать задачу' : 'Новая задача',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _handleClose,
-                            child: const Icon(
-                              Icons.close,
-                              size: 24,
-                              color: Color(0xFF999999),
-                            ),
-                          ),
-                        ],
-                      ),
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
                     ),
-                    // Форма
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(20),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                      // Заголовок с датой
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Название
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                return _buildTextField(
-                                  label: 'Название',
-                                  controller: _titleController,
-                                  hint: '',
-                                  maxLength: 70,
-                                  maxWidth: constraints.maxWidth,
-                                  maxLinesLimit: 3,
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 24),
-                            // Описание
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                return _buildTextArea(
-                                  label: 'Описание',
-                                  controller: _descriptionController,
-                                  hint: '(Необязательно)',
-                                  maxLength: 200,
-                                  maxWidth: constraints.maxWidth,
-                                  maxLinesLimit: 8,
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 24),
-                            // Приоритет
-                            _buildPrioritySelector(),
-                            const SizedBox(height: 24),
-                            // Хештеги
-                            _buildTextField(
-                              label: 'Хештеги',
-                              controller: _tagsController,
-                              hint: 'Например: #работа #дом',
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Вводите хештеги через пробел',
-                              style: TextStyle(
-                                fontSize: 12,
+                            Text(
+                              '${_selectedDate.day} ${_getMonthName(_selectedDate.month)} • ${_getDayName(_selectedDate.weekday)}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
                                 color: Color(0xFF999999),
                               ),
                             ),
-                            const SizedBox(height: 24),
-                            // Прикрепленные файлы
-                            FileAttachmentPicker(
-                              initialFiles: _attachedFiles,
-                              onFilesChanged: (files) {
-                                setState(() {
-                                  _attachedFiles = files;
-                                });
-                              },
+                            const SizedBox(height: 16),
+                            // Поле ввода названия без бордеров
+                            TextField(
+                              controller: _titleController,
+                              focusNode: _titleFocusNode,
+                              autofocus: true,
+                              maxLines: 3,
+                              minLines: 1,
+                              maxLength: 70,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black,
+                                height: 1.2,
+                              ),
+                              decoration: const InputDecoration(
+                                isCollapsed: true,
+                                hintText: 'Сходить в магазин..',
+                                hintStyle: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF999999),
+                                  height: 1.2,
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                                counterText: '',
+                              ),
+                              cursorColor: Colors.black,
                             ),
-                            const SizedBox(height: 24),
-                            // Тип даты
-                            _buildDateTypeSelector(),
-                            const SizedBox(height: 24),
-                            // Выбор даты
-                            _buildDateSelector(),
-                            const SizedBox(height: 40),
-                            // Кнопки
+                            const SizedBox(height: 10),
+                            // Поле ввода описания без бордеров
+                            TextField(
+                              controller: _descriptionController,
+                              focusNode: _descriptionFocusNode,
+                              maxLines: 8,
+                              minLines: 1,
+                              maxLength: 200,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.black,
+                                height: 1.4,
+                              ),
+                              decoration: const InputDecoration(
+                                isCollapsed: true,
+                                hintText: 'Описание',
+                                hintStyle: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w400,
+                                  color: Color(0xFF999999),
+                                  height: 1.4,
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                                counterText: '',
+                              ),
+                              cursorColor: Colors.black,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Овалы с функциями
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20),
+                        child: SingleChildScrollView(
+                          controller: _chipsScrollController,
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              // Овал с датой
+                              _buildOvalChip(
+                                icon: Icons.calendar_today,
+                                text: '${_selectedDate.day} ${_getMonthName(_selectedDate.month)}',
+                                onTap: _openCalendar,
+                              ),
+                              const SizedBox(width: 8),
+                              // Овал с приоритетом
+                              _buildPriorityChip(),
+                              const SizedBox(width: 8),
+                              // Овал прикрепить
+                              _buildAttachmentChip(),
+                              const SizedBox(width: 8),
+                              // Овал хештеги
+                              _buildTagsChip(),
+                              const SizedBox(width: 20), // Отступ справа для красоты
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Нижняя панель с действиями
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        child: Row(
+                          children: [
+                            // Выпадающий список "Входящие"
+                            GestureDetector(
+                              onTap: () {
+                                // TODO: Реализовать выбор папки
+                              },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.folder_outlined,
+                                    size: 18,
+                                    color: Color(0xFF999999),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'Мои заметки',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF999999),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.keyboard_arrow_down,
+                                    size: 18,
+                                    color: Color(0xFF999999),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            // Кнопки диктовки
                             Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: _handleClose,
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
+                                // Кнопка "Продиктовать" с анимацией волн (всегда на месте)
+                                SizedBox(
+                                  width: 48,
+                                  height: 48,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      // Анимированные волны (Positioned чтобы не влияли на layout)
+                                      if (_isListening)
+                                        ...List.generate(3, (index) {
+                                          return AnimatedBuilder(
+                                            animation: _wavesAnimation,
+                                            builder: (context, child) {
+                                              final delay = index * 0.2;
+                                              final animationValue = ((_wavesAnimation.value + delay) % 1.0);
+                                              final size = 48 + (animationValue * 30);
+                                              return Positioned(
+                                                left: (48 - size) / 2,
+                                                top: (48 - size) / 2,
+                                                child: Container(
+                                                  width: size,
+                                                  height: size,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red.withOpacity(0.3 * (1 - animationValue)),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          );
+                                        }),
+                                      // Кнопка микрофона (всегда видна)
+                                      GestureDetector(
+                                        onTap: _handleDictate,
+                                        child: Container(
+                                          width: 48,
+                                          height: 48,
+                                          decoration: BoxDecoration(
+                                            color: _isListening ? Colors.red.shade700 : Colors.red,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            Icons.mic,
+                                            color: Colors.white,
+                                            size: 24,
+                                          ),
+                                        ),
                                       ),
-                                      side: const BorderSide(
-                                        color: Color(0xFF6D6D6D),
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(19),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Отмена',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF666666),
-                                      ),
-                                    ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: _handleSave,
-                                    style: ElevatedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
-                                      ),
-                                      backgroundColor: Colors.black,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(19),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Создать',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
+                                // Кнопка остановки записи (появляется справа при записи)
+                                AnimatedSize(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                  child: _isListening
+                                      ? Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          key: const ValueKey('stop_button'),
+                                          children: [
+                                            const SizedBox(width: 12),
+                                            GestureDetector(
+                                              onTap: _handleDictate,
+                                              child: Container(
+                                                width: 48,
+                                                height: 48,
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.black,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.close,
+                                                  color: Colors.white,
+                                                  size: 24,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : const SizedBox.shrink(key: ValueKey('empty')),
                                 ),
                               ],
                             ),
                           ],
                         ),
                       ),
+                      // Кнопка сохранения
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _handleSave,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(21),
+                              ),
+                            ),
+                            child: const Text(
+                              'Создать',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
             ),
           ],
         ),
@@ -429,632 +868,318 @@ class _TaskCreateModalState extends State<TaskCreateModal> with SingleTickerProv
     );
   }
 
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    required String hint,
-    int? maxLength,
-    double? maxWidth,
-    int? maxLinesLimit,
+  Widget _buildOvalChip({
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
   }) {
-    const borderColor = Color(0xFFB0B0B0);
-    const labelColor = Color(0xFF666666);
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 10),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: borderColor, width: 1),
-              color: Colors.white,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: const Color(0xFF666666),
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              child: TextField(
-                controller: controller,
-                maxLength: maxLength,
-                maxLines: maxLinesLimit ?? 1,
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  hintText: hint,
-                  hintStyle: const TextStyle(color: Color(0xFF999999), fontSize: 16),
-                  border: InputBorder.none,
-                  counterText: null,
-                ),
-                style: const TextStyle(fontSize: 18, color: Colors.black),
-                cursorColor: Colors.black,
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF666666),
               ),
             ),
-          ),
-          Positioned(
-            left: 16,
-            top: -11,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: labelColor,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildTextArea({
-    required String label,
-    required TextEditingController controller,
-    required String hint,
-    int? maxLength,
-    double? maxWidth,
-    int? maxLinesLimit,
-  }) {
-    const borderColor = Color(0xFFB0B0B0);
-    const labelColor = Color(0xFF666666);
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 10),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: borderColor, width: 1),
-              color: Colors.white,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              child: TextField(
-                controller: controller,
-                maxLength: maxLength,
-                maxLines: maxLinesLimit ?? 8,
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  hintText: hint,
-                  hintStyle: const TextStyle(color: Color(0xFF999999), fontSize: 16),
-                  border: InputBorder.none,
-                  counterText: null,
-                ),
-                style: const TextStyle(fontSize: 18, color: Colors.black),
-                cursorColor: Colors.black,
+  Widget _buildPriorityChip() {
+    final priorityColor = _getPriorityColor();
+    final iconPath = _getPriorityIconPath();
+    
+    return GestureDetector(
+      onTap: _togglePriority,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(20),
+          border: _selectedPriority > 0
+              ? Border(
+                  left: BorderSide(
+                    color: priorityColor,
+                    width: 4,
+                  ),
+                )
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _selectedPriority == 0
+                ? ColorFiltered(
+                    colorFilter: ColorFilter.mode(
+                      const Color(0xFF666666),
+                      BlendMode.srcIn,
+                    ),
+                    child: Image.asset(
+                      'assets/icon/thunder-red.png',
+                      width: 18,
+                      height: 18,
+                    ),
+                  )
+                : Image.asset(
+                    iconPath,
+                    width: 18,
+                    height: 18,
+                  ),
+            const SizedBox(width: 8),
+            Text(
+              _getPriorityText(),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: _selectedPriority > 0 ? priorityColor : const Color(0xFF666666),
               ),
             ),
-          ),
-          Positioned(
-            left: 16,
-            top: -11,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: labelColor,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildPrioritySelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Приоритет',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF666666),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F5F5),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [1, 2, 3].map((priority) {
-              final isSelected = _selectedPriority == priority;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedPriority = priority;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          _getPriorityIcon(priority),
-                          width: 20,
-                          height: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$priority',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: isSelected ? Colors.black : const Color(0xFF666666),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateTypeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Дата',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF666666),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F5F5),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isDateRange = false;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: !_isDateRange ? Colors.white : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: !_isDateRange
-                          ? [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Один день',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isDateRange = true;
-                      _startDate = _selectedDate;
-                      _endDate = _selectedDate;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _isDateRange ? Colors.white : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: _isDateRange
-                          ? [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'Период',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateSelector() {
-    if (_isDateRange) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Выберите период',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF666666),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    DateTime selected = _startDate ?? DateTime.now();
-                    await showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                      ),
-                      builder: (ctx) {
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-                            left: 20,
-                            right: 20,
-                            top: 20,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Выберите дату начала',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 12),
-                              AppleCalendar(
-                                initialDate: _startDate ?? DateTime.now(),
-                                onDateSelected: (d) {
-                                  if (Navigator.of(ctx).canPop()) {
-                                    Navigator.of(ctx).pop();
-                                  }
-                                  if (mounted) {
-                                    setState(() {
-                                      _startDate = d;
-                                    });
-                                  }
-                                },
-                                onClose: () {
-                                  if (Navigator.of(ctx).canPop()) {
-                                    Navigator.of(ctx).pop();
-                                  }
-                                },
-                                tasks: const [],
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE5E5E5)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'С',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF666666),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _startDate != null
-                              ? '${_startDate!.day} ${_getMonthName(_startDate!.month)} ${_startDate!.year}'
-                              : 'Выберите дату',
-                          style: TextStyle(
-                            fontSize: _startDate != null ? 18 : 14,
-                            fontWeight: FontWeight.w500,
-                            color: _startDate != null ? Colors.black : const Color(0xFF999999),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    if (_startDate == null) {
-                      _showMessage('Сначала выберите дату начала');
-                      return;
-                    }
-                    DateTime selected = _endDate ?? _startDate!;
-                    await showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                      ),
-                      builder: (ctx) {
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-                            left: 20,
-                            right: 20,
-                            top: 20,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Выберите дату окончания',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 12),
-                              AppleCalendar(
-                                initialDate: _endDate ?? _startDate!,
-                                onDateSelected: (d) {
-                                  if (Navigator.of(ctx).canPop()) {
-                                    Navigator.of(ctx).pop();
-                                  }
-                                  if (mounted) {
-                                    setState(() {
-                                      _endDate = d;
-                                    });
-                                  }
-                                },
-                                onClose: () {
-                                  if (Navigator.of(ctx).canPop()) {
-                                    Navigator.of(ctx).pop();
-                                  }
-                                },
-                                tasks: const [],
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE5E5E5)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'По',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF666666),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _endDate != null
-                              ? '${_endDate!.day} ${_getMonthName(_endDate!.month)} ${_endDate!.year}'
-                              : 'Выберите дату',
-                          style: TextStyle(
-                            fontSize: _endDate != null ? 18 : 14,
-                            fontWeight: FontWeight.w500,
-                            color: _endDate != null ? Colors.black : const Color(0xFF999999),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+  Future<void> _pickFiles() async {
+    try {
+      FocusScope.of(context).unfocus();
+      HapticFeedback.mediumImpact();
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: true,
       );
-    } else {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Выберите дату',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+
+      if (result != null && result.files.isNotEmpty) {
+        final newFiles = <AttachedFile>[];
+        
+        for (var platformFile in result.files) {
+          if (platformFile.path != null || platformFile.bytes != null) {
+            String? filePath;
+            int fileSize = 0;
+            
+            if (platformFile.path != null) {
+              filePath = platformFile.path;
+              final file = File(filePath!);
+              if (await file.exists()) {
+                fileSize = await file.length();
+              }
+            } else if (platformFile.bytes != null) {
+              final tempDir = await getTemporaryDirectory();
+              final fileName = platformFile.name;
+              final tempFile = File(path.join(tempDir.path, fileName));
+              await tempFile.writeAsBytes(platformFile.bytes!);
+              filePath = tempFile.path;
+              fileSize = platformFile.bytes!.length;
+            }
+
+            if (filePath != null) {
+              final extension = path.extension(platformFile.name).toLowerCase().replaceFirst('.', '');
+              final fileType = _getFileType(extension);
+              
+              final attachedFile = AttachedFile(
+                fileName: platformFile.name,
+                filePath: filePath,
+                fileType: fileType,
+                fileSize: fileSize,
+              );
+              
+              newFiles.add(attachedFile);
+            }
+          }
+        }
+
+        if (newFiles.isNotEmpty) {
+          setState(() {
+            _attachedFiles.addAll(newFiles);
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage('Ошибка при выборе файла: $e');
+      }
+    }
+  }
+
+  String _getFileType(String extension) {
+    final imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    final docTypes = ['doc', 'docx'];
+    final excelTypes = ['xls', 'xlsx'];
+    final pptTypes = ['ppt', 'pptx'];
+    
+    if (imageTypes.contains(extension)) return 'image';
+    if (extension == 'pdf') return 'pdf';
+    if (docTypes.contains(extension)) return 'word';
+    if (excelTypes.contains(extension)) return 'excel';
+    if (pptTypes.contains(extension)) return 'powerpoint';
+    if (extension == 'txt') return 'text';
+    if (extension == 'rtf') return 'rtf';
+    return 'other';
+  }
+
+  Widget _buildAttachmentChip() {
+    return GestureDetector(
+      onTap: _pickFiles,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.attach_file,
+              size: 18,
               color: Color(0xFF666666),
             ),
-          ),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () async {
-              await showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.white,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            const SizedBox(width: 8),
+            Text(
+              _attachedFiles.isEmpty ? 'Прикрепить' : 'Прикреплено (${_attachedFiles.length})',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF666666),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTagsChip() {
+    if (_isTagsExpanded) {
+      // Прокручиваем влево, чтобы поле было видно
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_chipsScrollController.hasClients) {
+          _chipsScrollController.animateTo(
+            _chipsScrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+      
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.tag,
+              size: 18,
+              color: Color(0xFF666666),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 150,
+              child: TextField(
+                controller: _tagsController,
+                autofocus: true,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF666666),
                 ),
-                builder: (ctx) {
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(ctx).viewInsets.bottom,
-                      left: 20,
-                      right: 20,
-                      top: 20,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Выберите дату',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 12),
-                        AppleCalendar(
-                          initialDate: _selectedDate,
-                          onDateSelected: (d) {
-                            if (Navigator.of(ctx).canPop()) {
-                              Navigator.of(ctx).pop();
-                            }
-                            if (mounted) {
-                              setState(() {
-                                _selectedDate = d;
-                              });
-                            }
-                          },
-                          onClose: () {
-                            if (Navigator.of(ctx).canPop()) {
-                              Navigator.of(ctx).pop();
-                            }
-                          },
-                          tasks: const [],
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ),
-                  );
+                decoration: const InputDecoration(
+                  isCollapsed: true,
+                  hintText: 'продукты',
+                  hintStyle: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF999999),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                onSubmitted: (_) {
+                  setState(() {
+                    _isTagsExpanded = false;
+                  });
                 },
-              );
-            },
-            child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '${_selectedDate.day}',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${_getMonthName(_selectedDate.month)} ${_selectedDate.year}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF999999),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Icon(
-                      Icons.calendar_today,
-                      size: 20,
-                      color: Color(0xFF999999),
-                    ),
-                  ],
-                ),
+                onEditingComplete: () {
+                  setState(() {
+                    _isTagsExpanded = false;
+                  });
+                },
               ),
             ),
-        ],
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isTagsExpanded = false;
+                });
+              },
+              child: const Icon(
+                Icons.check,
+                size: 18,
+                color: Color(0xFF666666),
+              ),
+            ),
+          ],
+        ),
       );
     }
-  }
 
-  String _getPriorityIcon(int priority) {
-    switch (priority) {
-      case 1:
-        return 'assets/icon/thunder-red.png';
-      case 2:
-        return 'assets/icon/thunder-yellow.png';
-      case 3:
-        return 'assets/icon/thunder-blue.png';
-      default:
-        return 'assets/icon/thunder-red.png';
-    }
-  }
-
-  String _getMonthName(int month) {
-    const months = [
-      'янв.',
-      'фев.',
-      'мар.',
-      'апр.',
-      'май',
-      'июн.',
-      'июл.',
-      'авг.',
-      'сен.',
-      'окт.',
-      'ноя.',
-      'дек.',
-    ];
-    return months[month - 1];
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isTagsExpanded = true;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.tag,
+              size: 18,
+              color: Color(0xFF666666),
+            ),
+            SizedBox(width: 8),
+            Text(
+              'Хештеги',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF666666),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
-

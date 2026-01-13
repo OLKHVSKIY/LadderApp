@@ -40,10 +40,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   late AnimationController _starsController;
   String _selectedTheme = 'Светлая';
   String _selectedLanguage = 'Русский';
-  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   bool _saving = false;
   String? _avatarPath;
+  String? _userName;
+  bool _isAvatarHovered = false;
 
   void _toggleSidebar() {
     // Скрываем клавиатуру при открытии/закрытии сайдбара
@@ -83,7 +84,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   void dispose() {
     _starsController.dispose();
-    _nameController.dispose();
     _emailController.dispose();
     super.dispose();
   }
@@ -95,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         await (appDatabase.select(appDatabase.users)..where((u) => u.id.equals(userId))).get();
     if (users.isNotEmpty) {
       final user = users.first;
-      _nameController.text = user.name ?? '';
+      _userName = user.name;
       _emailController.text = user.email;
       
       // Проверяем, что файл аватара существует
@@ -151,7 +151,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     final userId = UserSession.currentUserId;
     if (userId == null) return;
     final email = _emailController.text.trim();
-    final name = _nameController.text.trim();
     if (email.isEmpty) {
       CustomSnackBar.show(context, 'Введите email');
       return;
@@ -167,13 +166,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     
     await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
       UsersCompanion(
-        name: dr.Value(name.isEmpty ? null : name),
         email: dr.Value(email),
         avatarUrl: dr.Value(avatarUrlToSave),
         updatedAt: dr.Value(DateTime.now()),
       ),
     );
-    UserSession.setUser(id: userId, email: email, name: name.isEmpty ? null : name);
+    UserSession.setUser(id: userId, email: email, name: _userName);
     setState(() {
       _saving = false;
     });
@@ -579,8 +577,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                           _buildNotifications(),
                           const SizedBox(height: 32),
                           _buildAbout(),
-                          const SizedBox(height: 32),
-                          _buildLogout(),
                           const SizedBox(height: 20),
                           _buildSaveButton(),
                         ],
@@ -628,79 +624,101 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 ),
                 child: Column(
                   children: [
-                    SizedBox(
-                      height: 170,
-                      width: double.infinity,
-                      child: Center(
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Builder(
-                              builder: (context) {
-                                final hasAvatar = _avatarPath != null && 
-                                    _avatarPath!.isNotEmpty &&
-                                    File(_avatarPath!).existsSync();
-                                
-                                return Container(
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20, bottom: 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Аватарка с возможностью изменения
+                          GestureDetector(
+                            onTapDown: (_) {
+                              setState(() {
+                                _isAvatarHovered = true;
+                              });
+                            },
+                            onTapUp: (_) {
+                              setState(() {
+                                _isAvatarHovered = false;
+                              });
+                              _pickAndCropImage();
+                            },
+                            onTapCancel: () {
+                              setState(() {
+                                _isAvatarHovered = false;
+                              });
+                            },
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Builder(
+                                  builder: (context) {
+                                    final hasAvatar = _avatarPath != null && 
+                                        _avatarPath!.isNotEmpty &&
+                                        File(_avatarPath!).existsSync();
+                                    
+                                    return Container(
+                                      width: 140,
+                                      height: 140,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: const Color(0xFFF5F5F5),
+                                        image: hasAvatar
+                                            ? DecorationImage(
+                                                image: FileImage(File(_avatarPath!)),
+                                                fit: BoxFit.cover,
+                                              )
+                                            : null,
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: !hasAvatar
+                                          ? const Text(
+                                              '👤',
+                                              style: TextStyle(fontSize: 42),
+                                            )
+                                          : null,
+                                    );
+                                  },
+                                ),
+                                // Затемнение и иконка при нажатии
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
                                   width: 140,
                                   height: 140,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: const Color(0xFFF5F5F5),
-                                    image: hasAvatar
-                                        ? DecorationImage(
-                                            image: FileImage(File(_avatarPath!)),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
+                                    color: Colors.black.withOpacity(_isAvatarHovered ? 0.4 : 0.0),
                                   ),
-                                  alignment: Alignment.center,
-                                  child: !hasAvatar
-                                      ? const Text(
-                                          '👤',
-                                          style: TextStyle(fontSize: 42),
+                                  child: _isAvatarHovered
+                                      ? const Icon(
+                                          Icons.camera_alt,
+                                          color: Colors.white,
+                                          size: 32,
                                         )
                                       : null,
-                                );
-                              },
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFF5F5F5),
-                        foregroundColor: const Color(0xFF666666),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      ),
-                      onPressed: _pickAndCropImage,
-                      child: const Text(
-                        'Изменить фото',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 28),
+                          // Имя пользователя (не редактируется)
+                          Text(
+                            _userName ?? 'Пользователь',
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-              _buildInputItem(
-                title: 'Имя',
-                subtitle: 'Как к вам обращаться',
-                hint: 'Введите имя',
-                controller: _nameController,
-                maxLength: 22,
-              ),
-              _buildInputItem(
+              _buildReadOnlyItem(
                 title: 'Email',
-                subtitle: 'Для уведомлений',
-                hint: 'email@example.com',
-                keyboardType: TextInputType.emailAddress,
-                controller: _emailController,
+                subtitle: 'Для уведомлений и\nприглашений',
+                value: _emailController.text,
               ),
             ],
           ),
@@ -989,110 +1007,65 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildLogout() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF5F5F5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+
+  Widget _buildSaveButton() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 0,
+            ),
+            onPressed: _saving ? null : _saveProfile,
+            child: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Сохранить',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
           ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).pushReplacement(
+              PageRouteBuilder(
+                transitionDuration: const Duration(milliseconds: 220),
+                pageBuilder: (_, animation, __) => FadeTransition(
+                  opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+                  child: const LoginPage(),
+                ),
+              ),
+            );
+          },
+          child: Container(
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(20),
               color: const Color(0xFFFFEEEE),
-              border: Border.all(color: const Color(0xFFD60000)),
+              border: Border.all(color: const Color(0xFFD60000), width: 1.5),
             ),
             alignment: Alignment.center,
             child: const Icon(
               Icons.logout,
-              size: 20,
+              size: 24,
               color: Color(0xFFD60000),
             ),
           ),
-          const SizedBox(height: 0, width: 14),
-          const Expanded(
-            child: Text(
-              'Выйти из аккаунта',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFFD60000),
-              elevation: 0,
-              side: const BorderSide(color: Color(0xFFD60000), width: 1.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            ),
-            onPressed: () {
-              Navigator.of(context).pushReplacement(
-                PageRouteBuilder(
-                  transitionDuration: const Duration(milliseconds: 220),
-                  pageBuilder: (_, animation, __) => FadeTransition(
-                    opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-                    child: const LoginPage(),
-                  ),
-                ),
-              );
-            },
-            child: const Text(
-              'Выйти',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSaveButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          elevation: 0,
         ),
-        onPressed: _saving ? null : _saveProfile,
-        child: _saving
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Text(
-                'Сохранить изменения',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              ),
-      ),
+      ],
     );
   }
 
@@ -1112,13 +1085,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildInputItem({
+  Widget _buildReadOnlyItem({
     required String title,
     required String subtitle,
-    required String hint,
-    TextInputType keyboardType = TextInputType.text,
-    TextEditingController? controller,
-    int? maxLength,
+    required String value,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
@@ -1138,39 +1108,31 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
-                ),
+                subtitle.contains('\n')
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: subtitle.split('\n').map((line) {
+                          return Text(
+                            line,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                            softWrap: line == subtitle.split('\n').first ? false : true,
+                          );
+                        }).toList(),
+                      )
+                    : Text(
+                        subtitle,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                      ),
               ],
             ),
           ),
           const SizedBox(width: 12),
           SizedBox(
             width: 220,
-            child: TextField(
-              controller: controller,
-              keyboardType: keyboardType,
-              maxLength: maxLength,
+            child: Text(
+              value,
               style: const TextStyle(color: Colors.black, fontSize: 16),
-              decoration: InputDecoration(
-                counterText: '',
-                hintText: hint,
-                hintStyle: const TextStyle(color: Color(0xFF999999)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE5E5E5)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFFE5E5E5)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black),
-                ),
-              ),
+              textAlign: TextAlign.right,
             ),
           ),
         ],

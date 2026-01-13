@@ -700,41 +700,41 @@ class _NoteEditorState extends State<NoteEditor> {
                         child: Column(
                           children: [
                             Expanded(
+                        child: Stack(
+                          children: [
+                            // Текстовое поле с форматированием
+                            Container(
+                              padding: const EdgeInsets.all(20),
                               child: Stack(
                                 children: [
-                                  // Текстовое поле с форматированием
-                                  Container(
-                                    padding: const EdgeInsets.all(20),
-                                    child: Stack(
-                                      children: [
-                                        // Форматированный текст (для отображения)
-                                        if (!_focusNode.hasFocus && _controller.text.isNotEmpty)
-                                          Positioned.fill(
-                                            child: SingleChildScrollView(
-                                              child: _parseAndDisplayText(_controller.text),
-                                            ),
-                                          ),
-                                        // Поле ввода (для редактирования)
-                                        TextField(
-                                          controller: _controller,
-                                          focusNode: _focusNode,
-                                          maxLines: null,
-                                          expands: true,
-                                          textAlign: _textAlign,
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            height: 1.6,
-                                            color: _focusNode.hasFocus ? Colors.black : Colors.transparent,
-                                          ),
-                                          decoration: const InputDecoration(
-                                            hintText: 'Начните писать...',
-                                            hintStyle: TextStyle(
-                                              color: Color(0xFF999999),
-                                            ),
-                                            border: InputBorder.none,
-                                          ),
-                                        ),
-                                      ],
+                                  // Форматированный текст (для отображения)
+                                  if (!_focusNode.hasFocus && _controller.text.isNotEmpty)
+                                    Positioned.fill(
+                                      child: SingleChildScrollView(
+                                        child: _parseAndDisplayText(_controller.text),
+                                      ),
+                                    ),
+                                  // Поле ввода (для редактирования)
+                                  TextField(
+                                    controller: _controller,
+                                    focusNode: _focusNode,
+                                    maxLines: null,
+                                    expands: true,
+                                    textAlign: _textAlign,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      height: 1.6,
+                                      color: _focusNode.hasFocus ? Colors.black : Colors.transparent,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Начните писать...',
+                                      hintStyle: TextStyle(
+                                        color: Color(0xFF999999),
+                                      ),
+                                      border: InputBorder.none,
+                                    ),
+                                  ),
+                                ],
                                     ),
                                   ),
                                 ],
@@ -753,8 +753,8 @@ class _NoteEditorState extends State<NoteEditor> {
                                 child: FileAttachmentDisplay(
                                   files: _attachedFiles,
                                   isCompact: true,
-                                ),
                               ),
+                            ),
                           ],
                         ),
                       ),

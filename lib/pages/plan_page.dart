@@ -1295,10 +1295,14 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                     children: [
                       // Кнопка редактирования показывается только для сохраненных планов
                       if (goal.isSaved) ...[
-                        _iconButton(
-                          _isEditMode ? Icons.check : Icons.edit,
-                          onTap: _toggleEditMode,
-                        ),
+                        _isEditMode
+                            ? _iconButton(
+                                Icons.check,
+                                onTap: _toggleEditMode,
+                              )
+                            : _pencilButton(
+                                onTap: _toggleEditMode,
+                              ),
                         const SizedBox(width: 8),
                       ],
                       _trashIconButton(onTap: () => _showDeleteConfirmDialog(goal.id)),
@@ -1562,6 +1566,38 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     );
   }
 
+  Widget _pencilButton({required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              child: Image.asset(
+                'assets/icon/pencil.png',
+                cacheWidth: 68,
+                cacheHeight: 68,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _trashIconButton({required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -1575,8 +1611,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: SizedBox(
-            width: 17,
-            height: 17,
+            width: 19,
+            height: 19,
             child: ColorFiltered(
               colorFilter: const ColorFilter.mode(
                 Colors.black,

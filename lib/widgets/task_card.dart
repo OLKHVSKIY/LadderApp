@@ -287,6 +287,13 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             color: const Color(0xFFF7F6F7),
             borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
