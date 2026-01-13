@@ -199,16 +199,14 @@ class _MainHeaderState extends State<MainHeader> {
             child: Center(
               child: GestureDetector(
                 onTap: widget.onGreetingToggle,
-                onPanUpdate: widget.onGreetingPanUpdate,
-                onPanEnd: widget.onGreetingPanEnd,
                 child: Container(
-                  width: 150, // Увеличена область тапа
-                  height: 40, // Увеличена область тапа
-                  color: Colors.transparent, // Прозрачный цвет для корректной работы hit testing
+                  width: 150,
+                  height: 40,
+                  color: Colors.transparent,
                   alignment: Alignment.topCenter,
                   padding: const EdgeInsets.only(top: 8),
                   child: Container(
-                    width: 45, // Размер самой черточки остается прежним
+                    width: 45,
                     height: 4,
                     decoration: BoxDecoration(
                       color: const Color(0xFFC2C1C1),

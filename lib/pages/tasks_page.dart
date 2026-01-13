@@ -110,10 +110,10 @@ class _TasksPageState extends State<TasksPage> {
         }
       }
     } else {
-      // При закрытой панели: разрешаем только перетаскивание вверх (открытие)
-      // delta.dy отрицательный при перетаскивании вверх
-      if (details.delta.dy < 0) {
-        _headerDragDistance -= details.delta.dy; // Инвертируем, так как delta.dy отрицательный
+      // При закрытой панели: разрешаем только перетаскивание вниз (открытие)
+      // delta.dy положительный при перетаскивании вниз
+      if (details.delta.dy > 0) {
+        _headerDragDistance += details.delta.dy;
         // Если перетащили больше порога, открываем
         if (_headerDragDistance > threshold) {
           _headerDragDistance = 0.0;
@@ -138,8 +138,8 @@ class _TasksPageState extends State<TasksPage> {
         _toggleGreetingPanel();
       }
     } else {
-      // Если перетащили достаточно или скорость высокая вверх - открываем
-      if (_headerDragDistance > threshold || velocity < -300) {
+      // Если перетащили достаточно или скорость высокая вниз - открываем
+      if (_headerDragDistance > threshold || velocity > 200) {
         if (_isGreetingPanelOpen) return; // Уже открыта
         _toggleGreetingPanel();
       }
@@ -702,13 +702,13 @@ class _TasksPageState extends State<TasksPage> {
                 ),
               ),
             // Невидимая область для открытия шторки свайпом вниз (когда закрыта)
-            // Размещаем ниже хедера, чтобы не перекрывать кнопки
+            // Используем GestureDetector только в центральной области, чтобы не блокировать кнопки
             if (!_isGreetingPanelOpen)
               Positioned(
-                top: MediaQuery.of(context).padding.top - 10 + 60, // Ниже хедера (60px высота)
-                left: 0,
-                right: 0,
-                height: 100, // Область для открытия свайпом
+                top: MediaQuery.of(context).padding.top - 10, // От самого верха
+                left: 80, // Исключаем левую область (кнопка меню)
+                right: 80, // Исключаем правую область (кнопки поиска и настроек)
+                height: 140, // Достаточная область для начала свайпа
                 child: GestureDetector(
                   onPanStart: (details) {
                     _headerDragDistance = 0.0;
@@ -732,6 +732,7 @@ class _TasksPageState extends State<TasksPage> {
                     }
                     _headerDragDistance = 0.0;
                   },
+                  behavior: HitTestBehavior.translucent,
                   child: Container(
                     color: Colors.transparent,
                   ),

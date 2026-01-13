@@ -1232,6 +1232,13 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // Обновляем заметки при каждом build, если список пуст или при переключении на недельный вид
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && (_timelineNotes.isEmpty || _listViewType == ListViewType.week)) {
+        _loadTimelineNotes();
+      }
+    });
+    
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     // Вычисляем позицию: когда клавиатура открыта, поднимаем на keyboardHeight - 40, иначе на стандартную позицию
@@ -1855,6 +1862,85 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     }).toList();
   }
 
+  List<Widget> _buildWeekTimelineNotes(BuildContext context, double lineHeight) {
+    if (_listViewType != ListViewType.week) return [];
+    
+    final weekDates = _getWeekDates();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final timeColumnWidth = 61.0; // 60 (столбец времени) + 1 (вертикальная линия)
+    final availableWidth = screenWidth - timeColumnWidth;
+    final dayColumnWidth = availableWidth / 7; // Ширина одного столбика дня
+    
+    final minutesPerLine = _getMinutesPerLine();
+    final hourHeight = _getHourHeight(context);
+    final linesPerHour = _getTimeLinesCount();
+    final lineHeightCalc = hourHeight / linesPerHour;
+    
+    final notes = _timelineNotes.where((note) {
+      final startTime = note['startTime'] as DateTime;
+      // Проверяем, попадает ли заметка в неделю
+      return weekDates.any((date) => _isSameDay(startTime, date));
+    }).toList();
+    
+    return notes.map((note) {
+      final noteId = note['id']?.toString();
+      final startTime = note['startTime'] as DateTime;
+      final endTime = note['endTime'] as DateTime;
+      final title = note['title'] as String;
+      final colorHex = note['color'] as String? ?? '#FFEB3B';
+      final iconKey = note['icon'] as String?;
+      
+      // Находим индекс дня недели для этой заметки
+      int dayIndex = -1;
+      for (int i = 0; i < weekDates.length; i++) {
+        if (_isSameDay(startTime, weekDates[i])) {
+          dayIndex = i;
+          break;
+        }
+      }
+      
+      // Если заметка не попадает ни в один день недели, пропускаем
+      if (dayIndex == -1) {
+        return const SizedBox.shrink();
+      }
+      
+      // Вычисляем позицию заметки относительно начала дня
+      final dayStart = DateTime(weekDates[dayIndex].year, weekDates[dayIndex].month, weekDates[dayIndex].day);
+      final noteStartInDay = DateTime(dayStart.year, dayStart.month, dayStart.day, startTime.hour, startTime.minute);
+      
+      final startPosition = _getTimePositionForDateTime(context, noteStartInDay, weekDates[dayIndex]) - _currentScrollOffset;
+      final duration = endTime.difference(startTime);
+      final height = (duration.inMinutes / minutesPerLine) * lineHeightCalc;
+      
+      // Скрываем заметку, если она полностью выше или ниже видимой области
+      final screenHeight = MediaQuery.of(context).size.height;
+      if (startPosition + height < 0 || startPosition > screenHeight) {
+        return const SizedBox.shrink();
+      }
+      
+      final color = _getColorFromHex(colorHex);
+      final iconData = _getIconData(iconKey);
+      
+      // Вычисляем позицию по горизонтали (left) для нужного столбика
+      final left = timeColumnWidth + (dayIndex * dayColumnWidth);
+      
+      return Positioned(
+        top: startPosition,
+        left: left,
+        width: dayColumnWidth,
+        height: height,
+        child: _WeekNoteWidget(
+          noteId: noteId,
+          color: color,
+          iconData: iconData,
+          noteHeight: height,
+          duration: duration,
+          onLongPress: (noteId) => _handleNoteLongPress(context, noteId),
+        ),
+      );
+    }).toList();
+  }
+
   Widget _buildAttachingNotePreview(BuildContext context, double lineHeight) {
     if (_attachingNoteStartTime == null || _attachingNoteEndTime == null) {
       return const SizedBox.shrink();
@@ -2353,6 +2439,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                 );
               },
             ),
+            // Сохраненные заметки для недельного вида
+            ..._buildWeekTimelineNotes(context, lineHeight),
             // Блок-превью заметки в режиме прикрепления (для недельного вида)
             if (_isAttachingNote && _attachingNoteStartTime != null && _listViewType == ListViewType.week && _shouldShowCurrentTimeIndicator())
               _buildAttachingNotePreview(context, lineHeight),
@@ -2726,9 +2814,13 @@ class _NoteWidgetState extends State<_NoteWidget> {
           builder: (context, constraints) {
             // Адаптивные размеры в зависимости от высоты заметки
             final availableHeight = constraints.maxHeight;
-            final minPadding = 4.0;
+            final availableWidth = constraints.maxWidth;
+            final minPadding = 2.0;
             final maxPadding = 12.0;
-            final padding = maxPadding; // Одинаковый padding для всех заметок
+            // Адаптивный padding: уменьшаем, если высота очень маленькая
+            final padding = availableHeight < 20 
+                ? minPadding 
+                : (availableHeight < 30 ? 4.0 : maxPadding);
             
             // Вычисляем длительность заметки в минутах
             final noteDurationMinutes = widget.duration.inMinutes;
@@ -2736,10 +2828,15 @@ class _NoteWidgetState extends State<_NoteWidget> {
             // Для заметок 10 минут и меньше - показываем время в одну строку с названием
             final isSmallNote = noteDurationMinutes <= 10;
             
+            // Для очень маленьких заметок (меньше 20px) используем минимальный размер иконки или скрываем
+            final isVerySmallNote = availableHeight < 20;
+            
             // Размер иконки адаптивный к высоте (с учетом отступов)
             final iconMaxSize = 48.0;
-            final iconMinSize = 16.0;
-            final iconSize = (availableHeight - padding * 2).clamp(iconMinSize, iconMaxSize);
+            final iconMinSize = isVerySmallNote ? 0.0 : 12.0; // Скрываем иконку для очень маленьких заметок
+            final iconSize = isVerySmallNote 
+                ? 0.0 
+                : (availableHeight - padding * 2).clamp(iconMinSize, iconMaxSize);
             
             // Размер шрифта названия адаптивный
             final titleMaxFontSize = 16.0;
@@ -2752,15 +2849,32 @@ class _NoteWidgetState extends State<_NoteWidget> {
             final durationFontSize = (availableHeight * 0.25).clamp(durationMinFontSize, durationMaxFontSize);
             
             // Расстояние между элементами
-            final spacing = availableHeight > 40 ? 12.0 : (availableHeight * 0.15).clamp(4.0, 12.0);
+            final spacing = isVerySmallNote 
+                ? 2.0 
+                : (availableHeight > 40 ? 12.0 : (availableHeight * 0.15).clamp(4.0, 12.0));
             final durationSpacing = availableHeight > 50 ? 2.0 : (availableHeight <= 35 ? 0.0 : 1.0);
             
             return Padding(
               padding: EdgeInsets.all(padding),
-              child: Row(
+              child: isVerySmallNote
+                  ? // Для очень маленьких заметок - только текст в одну строку
+                    Center(
+                      child: Text(
+                        widget.title,
+                        style: TextStyle(
+                          fontSize: (availableHeight - padding * 2).clamp(8.0, 12.0),
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  : Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (widget.iconData != null) ...[
+                        if (widget.iconData != null && iconSize > 0) ...[
                           SizedBox(
                             width: iconSize,
                             height: iconSize,
@@ -2790,15 +2904,17 @@ class _NoteWidgetState extends State<_NoteWidget> {
                                         maxLines: 1,
                                       ),
                                     ),
-                                    SizedBox(width: spacing * 0.5),
-                                    Text(
-                                      _formatDurationWidget(widget.duration),
-                                      style: TextStyle(
-                                        fontSize: durationFontSize,
-                                        fontWeight: FontWeight.w400,
-                                        color: Colors.black87.withValues(alpha: 0.7),
+                                    if (availableHeight > 25) ...[
+                                      SizedBox(width: spacing * 0.5),
+                                      Text(
+                                        _formatDurationWidget(widget.duration),
+                                        style: TextStyle(
+                                          fontSize: durationFontSize,
+                                          fontWeight: FontWeight.w400,
+                                          color: Colors.black87.withValues(alpha: 0.7),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 )
                               : Column(
@@ -2831,6 +2947,155 @@ class _NoteWidgetState extends State<_NoteWidget> {
                         ),
                       ],
                     ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// Упрощенный виджет заметки для недельного вида - только иконка сверху
+class _WeekNoteWidget extends StatefulWidget {
+  final String? noteId;
+  final Color color;
+  final IconData? iconData;
+  final double noteHeight;
+  final Duration duration;
+  final Function(String?) onLongPress;
+
+  const _WeekNoteWidget({
+    required this.noteId,
+    required this.color,
+    required this.iconData,
+    required this.noteHeight,
+    required this.duration,
+    required this.onLongPress,
+  });
+
+  @override
+  State<_WeekNoteWidget> createState() => _WeekNoteWidgetState();
+}
+
+class _WeekNoteWidgetState extends State<_WeekNoteWidget> {
+  Timer? _longPressTimer;
+  bool _isPressed = false;
+
+  @override
+  void dispose() {
+    _longPressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    _isPressed = true;
+    _longPressTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted && _isPressed) {
+        widget.onLongPress(widget.noteId);
+        _isPressed = false;
+      }
+    });
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _isPressed = false;
+    _longPressTimer?.cancel();
+  }
+
+  void _handleTapCancel() {
+    _isPressed = false;
+    _longPressTimer?.cancel();
+  }
+
+  String _formatDurationWidget(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours > 0) {
+      return '${hours}ч ${minutes}м';
+    }
+    return '${minutes}м';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      // Обрабатываем только tap и long press, не блокируем pan gestures для прокрутки
+      onTapDown: _handleTapDown,
+      onTapUp: _handleTapUp,
+      onTapCancel: _handleTapCancel,
+      onLongPress: () {
+        widget.onLongPress(widget.noteId);
+      },
+      // Используем translucent, чтобы pan gestures могли проходить сквозь к ListView
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: widget.color.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: widget.color.withValues(alpha: 0.5), width: 1),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableHeight = constraints.maxHeight;
+            final availableWidth = constraints.maxWidth;
+            
+            // Для очень маленьких заметок - только цветная полоска
+            if (availableHeight < 10 || availableWidth < 10) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            }
+            
+            // Иконка и продолжительность по центру
+            final iconSize = (availableHeight * 0.35).clamp(12.0, 24.0);
+            final topPadding = (availableHeight * 0.1).clamp(2.0, 8.0);
+            final spacing = (availableHeight * 0.05).clamp(2.0, 6.0);
+            final durationFontSize = (availableHeight * 0.15).clamp(8.0, 12.0);
+            
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(height: topPadding),
+                if (widget.iconData != null)
+                  Center(
+                    child: Icon(
+                      widget.iconData,
+                      size: iconSize,
+                      color: Color.lerp(widget.color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? widget.color.withValues(alpha: 0.7),
+                    ),
+                  )
+                else
+                  // Если нет иконки, показываем цветную полоску сверху на всю ширину
+                  Container(
+                    width: availableWidth,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: widget.color,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                if (widget.iconData != null && availableHeight > 25) ...[
+                  SizedBox(height: spacing),
+                  Center(
+                    child: Text(
+                      _formatDurationWidget(widget.duration),
+                      style: TextStyle(
+                        fontSize: durationFontSize,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87.withValues(alpha: 0.7),
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+              ],
             );
           },
         ),
