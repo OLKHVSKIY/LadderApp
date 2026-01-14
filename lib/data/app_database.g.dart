@@ -4794,6 +4794,1279 @@ class DelegatedTasksCompanion extends UpdateCompanion<DelegatedTask> {
   }
 }
 
+class $CustomTaskScreensTable extends CustomTaskScreens
+    with TableInfo<$CustomTaskScreensTable, CustomTaskScreen> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomTaskScreensTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<int> userId = GeneratedColumn<int>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES users (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    userId,
+    name,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'custom_task_screens';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomTaskScreen> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomTaskScreen map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomTaskScreen(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}user_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomTaskScreensTable createAlias(String alias) {
+    return $CustomTaskScreensTable(attachedDatabase, alias);
+  }
+}
+
+class CustomTaskScreen extends DataClass
+    implements Insertable<CustomTaskScreen> {
+  final int id;
+  final int userId;
+  final String name;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const CustomTaskScreen({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['user_id'] = Variable<int>(userId);
+    map['name'] = Variable<String>(name);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CustomTaskScreensCompanion toCompanion(bool nullToAbsent) {
+    return CustomTaskScreensCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      name: Value(name),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CustomTaskScreen.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomTaskScreen(
+      id: serializer.fromJson<int>(json['id']),
+      userId: serializer.fromJson<int>(json['userId']),
+      name: serializer.fromJson<String>(json['name']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'userId': serializer.toJson<int>(userId),
+      'name': serializer.toJson<String>(name),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  CustomTaskScreen copyWith({
+    int? id,
+    int? userId,
+    String? name,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => CustomTaskScreen(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    name: name ?? this.name,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CustomTaskScreen copyWithCompanion(CustomTaskScreensCompanion data) {
+    return CustomTaskScreen(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      name: data.name.present ? data.name.value : this.name,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomTaskScreen(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, name, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomTaskScreen &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.name == this.name &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CustomTaskScreensCompanion extends UpdateCompanion<CustomTaskScreen> {
+  final Value<int> id;
+  final Value<int> userId;
+  final Value<String> name;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const CustomTaskScreensCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  CustomTaskScreensCompanion.insert({
+    this.id = const Value.absent(),
+    required int userId,
+    required String name,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : userId = Value(userId),
+       name = Value(name);
+  static Insertable<CustomTaskScreen> custom({
+    Expression<int>? id,
+    Expression<int>? userId,
+    Expression<String>? name,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (name != null) 'name': name,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  CustomTaskScreensCompanion copyWith({
+    Value<int>? id,
+    Value<int>? userId,
+    Value<String>? name,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return CustomTaskScreensCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<int>(userId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomTaskScreensCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CustomTasksTable extends CustomTasks
+    with TableInfo<$CustomTasksTable, CustomTask> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomTasksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _screenIdMeta = const VerificationMeta(
+    'screenId',
+  );
+  @override
+  late final GeneratedColumn<int> screenId = GeneratedColumn<int>(
+    'screen_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES custom_task_screens (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _creatorIdMeta = const VerificationMeta(
+    'creatorId',
+  );
+  @override
+  late final GeneratedColumn<int> creatorId = GeneratedColumn<int>(
+    'creator_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES users (id) ON DELETE SET NULL',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endDateMeta = const VerificationMeta(
+    'endDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> endDate = GeneratedColumn<DateTime>(
+    'end_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _isCompletedMeta = const VerificationMeta(
+    'isCompleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isCompleted = GeneratedColumn<bool>(
+    'is_completed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_completed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    screenId,
+    creatorId,
+    title,
+    description,
+    date,
+    endDate,
+    priority,
+    isCompleted,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'custom_tasks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomTask> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('screen_id')) {
+      context.handle(
+        _screenIdMeta,
+        screenId.isAcceptableOrUnknown(data['screen_id']!, _screenIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_screenIdMeta);
+    }
+    if (data.containsKey('creator_id')) {
+      context.handle(
+        _creatorIdMeta,
+        creatorId.isAcceptableOrUnknown(data['creator_id']!, _creatorIdMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(
+        _endDateMeta,
+        endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta),
+      );
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('is_completed')) {
+      context.handle(
+        _isCompletedMeta,
+        isCompleted.isAcceptableOrUnknown(
+          data['is_completed']!,
+          _isCompletedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomTask map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomTask(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      screenId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}screen_id'],
+      )!,
+      creatorId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}creator_id'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      endDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}end_date'],
+      ),
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}priority'],
+      )!,
+      isCompleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_completed'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomTasksTable createAlias(String alias) {
+    return $CustomTasksTable(attachedDatabase, alias);
+  }
+}
+
+class CustomTask extends DataClass implements Insertable<CustomTask> {
+  final int id;
+  final int screenId;
+  final int? creatorId;
+  final String title;
+  final String? description;
+  final DateTime date;
+  final DateTime? endDate;
+  final int priority;
+  final bool isCompleted;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const CustomTask({
+    required this.id,
+    required this.screenId,
+    this.creatorId,
+    required this.title,
+    this.description,
+    required this.date,
+    this.endDate,
+    required this.priority,
+    required this.isCompleted,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['screen_id'] = Variable<int>(screenId);
+    if (!nullToAbsent || creatorId != null) {
+      map['creator_id'] = Variable<int>(creatorId);
+    }
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['date'] = Variable<DateTime>(date);
+    if (!nullToAbsent || endDate != null) {
+      map['end_date'] = Variable<DateTime>(endDate);
+    }
+    map['priority'] = Variable<int>(priority);
+    map['is_completed'] = Variable<bool>(isCompleted);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CustomTasksCompanion toCompanion(bool nullToAbsent) {
+    return CustomTasksCompanion(
+      id: Value(id),
+      screenId: Value(screenId),
+      creatorId: creatorId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(creatorId),
+      title: Value(title),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      date: Value(date),
+      endDate: endDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endDate),
+      priority: Value(priority),
+      isCompleted: Value(isCompleted),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CustomTask.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomTask(
+      id: serializer.fromJson<int>(json['id']),
+      screenId: serializer.fromJson<int>(json['screenId']),
+      creatorId: serializer.fromJson<int?>(json['creatorId']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String?>(json['description']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      endDate: serializer.fromJson<DateTime?>(json['endDate']),
+      priority: serializer.fromJson<int>(json['priority']),
+      isCompleted: serializer.fromJson<bool>(json['isCompleted']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'screenId': serializer.toJson<int>(screenId),
+      'creatorId': serializer.toJson<int?>(creatorId),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String?>(description),
+      'date': serializer.toJson<DateTime>(date),
+      'endDate': serializer.toJson<DateTime?>(endDate),
+      'priority': serializer.toJson<int>(priority),
+      'isCompleted': serializer.toJson<bool>(isCompleted),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  CustomTask copyWith({
+    int? id,
+    int? screenId,
+    Value<int?> creatorId = const Value.absent(),
+    String? title,
+    Value<String?> description = const Value.absent(),
+    DateTime? date,
+    Value<DateTime?> endDate = const Value.absent(),
+    int? priority,
+    bool? isCompleted,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => CustomTask(
+    id: id ?? this.id,
+    screenId: screenId ?? this.screenId,
+    creatorId: creatorId.present ? creatorId.value : this.creatorId,
+    title: title ?? this.title,
+    description: description.present ? description.value : this.description,
+    date: date ?? this.date,
+    endDate: endDate.present ? endDate.value : this.endDate,
+    priority: priority ?? this.priority,
+    isCompleted: isCompleted ?? this.isCompleted,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CustomTask copyWithCompanion(CustomTasksCompanion data) {
+    return CustomTask(
+      id: data.id.present ? data.id.value : this.id,
+      screenId: data.screenId.present ? data.screenId.value : this.screenId,
+      creatorId: data.creatorId.present ? data.creatorId.value : this.creatorId,
+      title: data.title.present ? data.title.value : this.title,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      date: data.date.present ? data.date.value : this.date,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      isCompleted: data.isCompleted.present
+          ? data.isCompleted.value
+          : this.isCompleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomTask(')
+          ..write('id: $id, ')
+          ..write('screenId: $screenId, ')
+          ..write('creatorId: $creatorId, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('date: $date, ')
+          ..write('endDate: $endDate, ')
+          ..write('priority: $priority, ')
+          ..write('isCompleted: $isCompleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    screenId,
+    creatorId,
+    title,
+    description,
+    date,
+    endDate,
+    priority,
+    isCompleted,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomTask &&
+          other.id == this.id &&
+          other.screenId == this.screenId &&
+          other.creatorId == this.creatorId &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.date == this.date &&
+          other.endDate == this.endDate &&
+          other.priority == this.priority &&
+          other.isCompleted == this.isCompleted &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CustomTasksCompanion extends UpdateCompanion<CustomTask> {
+  final Value<int> id;
+  final Value<int> screenId;
+  final Value<int?> creatorId;
+  final Value<String> title;
+  final Value<String?> description;
+  final Value<DateTime> date;
+  final Value<DateTime?> endDate;
+  final Value<int> priority;
+  final Value<bool> isCompleted;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const CustomTasksCompanion({
+    this.id = const Value.absent(),
+    this.screenId = const Value.absent(),
+    this.creatorId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.date = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.isCompleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  CustomTasksCompanion.insert({
+    this.id = const Value.absent(),
+    required int screenId,
+    this.creatorId = const Value.absent(),
+    required String title,
+    this.description = const Value.absent(),
+    required DateTime date,
+    this.endDate = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.isCompleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : screenId = Value(screenId),
+       title = Value(title),
+       date = Value(date);
+  static Insertable<CustomTask> custom({
+    Expression<int>? id,
+    Expression<int>? screenId,
+    Expression<int>? creatorId,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<DateTime>? date,
+    Expression<DateTime>? endDate,
+    Expression<int>? priority,
+    Expression<bool>? isCompleted,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (screenId != null) 'screen_id': screenId,
+      if (creatorId != null) 'creator_id': creatorId,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (date != null) 'date': date,
+      if (endDate != null) 'end_date': endDate,
+      if (priority != null) 'priority': priority,
+      if (isCompleted != null) 'is_completed': isCompleted,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  CustomTasksCompanion copyWith({
+    Value<int>? id,
+    Value<int>? screenId,
+    Value<int?>? creatorId,
+    Value<String>? title,
+    Value<String?>? description,
+    Value<DateTime>? date,
+    Value<DateTime?>? endDate,
+    Value<int>? priority,
+    Value<bool>? isCompleted,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return CustomTasksCompanion(
+      id: id ?? this.id,
+      screenId: screenId ?? this.screenId,
+      creatorId: creatorId ?? this.creatorId,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      date: date ?? this.date,
+      endDate: endDate ?? this.endDate,
+      priority: priority ?? this.priority,
+      isCompleted: isCompleted ?? this.isCompleted,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (screenId.present) {
+      map['screen_id'] = Variable<int>(screenId.value);
+    }
+    if (creatorId.present) {
+      map['creator_id'] = Variable<int>(creatorId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<DateTime>(endDate.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    if (isCompleted.present) {
+      map['is_completed'] = Variable<bool>(isCompleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomTasksCompanion(')
+          ..write('id: $id, ')
+          ..write('screenId: $screenId, ')
+          ..write('creatorId: $creatorId, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('date: $date, ')
+          ..write('endDate: $endDate, ')
+          ..write('priority: $priority, ')
+          ..write('isCompleted: $isCompleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CustomScreenUsersTable extends CustomScreenUsers
+    with TableInfo<$CustomScreenUsersTable, CustomScreenUser> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomScreenUsersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _screenIdMeta = const VerificationMeta(
+    'screenId',
+  );
+  @override
+  late final GeneratedColumn<int> screenId = GeneratedColumn<int>(
+    'screen_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES custom_task_screens (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<int> userId = GeneratedColumn<int>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES users (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now(),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [screenId, userId, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'custom_screen_users';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomScreenUser> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('screen_id')) {
+      context.handle(
+        _screenIdMeta,
+        screenId.isAcceptableOrUnknown(data['screen_id']!, _screenIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_screenIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {screenId, userId};
+  @override
+  CustomScreenUser map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomScreenUser(
+      screenId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}screen_id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}user_id'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomScreenUsersTable createAlias(String alias) {
+    return $CustomScreenUsersTable(attachedDatabase, alias);
+  }
+}
+
+class CustomScreenUser extends DataClass
+    implements Insertable<CustomScreenUser> {
+  final int screenId;
+  final int userId;
+  final DateTime addedAt;
+  const CustomScreenUser({
+    required this.screenId,
+    required this.userId,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['screen_id'] = Variable<int>(screenId);
+    map['user_id'] = Variable<int>(userId);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  CustomScreenUsersCompanion toCompanion(bool nullToAbsent) {
+    return CustomScreenUsersCompanion(
+      screenId: Value(screenId),
+      userId: Value(userId),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory CustomScreenUser.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomScreenUser(
+      screenId: serializer.fromJson<int>(json['screenId']),
+      userId: serializer.fromJson<int>(json['userId']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'screenId': serializer.toJson<int>(screenId),
+      'userId': serializer.toJson<int>(userId),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  CustomScreenUser copyWith({int? screenId, int? userId, DateTime? addedAt}) =>
+      CustomScreenUser(
+        screenId: screenId ?? this.screenId,
+        userId: userId ?? this.userId,
+        addedAt: addedAt ?? this.addedAt,
+      );
+  CustomScreenUser copyWithCompanion(CustomScreenUsersCompanion data) {
+    return CustomScreenUser(
+      screenId: data.screenId.present ? data.screenId.value : this.screenId,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomScreenUser(')
+          ..write('screenId: $screenId, ')
+          ..write('userId: $userId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(screenId, userId, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomScreenUser &&
+          other.screenId == this.screenId &&
+          other.userId == this.userId &&
+          other.addedAt == this.addedAt);
+}
+
+class CustomScreenUsersCompanion extends UpdateCompanion<CustomScreenUser> {
+  final Value<int> screenId;
+  final Value<int> userId;
+  final Value<DateTime> addedAt;
+  final Value<int> rowid;
+  const CustomScreenUsersCompanion({
+    this.screenId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CustomScreenUsersCompanion.insert({
+    required int screenId,
+    required int userId,
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : screenId = Value(screenId),
+       userId = Value(userId);
+  static Insertable<CustomScreenUser> custom({
+    Expression<int>? screenId,
+    Expression<int>? userId,
+    Expression<DateTime>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (screenId != null) 'screen_id': screenId,
+      if (userId != null) 'user_id': userId,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CustomScreenUsersCompanion copyWith({
+    Value<int>? screenId,
+    Value<int>? userId,
+    Value<DateTime>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return CustomScreenUsersCompanion(
+      screenId: screenId ?? this.screenId,
+      userId: userId ?? this.userId,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (screenId.present) {
+      map['screen_id'] = Variable<int>(screenId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<int>(userId.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomScreenUsersCompanion(')
+          ..write('screenId: $screenId, ')
+          ..write('userId: $userId, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4808,6 +6081,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TaskFilesTable taskFiles = $TaskFilesTable(this);
   late final $NoteFilesTable noteFiles = $NoteFilesTable(this);
   late final $DelegatedTasksTable delegatedTasks = $DelegatedTasksTable(this);
+  late final $CustomTaskScreensTable customTaskScreens =
+      $CustomTaskScreensTable(this);
+  late final $CustomTasksTable customTasks = $CustomTasksTable(this);
+  late final $CustomScreenUsersTable customScreenUsers =
+      $CustomScreenUsersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4824,6 +6102,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     taskFiles,
     noteFiles,
     delegatedTasks,
+    customTaskScreens,
+    customTasks,
+    customScreenUsers,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -4903,6 +6184,41 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('delegated_tasks', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'users',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('custom_task_screens', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'custom_task_screens',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('custom_tasks', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'users',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('custom_tasks', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'custom_task_screens',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('custom_screen_users', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'users',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('custom_screen_users', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -5038,6 +6354,72 @@ final class $$UsersTableReferences
     ).filter((f) => f.fromUserId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_delegatedTasksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$CustomTaskScreensTable, List<CustomTaskScreen>>
+  _customTaskScreensRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.customTaskScreens,
+        aliasName: $_aliasNameGenerator(
+          db.users.id,
+          db.customTaskScreens.userId,
+        ),
+      );
+
+  $$CustomTaskScreensTableProcessedTableManager get customTaskScreensRefs {
+    final manager = $$CustomTaskScreensTableTableManager(
+      $_db,
+      $_db.customTaskScreens,
+    ).filter((f) => f.userId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _customTaskScreensRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$CustomTasksTable, List<CustomTask>>
+  _customTasksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.customTasks,
+    aliasName: $_aliasNameGenerator(db.users.id, db.customTasks.creatorId),
+  );
+
+  $$CustomTasksTableProcessedTableManager get customTasksRefs {
+    final manager = $$CustomTasksTableTableManager(
+      $_db,
+      $_db.customTasks,
+    ).filter((f) => f.creatorId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_customTasksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$CustomScreenUsersTable, List<CustomScreenUser>>
+  _customScreenUsersRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.customScreenUsers,
+        aliasName: $_aliasNameGenerator(
+          db.users.id,
+          db.customScreenUsers.userId,
+        ),
+      );
+
+  $$CustomScreenUsersTableProcessedTableManager get customScreenUsersRefs {
+    final manager = $$CustomScreenUsersTableTableManager(
+      $_db,
+      $_db.customScreenUsers,
+    ).filter((f) => f.userId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _customScreenUsersRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -5228,6 +6610,81 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
           }) => $$DelegatedTasksTableFilterComposer(
             $db: $db,
             $table: $db.delegatedTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> customTaskScreensRefs(
+    Expression<bool> Function($$CustomTaskScreensTableFilterComposer f) f,
+  ) {
+    final $$CustomTaskScreensTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customTaskScreens,
+      getReferencedColumn: (t) => t.userId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTaskScreensTableFilterComposer(
+            $db: $db,
+            $table: $db.customTaskScreens,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> customTasksRefs(
+    Expression<bool> Function($$CustomTasksTableFilterComposer f) f,
+  ) {
+    final $$CustomTasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customTasks,
+      getReferencedColumn: (t) => t.creatorId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTasksTableFilterComposer(
+            $db: $db,
+            $table: $db.customTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> customScreenUsersRefs(
+    Expression<bool> Function($$CustomScreenUsersTableFilterComposer f) f,
+  ) {
+    final $$CustomScreenUsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customScreenUsers,
+      getReferencedColumn: (t) => t.userId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomScreenUsersTableFilterComposer(
+            $db: $db,
+            $table: $db.customScreenUsers,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -5464,6 +6921,83 @@ class $$UsersTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> customTaskScreensRefs<T extends Object>(
+    Expression<T> Function($$CustomTaskScreensTableAnnotationComposer a) f,
+  ) {
+    final $$CustomTaskScreensTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.customTaskScreens,
+          getReferencedColumn: (t) => t.userId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomTaskScreensTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customTaskScreens,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> customTasksRefs<T extends Object>(
+    Expression<T> Function($$CustomTasksTableAnnotationComposer a) f,
+  ) {
+    final $$CustomTasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customTasks,
+      getReferencedColumn: (t) => t.creatorId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.customTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> customScreenUsersRefs<T extends Object>(
+    Expression<T> Function($$CustomScreenUsersTableAnnotationComposer a) f,
+  ) {
+    final $$CustomScreenUsersTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.customScreenUsers,
+          getReferencedColumn: (t) => t.userId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomScreenUsersTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customScreenUsers,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$UsersTableTableManager
@@ -5486,6 +7020,9 @@ class $$UsersTableTableManager
             bool notesRefs,
             bool userSettingsRefs,
             bool delegatedTasksRefs,
+            bool customTaskScreensRefs,
+            bool customTasksRefs,
+            bool customScreenUsersRefs,
           })
         > {
   $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
@@ -5549,6 +7086,9 @@ class $$UsersTableTableManager
                 notesRefs = false,
                 userSettingsRefs = false,
                 delegatedTasksRefs = false,
+                customTaskScreensRefs = false,
+                customTasksRefs = false,
+                customScreenUsersRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -5559,6 +7099,9 @@ class $$UsersTableTableManager
                     if (notesRefs) db.notes,
                     if (userSettingsRefs) db.userSettings,
                     if (delegatedTasksRefs) db.delegatedTasks,
+                    if (customTaskScreensRefs) db.customTaskScreens,
+                    if (customTasksRefs) db.customTasks,
+                    if (customScreenUsersRefs) db.customScreenUsers,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -5665,6 +7208,69 @@ class $$UsersTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (customTaskScreensRefs)
+                        await $_getPrefetchedData<
+                          User,
+                          $UsersTable,
+                          CustomTaskScreen
+                        >(
+                          currentTable: table,
+                          referencedTable: $$UsersTableReferences
+                              ._customTaskScreensRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$UsersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).customTaskScreensRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.userId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (customTasksRefs)
+                        await $_getPrefetchedData<
+                          User,
+                          $UsersTable,
+                          CustomTask
+                        >(
+                          currentTable: table,
+                          referencedTable: $$UsersTableReferences
+                              ._customTasksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$UsersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).customTasksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.creatorId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (customScreenUsersRefs)
+                        await $_getPrefetchedData<
+                          User,
+                          $UsersTable,
+                          CustomScreenUser
+                        >(
+                          currentTable: table,
+                          referencedTable: $$UsersTableReferences
+                              ._customScreenUsersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$UsersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).customScreenUsersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.userId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -5692,6 +7298,9 @@ typedef $$UsersTableProcessedTableManager =
         bool notesRefs,
         bool userSettingsRefs,
         bool delegatedTasksRefs,
+        bool customTaskScreensRefs,
+        bool customTasksRefs,
+        bool customScreenUsersRefs,
       })
     >;
 typedef $$TasksTableCreateCompanionBuilder =
@@ -9639,6 +11248,1448 @@ typedef $$DelegatedTasksTableProcessedTableManager =
       DelegatedTask,
       PrefetchHooks Function({bool originalTaskId, bool fromUserId})
     >;
+typedef $$CustomTaskScreensTableCreateCompanionBuilder =
+    CustomTaskScreensCompanion Function({
+      Value<int> id,
+      required int userId,
+      required String name,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$CustomTaskScreensTableUpdateCompanionBuilder =
+    CustomTaskScreensCompanion Function({
+      Value<int> id,
+      Value<int> userId,
+      Value<String> name,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$CustomTaskScreensTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $CustomTaskScreensTable,
+          CustomTaskScreen
+        > {
+  $$CustomTaskScreensTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $UsersTable _userIdTable(_$AppDatabase db) => db.users.createAlias(
+    $_aliasNameGenerator(db.customTaskScreens.userId, db.users.id),
+  );
+
+  $$UsersTableProcessedTableManager get userId {
+    final $_column = $_itemColumn<int>('user_id')!;
+
+    final manager = $$UsersTableTableManager(
+      $_db,
+      $_db.users,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_userIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$CustomTasksTable, List<CustomTask>>
+  _customTasksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.customTasks,
+    aliasName: $_aliasNameGenerator(
+      db.customTaskScreens.id,
+      db.customTasks.screenId,
+    ),
+  );
+
+  $$CustomTasksTableProcessedTableManager get customTasksRefs {
+    final manager = $$CustomTasksTableTableManager(
+      $_db,
+      $_db.customTasks,
+    ).filter((f) => f.screenId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_customTasksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$CustomScreenUsersTable, List<CustomScreenUser>>
+  _customScreenUsersRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.customScreenUsers,
+        aliasName: $_aliasNameGenerator(
+          db.customTaskScreens.id,
+          db.customScreenUsers.screenId,
+        ),
+      );
+
+  $$CustomScreenUsersTableProcessedTableManager get customScreenUsersRefs {
+    final manager = $$CustomScreenUsersTableTableManager(
+      $_db,
+      $_db.customScreenUsers,
+    ).filter((f) => f.screenId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _customScreenUsersRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$CustomTaskScreensTableFilterComposer
+    extends Composer<_$AppDatabase, $CustomTaskScreensTable> {
+  $$CustomTaskScreensTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$UsersTableFilterComposer get userId {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableFilterComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> customTasksRefs(
+    Expression<bool> Function($$CustomTasksTableFilterComposer f) f,
+  ) {
+    final $$CustomTasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customTasks,
+      getReferencedColumn: (t) => t.screenId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTasksTableFilterComposer(
+            $db: $db,
+            $table: $db.customTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> customScreenUsersRefs(
+    Expression<bool> Function($$CustomScreenUsersTableFilterComposer f) f,
+  ) {
+    final $$CustomScreenUsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customScreenUsers,
+      getReferencedColumn: (t) => t.screenId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomScreenUsersTableFilterComposer(
+            $db: $db,
+            $table: $db.customScreenUsers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$CustomTaskScreensTableOrderingComposer
+    extends Composer<_$AppDatabase, $CustomTaskScreensTable> {
+  $$CustomTaskScreensTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$UsersTableOrderingComposer get userId {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableOrderingComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomTaskScreensTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CustomTaskScreensTable> {
+  $$CustomTaskScreensTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$UsersTableAnnotationComposer get userId {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> customTasksRefs<T extends Object>(
+    Expression<T> Function($$CustomTasksTableAnnotationComposer a) f,
+  ) {
+    final $$CustomTasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customTasks,
+      getReferencedColumn: (t) => t.screenId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.customTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> customScreenUsersRefs<T extends Object>(
+    Expression<T> Function($$CustomScreenUsersTableAnnotationComposer a) f,
+  ) {
+    final $$CustomScreenUsersTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.customScreenUsers,
+          getReferencedColumn: (t) => t.screenId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomScreenUsersTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customScreenUsers,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$CustomTaskScreensTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CustomTaskScreensTable,
+          CustomTaskScreen,
+          $$CustomTaskScreensTableFilterComposer,
+          $$CustomTaskScreensTableOrderingComposer,
+          $$CustomTaskScreensTableAnnotationComposer,
+          $$CustomTaskScreensTableCreateCompanionBuilder,
+          $$CustomTaskScreensTableUpdateCompanionBuilder,
+          (CustomTaskScreen, $$CustomTaskScreensTableReferences),
+          CustomTaskScreen,
+          PrefetchHooks Function({
+            bool userId,
+            bool customTasksRefs,
+            bool customScreenUsersRefs,
+          })
+        > {
+  $$CustomTaskScreensTableTableManager(
+    _$AppDatabase db,
+    $CustomTaskScreensTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomTaskScreensTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomTaskScreensTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CustomTaskScreensTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> userId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => CustomTaskScreensCompanion(
+                id: id,
+                userId: userId,
+                name: name,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int userId,
+                required String name,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => CustomTaskScreensCompanion.insert(
+                id: id,
+                userId: userId,
+                name: name,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CustomTaskScreensTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                userId = false,
+                customTasksRefs = false,
+                customScreenUsersRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (customTasksRefs) db.customTasks,
+                    if (customScreenUsersRefs) db.customScreenUsers,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (userId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.userId,
+                                    referencedTable:
+                                        $$CustomTaskScreensTableReferences
+                                            ._userIdTable(db),
+                                    referencedColumn:
+                                        $$CustomTaskScreensTableReferences
+                                            ._userIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (customTasksRefs)
+                        await $_getPrefetchedData<
+                          CustomTaskScreen,
+                          $CustomTaskScreensTable,
+                          CustomTask
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CustomTaskScreensTableReferences
+                              ._customTasksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CustomTaskScreensTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).customTasksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.screenId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (customScreenUsersRefs)
+                        await $_getPrefetchedData<
+                          CustomTaskScreen,
+                          $CustomTaskScreensTable,
+                          CustomScreenUser
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CustomTaskScreensTableReferences
+                              ._customScreenUsersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CustomTaskScreensTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).customScreenUsersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.screenId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$CustomTaskScreensTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CustomTaskScreensTable,
+      CustomTaskScreen,
+      $$CustomTaskScreensTableFilterComposer,
+      $$CustomTaskScreensTableOrderingComposer,
+      $$CustomTaskScreensTableAnnotationComposer,
+      $$CustomTaskScreensTableCreateCompanionBuilder,
+      $$CustomTaskScreensTableUpdateCompanionBuilder,
+      (CustomTaskScreen, $$CustomTaskScreensTableReferences),
+      CustomTaskScreen,
+      PrefetchHooks Function({
+        bool userId,
+        bool customTasksRefs,
+        bool customScreenUsersRefs,
+      })
+    >;
+typedef $$CustomTasksTableCreateCompanionBuilder =
+    CustomTasksCompanion Function({
+      Value<int> id,
+      required int screenId,
+      Value<int?> creatorId,
+      required String title,
+      Value<String?> description,
+      required DateTime date,
+      Value<DateTime?> endDate,
+      Value<int> priority,
+      Value<bool> isCompleted,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$CustomTasksTableUpdateCompanionBuilder =
+    CustomTasksCompanion Function({
+      Value<int> id,
+      Value<int> screenId,
+      Value<int?> creatorId,
+      Value<String> title,
+      Value<String?> description,
+      Value<DateTime> date,
+      Value<DateTime?> endDate,
+      Value<int> priority,
+      Value<bool> isCompleted,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$CustomTasksTableReferences
+    extends BaseReferences<_$AppDatabase, $CustomTasksTable, CustomTask> {
+  $$CustomTasksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $CustomTaskScreensTable _screenIdTable(_$AppDatabase db) =>
+      db.customTaskScreens.createAlias(
+        $_aliasNameGenerator(db.customTasks.screenId, db.customTaskScreens.id),
+      );
+
+  $$CustomTaskScreensTableProcessedTableManager get screenId {
+    final $_column = $_itemColumn<int>('screen_id')!;
+
+    final manager = $$CustomTaskScreensTableTableManager(
+      $_db,
+      $_db.customTaskScreens,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_screenIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $UsersTable _creatorIdTable(_$AppDatabase db) => db.users.createAlias(
+    $_aliasNameGenerator(db.customTasks.creatorId, db.users.id),
+  );
+
+  $$UsersTableProcessedTableManager? get creatorId {
+    final $_column = $_itemColumn<int>('creator_id');
+    if ($_column == null) return null;
+    final manager = $$UsersTableTableManager(
+      $_db,
+      $_db.users,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_creatorIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CustomTasksTableFilterComposer
+    extends Composer<_$AppDatabase, $CustomTasksTable> {
+  $$CustomTasksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CustomTaskScreensTableFilterComposer get screenId {
+    final $$CustomTaskScreensTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenId,
+      referencedTable: $db.customTaskScreens,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTaskScreensTableFilterComposer(
+            $db: $db,
+            $table: $db.customTaskScreens,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$UsersTableFilterComposer get creatorId {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.creatorId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableFilterComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomTasksTableOrderingComposer
+    extends Composer<_$AppDatabase, $CustomTasksTable> {
+  $$CustomTasksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CustomTaskScreensTableOrderingComposer get screenId {
+    final $$CustomTaskScreensTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenId,
+      referencedTable: $db.customTaskScreens,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTaskScreensTableOrderingComposer(
+            $db: $db,
+            $table: $db.customTaskScreens,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$UsersTableOrderingComposer get creatorId {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.creatorId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableOrderingComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomTasksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CustomTasksTable> {
+  $$CustomTasksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$CustomTaskScreensTableAnnotationComposer get screenId {
+    final $$CustomTaskScreensTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.screenId,
+          referencedTable: $db.customTaskScreens,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomTaskScreensTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customTaskScreens,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$UsersTableAnnotationComposer get creatorId {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.creatorId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomTasksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CustomTasksTable,
+          CustomTask,
+          $$CustomTasksTableFilterComposer,
+          $$CustomTasksTableOrderingComposer,
+          $$CustomTasksTableAnnotationComposer,
+          $$CustomTasksTableCreateCompanionBuilder,
+          $$CustomTasksTableUpdateCompanionBuilder,
+          (CustomTask, $$CustomTasksTableReferences),
+          CustomTask,
+          PrefetchHooks Function({bool screenId, bool creatorId})
+        > {
+  $$CustomTasksTableTableManager(_$AppDatabase db, $CustomTasksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomTasksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomTasksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CustomTasksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> screenId = const Value.absent(),
+                Value<int?> creatorId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<DateTime?> endDate = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<bool> isCompleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => CustomTasksCompanion(
+                id: id,
+                screenId: screenId,
+                creatorId: creatorId,
+                title: title,
+                description: description,
+                date: date,
+                endDate: endDate,
+                priority: priority,
+                isCompleted: isCompleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int screenId,
+                Value<int?> creatorId = const Value.absent(),
+                required String title,
+                Value<String?> description = const Value.absent(),
+                required DateTime date,
+                Value<DateTime?> endDate = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<bool> isCompleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => CustomTasksCompanion.insert(
+                id: id,
+                screenId: screenId,
+                creatorId: creatorId,
+                title: title,
+                description: description,
+                date: date,
+                endDate: endDate,
+                priority: priority,
+                isCompleted: isCompleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CustomTasksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({screenId = false, creatorId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (screenId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.screenId,
+                                referencedTable: $$CustomTasksTableReferences
+                                    ._screenIdTable(db),
+                                referencedColumn: $$CustomTasksTableReferences
+                                    ._screenIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+                    if (creatorId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.creatorId,
+                                referencedTable: $$CustomTasksTableReferences
+                                    ._creatorIdTable(db),
+                                referencedColumn: $$CustomTasksTableReferences
+                                    ._creatorIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CustomTasksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CustomTasksTable,
+      CustomTask,
+      $$CustomTasksTableFilterComposer,
+      $$CustomTasksTableOrderingComposer,
+      $$CustomTasksTableAnnotationComposer,
+      $$CustomTasksTableCreateCompanionBuilder,
+      $$CustomTasksTableUpdateCompanionBuilder,
+      (CustomTask, $$CustomTasksTableReferences),
+      CustomTask,
+      PrefetchHooks Function({bool screenId, bool creatorId})
+    >;
+typedef $$CustomScreenUsersTableCreateCompanionBuilder =
+    CustomScreenUsersCompanion Function({
+      required int screenId,
+      required int userId,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+typedef $$CustomScreenUsersTableUpdateCompanionBuilder =
+    CustomScreenUsersCompanion Function({
+      Value<int> screenId,
+      Value<int> userId,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+
+final class $$CustomScreenUsersTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $CustomScreenUsersTable,
+          CustomScreenUser
+        > {
+  $$CustomScreenUsersTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $CustomTaskScreensTable _screenIdTable(_$AppDatabase db) =>
+      db.customTaskScreens.createAlias(
+        $_aliasNameGenerator(
+          db.customScreenUsers.screenId,
+          db.customTaskScreens.id,
+        ),
+      );
+
+  $$CustomTaskScreensTableProcessedTableManager get screenId {
+    final $_column = $_itemColumn<int>('screen_id')!;
+
+    final manager = $$CustomTaskScreensTableTableManager(
+      $_db,
+      $_db.customTaskScreens,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_screenIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $UsersTable _userIdTable(_$AppDatabase db) => db.users.createAlias(
+    $_aliasNameGenerator(db.customScreenUsers.userId, db.users.id),
+  );
+
+  $$UsersTableProcessedTableManager get userId {
+    final $_column = $_itemColumn<int>('user_id')!;
+
+    final manager = $$UsersTableTableManager(
+      $_db,
+      $_db.users,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_userIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CustomScreenUsersTableFilterComposer
+    extends Composer<_$AppDatabase, $CustomScreenUsersTable> {
+  $$CustomScreenUsersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$CustomTaskScreensTableFilterComposer get screenId {
+    final $$CustomTaskScreensTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenId,
+      referencedTable: $db.customTaskScreens,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTaskScreensTableFilterComposer(
+            $db: $db,
+            $table: $db.customTaskScreens,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$UsersTableFilterComposer get userId {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableFilterComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomScreenUsersTableOrderingComposer
+    extends Composer<_$AppDatabase, $CustomScreenUsersTable> {
+  $$CustomScreenUsersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$CustomTaskScreensTableOrderingComposer get screenId {
+    final $$CustomTaskScreensTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.screenId,
+      referencedTable: $db.customTaskScreens,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomTaskScreensTableOrderingComposer(
+            $db: $db,
+            $table: $db.customTaskScreens,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$UsersTableOrderingComposer get userId {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableOrderingComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomScreenUsersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CustomScreenUsersTable> {
+  $$CustomScreenUsersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  $$CustomTaskScreensTableAnnotationComposer get screenId {
+    final $$CustomTaskScreensTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.screenId,
+          referencedTable: $db.customTaskScreens,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomTaskScreensTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customTaskScreens,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
+  $$UsersTableAnnotationComposer get userId {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.userId,
+      referencedTable: $db.users,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UsersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.users,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CustomScreenUsersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CustomScreenUsersTable,
+          CustomScreenUser,
+          $$CustomScreenUsersTableFilterComposer,
+          $$CustomScreenUsersTableOrderingComposer,
+          $$CustomScreenUsersTableAnnotationComposer,
+          $$CustomScreenUsersTableCreateCompanionBuilder,
+          $$CustomScreenUsersTableUpdateCompanionBuilder,
+          (CustomScreenUser, $$CustomScreenUsersTableReferences),
+          CustomScreenUser,
+          PrefetchHooks Function({bool screenId, bool userId})
+        > {
+  $$CustomScreenUsersTableTableManager(
+    _$AppDatabase db,
+    $CustomScreenUsersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomScreenUsersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomScreenUsersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CustomScreenUsersTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> screenId = const Value.absent(),
+                Value<int> userId = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CustomScreenUsersCompanion(
+                screenId: screenId,
+                userId: userId,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int screenId,
+                required int userId,
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CustomScreenUsersCompanion.insert(
+                screenId: screenId,
+                userId: userId,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CustomScreenUsersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({screenId = false, userId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (screenId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.screenId,
+                                referencedTable:
+                                    $$CustomScreenUsersTableReferences
+                                        ._screenIdTable(db),
+                                referencedColumn:
+                                    $$CustomScreenUsersTableReferences
+                                        ._screenIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (userId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.userId,
+                                referencedTable:
+                                    $$CustomScreenUsersTableReferences
+                                        ._userIdTable(db),
+                                referencedColumn:
+                                    $$CustomScreenUsersTableReferences
+                                        ._userIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CustomScreenUsersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CustomScreenUsersTable,
+      CustomScreenUser,
+      $$CustomScreenUsersTableFilterComposer,
+      $$CustomScreenUsersTableOrderingComposer,
+      $$CustomScreenUsersTableAnnotationComposer,
+      $$CustomScreenUsersTableCreateCompanionBuilder,
+      $$CustomScreenUsersTableUpdateCompanionBuilder,
+      (CustomScreenUser, $$CustomScreenUsersTableReferences),
+      CustomScreenUser,
+      PrefetchHooks Function({bool screenId, bool userId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9664,4 +12715,10 @@ class $AppDatabaseManager {
       $$NoteFilesTableTableManager(_db, _db.noteFiles);
   $$DelegatedTasksTableTableManager get delegatedTasks =>
       $$DelegatedTasksTableTableManager(_db, _db.delegatedTasks);
+  $$CustomTaskScreensTableTableManager get customTaskScreens =>
+      $$CustomTaskScreensTableTableManager(_db, _db.customTaskScreens);
+  $$CustomTasksTableTableManager get customTasks =>
+      $$CustomTasksTableTableManager(_db, _db.customTasks);
+  $$CustomScreenUsersTableTableManager get customScreenUsers =>
+      $$CustomScreenUsersTableTableManager(_db, _db.customScreenUsers);
 }

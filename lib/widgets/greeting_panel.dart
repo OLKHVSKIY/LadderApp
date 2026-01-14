@@ -2,6 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' as dr;
+import '../data/database_instance.dart';
+import '../data/app_database.dart' as db;
+import '../data/user_session.dart';
+import '../pages/custom_tasks_page.dart';
 
 class GreetingPanel extends StatefulWidget {
   final bool isOpen;
@@ -148,6 +153,10 @@ class _GreetingPanelState extends State<GreetingPanel>
         _dragOffset = 0.0;
         _panStartPosition = null;
       });
+      // При закрытии шторки скрываем клавиатуру
+      if (!widget.isOpen) {
+        FocusScope.of(context).unfocus();
+      }
     }
   }
 
@@ -163,7 +172,7 @@ class _GreetingPanelState extends State<GreetingPanel>
     if (!_isDragging || _panStartPosition == null) return;
     
     final screenHeight = MediaQuery.of(context).size.height;
-    final totalHeight = screenHeight * 0.4; // 40% экрана
+    final totalHeight = screenHeight * 0.42; // 42% экрана (увеличено для нового контента)
     
     // Вычисляем смещение от начальной позиции
     // При движении вверх globalPosition.dy уменьшается (deltaY отрицательный)
@@ -207,7 +216,7 @@ class _GreetingPanelState extends State<GreetingPanel>
     }
     
     final screenHeight = MediaQuery.of(context).size.height;
-    final totalHeight = screenHeight * 0.4; // 40% экрана
+    final totalHeight = screenHeight * 0.42; // 42% экрана (увеличено для нового контента)
     
     // Определяем, нужно ли переключить состояние панели
     final threshold = totalHeight * 0.2; // 20% от высоты панели
@@ -326,7 +335,7 @@ class _GreetingPanelState extends State<GreetingPanel>
   Widget build(BuildContext context) {
     _ensureControllers();
     final screenHeight = MediaQuery.of(context).size.height;
-    final totalHeight = screenHeight * 0.4; // 40% экрана
+    final totalHeight = screenHeight * 0.42; // 42% экрана (увеличено для нового контента)
     final bgPath = _getBackgroundImage();
     final isNight = bgPath.contains('night');
     
@@ -355,21 +364,21 @@ class _GreetingPanelState extends State<GreetingPanel>
         onPanEnd: _handlePanEnd,
         child: Container(
           decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(24),
-            bottomRight: Radius.circular(24),
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(24),
+            ),
           ),
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(24),
-            bottomRight: Radius.circular(24),
-          ),
-          child: Stack(
-            children: [
-              // Фоновое изображение (заполняет весь контейнер включая статус бар)
-              Positioned.fill(
+          child: ClipRRect(
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(24),
+              bottomRight: Radius.circular(24),
+            ),
+            child: Stack(
+              children: [
+                // Фоновое изображение (заполняет весь контейнер включая статус бар)
+                Positioned.fill(
                 child: Image.asset(
                   bgPath,
                   fit: BoxFit.cover,
@@ -389,60 +398,64 @@ class _GreetingPanelState extends State<GreetingPanel>
                   },
                 ),
               ),
-              // Звезды и падающая звезда только для ночной темы
-              if (isNight) ...[
-                ..._buildTwinklingStars(),
-                _buildFallingStar(),
-              ],
-              // Контент
-              Padding(
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 20,
-                  left: 20,
-                  right: 20,
-                  bottom: 27, // 20 + 7px отступ для "Выполнено"
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Заголовок с датой
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // Звезды и падающая звезда только для ночной темы
+                if (isNight) ...[
+                  ..._buildTwinklingStars(),
+                  _buildFallingStar(),
+                ],
+                // Контент
+                GestureDetector(
+                  onTap: () {
+                    // Перехватываем клики, но не закрываем клавиатуру
+                    // Не вызываем unfocus, чтобы клавиатура оставалась открытой
+                  },
+                  behavior: HitTestBehavior.translucent,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top + 20,
+                      left: 20,
+                      right: 20,
+                      bottom: 30,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Заголовок с датой
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _getDayOfWeek(),
+                              style: const TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                height: 1,
+                              ),
+                            ),
+                            Text(
+                              _getFormattedDate(),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        // Приветствие
                         Text(
-                          _getDayOfWeek(),
+                          _getGreeting(),
                           style: const TextStyle(
-                            fontSize: 48,
+                            fontSize: 28,
                             fontWeight: FontWeight.w600,
                             color: Colors.white,
-                            height: 1,
                           ),
                         ),
-                        Text(
-                          _getFormattedDate(),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Приветствие
-                    Text(
-                      _getGreeting(),
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    // Статистика
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        const SizedBox(height: 30),
+                        // Статистика
                         Text(
                           'Сегодня у вас: ${_pluralizeTasks(widget.totalTasksToday)}',
                           style: const TextStyle(
@@ -450,51 +463,43 @@ class _GreetingPanelState extends State<GreetingPanel>
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: Text(
-                            'Выполнено: ${_pluralizeTasks(widget.completedTasksToday)}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                            ),
-                          ),
+                        const Spacer(),
+                        // Кнопка "Новый экран +" и список экранов
+                        _CustomScreensSection(
+                          isPanelOpen: widget.isOpen,
                         ),
                       ],
                     ),
-                    const Spacer(),
-                  ],
+                  ),
                 ),
-              ),
-              // Полоска для перетаскивания внизу
-              if (widget.isOpen)
-                Positioned(
-                  bottom: -7,
-                  left: 0,
-                  right: 0,
-                  child: GestureDetector(
-                    onPanStart: _handlePanStart,
-                    onPanUpdate: _handlePanUpdate,
-                    onPanEnd: _handlePanEnd,
-                    child: Container(
-                      height: 40,
-                      alignment: Alignment.center,
+                // Полоска для перетаскивания внизу
+                if (widget.isOpen)
+                  Positioned(
+                    bottom: -7,
+                    left: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onPanStart: _handlePanStart,
+                      onPanUpdate: _handlePanUpdate,
+                      onPanEnd: _handlePanEnd,
                       child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(2),
+                        height: 40,
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -532,7 +537,7 @@ class _TwinkleDot extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity(glowOpacity),
+                    color: Colors.white.withValues(alpha: glowOpacity),
                     blurRadius: 8,
                     spreadRadius: 1,
                   ),
@@ -542,6 +547,386 @@ class _TwinkleDot extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _CustomScreensSection extends StatefulWidget {
+  final bool? isPanelOpen;
+
+  const _CustomScreensSection({
+    this.isPanelOpen,
+  });
+
+  @override
+  State<_CustomScreensSection> createState() => _CustomScreensSectionState();
+}
+
+class _CustomScreensSectionState extends State<_CustomScreensSection> {
+  bool _isExpanded = false;
+  final TextEditingController _nameController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+  List<db.CustomTaskScreen> _screens = [];
+  bool _isLoading = false;
+  int? _newlyCreatedScreenId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadScreens();
+    // Слушаем изменения фокуса
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus && _isExpanded) {
+        setState(() {
+          _isExpanded = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_CustomScreensSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // При закрытии шторки сворачиваем поле ввода (клавиатуру не закрываем)
+    final wasOpen = oldWidget.isPanelOpen ?? false;
+    final isNowOpen = widget.isPanelOpen ?? false;
+    if (wasOpen && !isNowOpen && _isExpanded) {
+      setState(() {
+        _isExpanded = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _focusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadScreens() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final screens = await (appDatabase.select(appDatabase.customTaskScreens)
+            ..where((s) => s.userId.equals(userId))
+            ..orderBy([(s) => dr.OrderingTerm.desc(s.createdAt)]))
+          .get();
+
+      setState(() {
+        _screens = screens;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Ошибка загрузки экранов: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _handleCreateScreen() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty || name.length > 15) return;
+
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+
+    try {
+      final screenId = await appDatabase.into(appDatabase.customTaskScreens).insert(
+        db.CustomTaskScreensCompanion(
+          userId: dr.Value(userId),
+          name: dr.Value(name),
+        ),
+      );
+
+      _nameController.clear();
+      // Скрываем клавиатуру и сворачиваем поле ввода
+      _focusNode.unfocus();
+      
+      // Устанавливаем флаг нового экрана и сворачиваем поле
+      setState(() {
+        _isExpanded = false;
+        _newlyCreatedScreenId = screenId;
+      });
+      
+      // Загружаем экраны после установки флага
+      await _loadScreens();
+
+      // Прокручиваем к новому экрану с задержкой для анимации
+      if (mounted && _newlyCreatedScreenId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted && _scrollController.hasClients) {
+                _scrollController.animateTo(
+                  _scrollController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            });
+            // Сбрасываем флаг после анимации
+            Future.delayed(const Duration(milliseconds: 400), () {
+              if (mounted) {
+                setState(() {
+                  _newlyCreatedScreenId = null;
+                });
+              }
+            });
+          }
+        });
+      }
+
+      // Открываем страницу задач
+      if (mounted) {
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 220),
+            pageBuilder: (_, animation, __) => FadeTransition(
+              opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+              child: CustomTasksPage(
+                screenId: screenId,
+                screenName: name,
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Ошибка создания экрана: $e');
+    }
+  }
+
+  void _openScreen(db.CustomTaskScreen screen) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, animation, __) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: CustomTasksPage(
+            screenId: screen.id,
+            screenName: screen.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _isLoading
+            ? const SizedBox.shrink()
+            : GestureDetector(
+                onTap: () {
+                  // Перехватываем клики, чтобы не закрывать клавиатуру
+                  if (_isExpanded && _focusNode.hasFocus) {
+                    _focusNode.requestFocus();
+                  }
+                },
+                behavior: HitTestBehavior.translucent,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return ClipRect(
+                      clipBehavior: Clip.none,
+                      child: SingleChildScrollView(
+                        controller: _scrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                    // Кнопка "Новый экран +"
+                    Padding(
+                      padding: const EdgeInsets.only(left: 0, right: 12),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _isExpanded = true;
+                          });
+                          Future.delayed(const Duration(milliseconds: 100), () {
+                            _focusNode.requestFocus();
+                            // Прокручиваем к началу, чтобы поле ввода было видно
+                            _scrollController.animateTo(
+                              0,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOutCubic,
+                            );
+                          });
+                        },
+                        child: SizedBox(
+                          height: 32,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                            width: _isExpanded ? 200 : null,
+                            padding: EdgeInsets.only(
+                              left: _isExpanded ? 15 : 16,
+                              right: _isExpanded ? 6 : 16,
+                              top: 7,
+                              bottom: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.center,
+                            child: _isExpanded
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            // Перехватываем клики, чтобы не закрывать клавиатуру
+                                            _focusNode.requestFocus();
+                                          },
+                                          child: ClipRect(
+                                            child: SizedBox(
+                                              height: 18,
+                                              child: TextField(
+                                                controller: _nameController,
+                                                focusNode: _focusNode,
+                                                maxLength: 15,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14,
+                                                  height: 1.0,
+                                                ),
+                                                decoration: const InputDecoration(
+                                                  hintText: 'Название экрана',
+                                                  hintStyle: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 14,
+                                                    height: 1.0,
+                                                  ),
+                                                  border: InputBorder.none,
+                                                  counterText: '',
+                                                  isDense: true,
+                                                  contentPadding: EdgeInsets.symmetric(vertical: 2),
+                                                ),
+                                                textAlignVertical: TextAlignVertical.center,
+                                                onSubmitted: (_) => _handleCreateScreen(),
+                                                enableInteractiveSelection: true,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      GestureDetector(
+                                        onTap: _handleCreateScreen,
+                                        child: Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: const BoxDecoration(
+                                            color: Colors.white,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.add,
+                                            size: 13,
+                                            color: Colors.black,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : RichText(
+                                    text: const TextSpan(
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        height: 1.0,
+                                      ),
+                                      children: [
+                                        TextSpan(text: 'Новый экран '),
+                                        TextSpan(
+                                          text: '+',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Горизонтальный скролл экранов
+                    ..._screens.map((screen) {
+                      final isNew = screen.id == _newlyCreatedScreenId;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        key: ValueKey(screen.id),
+                        child: TweenAnimationBuilder<double>(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                          tween: Tween<double>(
+                            begin: isNew ? 0.0 : 1.0,
+                            end: 1.0,
+                          ),
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.scale(
+                                scale: isNew ? 0.8 + (value * 0.2) : 1.0,
+                                child: GestureDetector(
+                                  onTap: () => _openScreen(screen),
+                                  child: SizedBox(
+                                    height: 32,
+                                    child: Container(
+                                      padding: const EdgeInsets.only(
+                                        left: 16,
+                                        right: 16,
+                                        top: 7,
+                                        bottom: 7,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.3),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        screen.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    }).toList(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                ),
+              ),
+      ],
     );
   }
 }

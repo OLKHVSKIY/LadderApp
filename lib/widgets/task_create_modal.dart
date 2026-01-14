@@ -9,13 +9,18 @@ import '../models/task.dart';
 import '../models/attached_file.dart';
 import 'apple_calendar.dart';
 import 'custom_snackbar.dart';
+import '../data/database_instance.dart';
+import '../data/app_database.dart' as db;
+import '../data/user_session.dart';
+import 'package:drift/drift.dart' as dr;
 
 class TaskCreateModal extends StatefulWidget {
   final VoidCallback onClose;
-  final Function(Task) onSave;
+  final Function(Task, int?) onSave; // Теперь принимает также screenId
   final Task? initialTask;
   final bool isEdit;
   final DateTime? initialDate;
+  final int? currentScreenId; // ID текущего экрана (null = "Мои задачи")
 
   const TaskCreateModal({
     super.key,
@@ -24,6 +29,7 @@ class TaskCreateModal extends StatefulWidget {
     this.initialTask,
     this.isEdit = false,
     this.initialDate,
+    this.currentScreenId,
   });
 
   @override
@@ -53,10 +59,17 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   bool _isListening = false;
   bool _speechInitialized = false;
   String _selectedField = ''; // 'title' or 'description'
+  int? _selectedScreenId; // null = "Мои задачи", иначе ID кастомного экрана
+  List<db.CustomTaskScreen> _screens = [];
 
   @override
   void initState() {
     super.initState();
+    _selectedScreenId = widget.currentScreenId; // По умолчанию текущий экран
+    // Загружаем экраны асинхронно после инициализации
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadScreens();
+    });
     if (widget.initialTask != null) {
       final t = widget.initialTask!;
       _titleController.text = t.title;
@@ -326,9 +339,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   }
 
   void _handleClose() {
-    // Закрываем клавиатуру перед анимацией
-    FocusScope.of(context).unfocus();
-    // Задержка для синхронизации с закрытием клавиатуры
+    // Не закрываем клавиатуру - пользователь может продолжать вводить текст
+    // Задержка для синхронизации с анимацией
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) {
         _animationController.reverse().then((_) {
@@ -366,8 +378,211 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       attachedFiles: _attachedFiles.isNotEmpty ? _attachedFiles : null,
     );
 
-    widget.onSave(task);
+    widget.onSave(task, _selectedScreenId);
     _handleClose();
+  }
+
+  Future<void> _loadScreens() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+
+    try {
+      final screens = await (appDatabase.select(appDatabase.customTaskScreens)
+            ..where((tbl) => tbl.userId.equals(userId))
+            ..orderBy([(tbl) => dr.OrderingTerm.asc(tbl.id)]))
+          .get();
+      
+      if (mounted) {
+        setState(() {
+          _screens = screens;
+        });
+      }
+    } catch (e) {
+      debugPrint('Ошибка загрузки экранов: $e');
+    }
+  }
+
+  String _getSelectedScreenName() {
+    if (_selectedScreenId == null) {
+      return 'Мои задачи';
+    }
+    try {
+      final screen = _screens.firstWhere(
+        (s) => s.id == _selectedScreenId,
+      );
+      return screen.name;
+    } catch (e) {
+      return 'Мои задачи';
+    }
+  }
+
+  Future<void> _showScreenSelectionModal() async {
+    // Сохраняем фокус перед показом диалога
+    final currentFocus = FocusScope.of(context).focusedChild;
+    
+    // Предотвращаем закрытие клавиатуры
+    final currentViewInsets = MediaQuery.of(context).viewInsets;
+    
+    await showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      barrierDismissible: true,
+      useSafeArea: false,
+      builder: (dialogContext) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          viewInsets: currentViewInsets, // Сохраняем текущие отступы клавиатуры
+        ),
+        child: PopScope(
+          canPop: true,
+          onPopInvoked: (didPop) {
+            if (didPop && currentFocus != null && currentFocus.canRequestFocus) {
+              // Восстанавливаем фокус после закрытия диалога
+              Future.delayed(const Duration(milliseconds: 100), () {
+                if (currentFocus.canRequestFocus) {
+                  currentFocus.requestFocus();
+                }
+              });
+            }
+          },
+          child: Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 300, maxHeight: 320),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Заголовок
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Выберите экран',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(dialogContext).pop();
+                            // Восстанавливаем фокус после закрытия диалога
+                            if (currentFocus != null && currentFocus.canRequestFocus) {
+                              currentFocus.requestFocus();
+                            }
+                          },
+                          child: const Icon(Icons.close, size: 20),
+                        ),
+                      ],
+                    ),
+                  ),
+              const Divider(height: 1),
+              // Список экранов
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Опция "Мои задачи"
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedScreenId = null;
+                          });
+                          Navigator.of(dialogContext).pop();
+                          // Восстанавливаем фокус после закрытия диалога
+                          if (currentFocus != null && currentFocus.canRequestFocus) {
+                            currentFocus.requestFocus();
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.task_alt,
+                                size: 20,
+                                color: Color(0xFF999999),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text(
+                                  'Мои задачи',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                              if (_selectedScreenId == null)
+                                const Icon(
+                                  Icons.check,
+                                  size: 20,
+                                  color: Colors.black,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Список кастомных экранов
+                      ..._screens.map((screen) {
+                        return InkWell(
+                          onTap: () {
+                            setState(() {
+                              _selectedScreenId = screen.id;
+                            });
+                            Navigator.of(dialogContext).pop();
+                            // Восстанавливаем фокус после закрытия диалога
+                            if (currentFocus != null && currentFocus.canRequestFocus) {
+                              currentFocus.requestFocus();
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.folder,
+                                  size: 20,
+                                  color: Color(0xFF999999),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    screen.name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.black,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (_selectedScreenId == screen.id)
+                                  const Icon(
+                                    Icons.check,
+                                    size: 20,
+                                    color: Colors.black,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+            ),
+          ),
+      ),
+    );
   }
 
   void _togglePriority() {
@@ -570,6 +785,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
           children: [
             GestureDetector(
               onTap: _handleClose,
+              behavior: HitTestBehavior.opaque,
               child: Container(
                 color: Colors.black.withValues(alpha: 0.4),
               ),
@@ -708,10 +924,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                         child: Row(
                           children: [
-                            // Выпадающий список "Входящие"
+                            // Выбор экрана
                             GestureDetector(
                               onTap: () {
-                                // TODO: Реализовать выбор папки
+                                _showScreenSelectionModal();
                               },
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -722,9 +938,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                     color: Color(0xFF999999),
                                   ),
                                   const SizedBox(width: 6),
-                                  const Text(
-                                    'Мои заметки',
-                                    style: TextStyle(
+                                  Text(
+                                    _getSelectedScreenName(),
+                                    style: const TextStyle(
                                       fontSize: 14,
                                       color: Color(0xFF999999),
                                     ),

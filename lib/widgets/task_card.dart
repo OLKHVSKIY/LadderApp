@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../models/task.dart';
 import '../models/attached_file.dart';
 import 'file_attachment_display.dart';
@@ -9,6 +11,7 @@ class TextLineMetrics {
   
   TextLineMetrics({required this.width, required this.height});
 }
+
 
 class TaskCard extends StatefulWidget {
   final Task task;
@@ -300,7 +303,17 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
               // Чекбокс
               GestureDetector(
                 onTap: () {
-                  widget.onToggle(!widget.task.isCompleted);
+                  final newCompletedState = !widget.task.isCompleted;
+                  
+                  // Воспроизводим звук и вибрацию СРАЗУ при нажатии
+                  if (newCompletedState) {
+                    // Запускаем звук первым, чтобы он начал загружаться как можно раньше
+                    TaskSoundPlayer().playTaskCompleteSound();
+                    // Вибрация сразу после - они должны начаться почти одновременно
+                    HapticFeedback.heavyImpact();
+                  }
+                  
+                  widget.onToggle(newCompletedState);
                   if (_isMenuOpen) {
                     _closeMenu();
                   }

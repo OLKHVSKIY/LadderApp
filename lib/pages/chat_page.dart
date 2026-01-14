@@ -495,7 +495,7 @@ class _ChatPageState extends State<ChatPage> {
                   onSearchTap: () {
                     showDialog(
                       context: context,
-                      barrierColor: Colors.transparent,
+                      barrierColor: Colors.black.withValues(alpha: 0.9),
                       builder: (context) => const SpotlightSearch(),
                     );
                   },

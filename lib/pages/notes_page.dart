@@ -251,7 +251,7 @@ class _NotesPageState extends State<NotesPage> {
                   onSearchTap: () {
                     showDialog(
                       context: context,
-                      barrierColor: Colors.transparent,
+                      barrierColor: Colors.black.withValues(alpha: 0.9),
                       builder: (context) => const SpotlightSearch(),
                     );
                   },

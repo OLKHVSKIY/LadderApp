@@ -18,8 +18,10 @@ import 'chat_page.dart';
 import 'settings_page.dart';
 import 'notes_page.dart';
 import '../data/database_instance.dart';
+import '../data/app_database.dart' as db;
 import '../data/repositories/task_repository.dart';
 import '../data/user_session.dart';
+import 'package:drift/drift.dart' as dr;
 import '../widgets/custom_snackbar.dart';
 import '../widgets/delegate_task_modal.dart';
 import '../widgets/delegated_task_accept_modal.dart';
@@ -174,12 +176,50 @@ class _TasksPageState extends State<TasksPage> {
 
   DateTime _normalizeDate(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  void _addTask(Task task) async {
+  void _addTask(Task task, int? screenId) async {
     final userId = UserSession.currentUserId;
     if (userId == null) {
       _showError('Нет авторизованного пользователя');
       return;
     }
+
+    // Если выбран кастомный экран, создаем задачу в нем
+    if (screenId != null) {
+      try {
+        final start = _normalizeDate(task.date);
+        final end = task.endDate != null ? _normalizeDate(task.endDate!) : start;
+        final endDate = end.isBefore(start) ? start : end;
+
+        var day = start;
+        var counter = 0;
+        while (!day.isAfter(endDate)) {
+          await appDatabase.into(appDatabase.customTasks).insert(
+            db.CustomTasksCompanion(
+              screenId: dr.Value(screenId),
+              creatorId: dr.Value(userId),
+              title: dr.Value(task.title),
+              description: dr.Value(task.description),
+              date: dr.Value(day),
+              endDate: dr.Value(task.endDate),
+              priority: dr.Value(task.priority),
+              isCompleted: dr.Value(false),
+            ),
+          );
+          counter++;
+          day = day.add(const Duration(days: 1));
+        }
+
+        _loadTasksForDate(_selectedDate);
+        _loadWeekTasks();
+        _loadTodayCounts();
+        _closeTaskModal();
+      } catch (e) {
+        _showError('Не удалось создать задачу: $e');
+      }
+      return;
+    }
+
+    // Иначе создаем в "Мои задачи"
     final start = _normalizeDate(task.date);
     final end = task.endDate != null ? _normalizeDate(task.endDate!) : start;
     final endDate = end.isBefore(start) ? start : end;
@@ -317,7 +357,8 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
-  void _editTask(Task newTask) async {
+  void _editTask(Task newTask, int? screenId) async {
+    // screenId игнорируется для TasksPage, так как это "Мои задачи"
     if (_editingTask == null) return;
     final intId = int.tryParse(_editingTask!.id);
     if (intId == null) return;
@@ -620,7 +661,7 @@ class _TasksPageState extends State<TasksPage> {
                     onSearchTap: () {
                       showDialog(
                         context: context,
-                        barrierColor: Colors.transparent,
+                        barrierColor: Colors.black.withValues(alpha: 0.9),
                         builder: (context) => SpotlightSearch(
                           onTaskCreated: () {
                             // Обновляем задачи после создания
@@ -789,6 +830,7 @@ class _TasksPageState extends State<TasksPage> {
                 initialTask: _editingTask,
                 isEdit: _editingTask != null,
                 initialDate: _editingTask == null ? _selectedDate : null,
+                currentScreenId: null, // "Мои задачи"
               ),
           ],
         ),

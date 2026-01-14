@@ -1101,20 +1101,15 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       color: Colors.transparent,
       child: Stack(
         children: [
-          // Затемнение на весь экран - занимает весь экран без белых полос
+          // Затемнение теперь обеспечивается barrierColor в showDialog
+          // GestureDetector для закрытия при клике на фон
           Positioned.fill(
-      child: GestureDetector(
-        onTap: _close,
+            child: GestureDetector(
+              onTap: _close,
               child: Container(
-                color: Colors.black.withOpacity(0.75),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    color: Colors.transparent,
-                      ),
-                    ),
-                  ),
-                ),
+                color: Colors.transparent,
+              ),
+            ),
           ),
           // Контент Spotlight с анимацией
           AnimatedBuilder(

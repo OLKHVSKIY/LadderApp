@@ -119,16 +119,46 @@ class DelegatedTasks extends Table {
   DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
 }
 
+class CustomTaskScreens extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get userId => integer().references(Users, #id, onDelete: KeyAction.cascade)();
+  TextColumn get name => text()();
+  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get updatedAt => dateTime().clientDefault(() => DateTime.now())();
+}
+
+class CustomTasks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get screenId => integer().references(CustomTaskScreens, #id, onDelete: KeyAction.cascade)();
+  IntColumn get creatorId => integer().references(Users, #id, onDelete: KeyAction.setNull).nullable()();
+  TextColumn get title => text()();
+  TextColumn get description => text().nullable()();
+  DateTimeColumn get date => dateTime()();
+  DateTimeColumn get endDate => dateTime().nullable()();
+  IntColumn get priority => integer().withDefault(const Constant(1))();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get updatedAt => dateTime().clientDefault(() => DateTime.now())();
+}
+
+class CustomScreenUsers extends Table {
+  IntColumn get screenId => integer().references(CustomTaskScreens, #id, onDelete: KeyAction.cascade)();
+  IntColumn get userId => integer().references(Users, #id, onDelete: KeyAction.cascade)();
+  DateTimeColumn get addedAt => dateTime().clientDefault(() => DateTime.now())();
+  @override
+  Set<Column> get primaryKey => {screenId, userId};
+}
+
 // ---------- База ----------
 
 @DriftDatabase(
-  tables: [Users, Tasks, Tags, TaskTags, ChatMessages, Plans, Notes, UserSettings, TaskFiles, NoteFiles, DelegatedTasks],
+  tables: [Users, Tasks, Tags, TaskTags, ChatMessages, Plans, Notes, UserSettings, TaskFiles, NoteFiles, DelegatedTasks, CustomTaskScreens, CustomTasks, CustomScreenUsers],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -142,6 +172,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('CREATE INDEX idx_notes_user_created ON notes(user_id, created_at);');
         },
         onUpgrade: (m, from, to) async {
+          if (from < 6) {
+            // Добавляем таблицы для кастомных экранов задач
+            await m.createTable(customTaskScreens);
+            await m.createTable(customTasks);
+          }
+          if (from < 7) {
+            // Добавляем поле creatorId в CustomTasks и таблицу CustomScreenUsers
+            await customStatement('ALTER TABLE custom_tasks ADD COLUMN creator_id INTEGER REFERENCES users(id) ON DELETE SET NULL;');
+            await m.createTable(customScreenUsers);
+          }
           if (from < 2) {
             // Добавляем end_date и priority в tasks
             await customStatement('ALTER TABLE tasks ADD COLUMN end_date INTEGER;');

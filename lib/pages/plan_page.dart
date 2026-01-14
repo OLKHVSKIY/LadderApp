@@ -25,6 +25,7 @@ import '../data/database_instance.dart';
 import '../widgets/apple_calendar.dart';
 import '../widgets/custom_snackbar.dart';
 import '../models/goal_model.dart';
+import '../widgets/task_sound_player.dart';
 
 // Функция для правильного склонения слова "дата"
 String _getDateWord(int count) {
@@ -534,8 +535,18 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   void _toggleTask(String dateId, String taskId) {
     final goal = _activeGoal;
     if (goal == null) return;
-    // Вибрация при отметке задачи (усиленная)
-    HapticFeedback.heavyImpact();
+    
+    // Находим задачу, чтобы проверить, становится ли она выполненной
+    final date = goal.dates.firstWhere((d) => d.id == dateId, orElse: () => goal.dates.first);
+    final task = date.tasks.firstWhere((t) => t.id == taskId, orElse: () => date.tasks.first);
+    final newCompletedState = !task.isCompleted;
+    
+    // Воспроизводим звук и вибрацию СРАЗУ при нажатии
+    if (newCompletedState) {
+      TaskSoundPlayer().playTaskCompleteSound();
+      HapticFeedback.heavyImpact();
+    }
+    
     final dates = goal.dates.map((d) {
       if (d.id != dateId) return d;
       final tasks = d.tasks
@@ -862,7 +873,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                   onSearchTap: () {
                     showDialog(
                       context: context,
-                      barrierColor: Colors.transparent,
+                      barrierColor: Colors.black.withValues(alpha: 0.9),
                       builder: (context) => const SpotlightSearch(),
                     );
                   },
@@ -1001,7 +1012,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                     onSearchTap: () {
                     showDialog(
                       context: context,
-                      barrierColor: Colors.transparent,
+                      barrierColor: Colors.black.withValues(alpha: 0.9),
                       builder: (context) => const SpotlightSearch(),
                     );
                   },
@@ -1941,6 +1952,7 @@ class _TaskTile extends StatefulWidget {
 
 class _TaskTileState extends State<_TaskTile> {
   bool _showDelete = false;
+  bool _isHovered = false;
   Timer? _deleteTimer;
 
   @override
@@ -1994,17 +2006,34 @@ class _TaskTileState extends State<_TaskTile> {
           children: [
             GestureDetector(
               onTap: widget.onToggle,
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE5E5E5), width: 2),
-                  color: widget.task.isCompleted ? borderColor : Colors.white,
+              child: MouseRegion(
+                onEnter: (_) => setState(() => _isHovered = true),
+                onExit: (_) => setState(() => _isHovered = false),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: widget.task.isCompleted
+                          ? borderColor
+                          : _isHovered
+                              ? const Color(0xFFCCCCCC)
+                              : const Color(0xFFE5E5E5),
+                      width: 2,
+                    ),
+                    color: widget.task.isCompleted
+                        ? borderColor
+                        : Colors.transparent,
+                  ),
+                  child: widget.task.isCompleted
+                      ? const Icon(
+                          Icons.check,
+                          size: 16,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
-                child: widget.task.isCompleted
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : null,
               ),
             ),
             const SizedBox(width: 12),

@@ -107,7 +107,7 @@ class TaskList extends StatelessWidget {
             Padding(
               padding: EdgeInsets.only(
                 left: 4,
-                bottom: 4,
+                bottom: 5,
                 top: priorityIndex == 0 ? 20 : 0,
               ),
               child: Row(
@@ -132,16 +132,37 @@ class TaskList extends StatelessWidget {
               ),
             ),
             // Задачи этого приоритета
-            ...priorityTasks.map((task) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: TaskCard(
-                    key: ValueKey(task.id),
-                    task: task,
-                    onToggle: (isCompleted) =>
-                        onTaskToggle(task.id, isCompleted),
-                    openMenuTaskId: openMenuTaskId,
-                    onMenuToggle: onMenuToggle,
-                  ),
+            ...priorityTasks.map((task) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: TaskCard(
+                        key: ValueKey(task.id),
+                        task: task,
+                        onToggle: (isCompleted) =>
+                            onTaskToggle(task.id, isCompleted),
+                        openMenuTaskId: openMenuTaskId,
+                        onMenuToggle: onMenuToggle,
+                      ),
+                    ),
+                    // Имя создателя задачи справа под блоком задачи
+                    if (task.creatorName != null && task.creatorName!.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 4, bottom: 8),
+                          child: Text(
+                            task.creatorName!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF999999),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 )),
           ],
         );

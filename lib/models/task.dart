@@ -10,6 +10,7 @@ class Task {
   final DateTime? endDate; // для периода
   final bool isCompleted;
   final List<AttachedFile>? attachedFiles;
+  final String? creatorName; // Имя создателя задачи (для кастомных экранов)
 
   Task({
     required this.id,
@@ -21,6 +22,7 @@ class Task {
     this.endDate,
     this.isCompleted = false,
     this.attachedFiles,
+    this.creatorName,
   });
 
   // Mock данные для тестирования
