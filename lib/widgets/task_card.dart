@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../models/task.dart';
 import '../models/attached_file.dart';
 import 'file_attachment_display.dart';
+import 'task_sound_player.dart';
 
 class TextLineMetrics {
   final double width;
@@ -310,7 +310,7 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                     // Запускаем звук первым, чтобы он начал загружаться как можно раньше
                     TaskSoundPlayer().playTaskCompleteSound();
                     // Вибрация сразу после - они должны начаться почти одновременно
-                    HapticFeedback.heavyImpact();
+                    HapticFeedback.lightImpact();
                   }
                   
                   widget.onToggle(newCompletedState);

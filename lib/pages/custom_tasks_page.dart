@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' as dr;
 import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
@@ -204,6 +205,8 @@ class _CustomTasksPageState extends State<CustomTasksPage> {
   }
 
   void _selectDate(DateTime date) {
+    // Легкая вибрация при нажатии на день недели
+    HapticFeedback.lightImpact();
     setState(() {
       _selectedDate = date;
     });

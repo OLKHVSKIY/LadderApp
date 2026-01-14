@@ -256,8 +256,8 @@ class _TasksPageState extends State<TasksPage> {
   void _updateTaskCompletion(String taskId, bool isCompleted) {
     final intId = int.tryParse(taskId);
     if (intId == null) return;
-    // Вибрация при отметке задачи (усиленная)
-    HapticFeedback.heavyImpact();
+    // Вибрация при отметке задачи
+    HapticFeedback.lightImpact();
     _taskRepository.updateCompletion(intId, isCompleted).then((_) {
       _loadTasksForDate(_selectedDate);
       _loadWeekTasks();
@@ -266,6 +266,8 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   void _selectDate(DateTime date) {
+    // Легкая вибрация при нажатии на день недели
+    HapticFeedback.lightImpact();
     setState(() {
       _selectedDate = date;
       _isLoadingTasks = true;
@@ -736,7 +738,10 @@ class _TasksPageState extends State<TasksPage> {
                 right: 0,
                 bottom: 0,
                 child: GestureDetector(
-                  onTap: _toggleGreetingPanel,
+                  onTap: () {
+                    // При нажатии вне шторки закрываем её и скрываем крестики
+                    _toggleGreetingPanel();
+                  },
                   child: Container(
                     color: Colors.transparent,
                   ),

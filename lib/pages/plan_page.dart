@@ -544,7 +544,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     // Воспроизводим звук и вибрацию СРАЗУ при нажатии
     if (newCompletedState) {
       TaskSoundPlayer().playTaskCompleteSound();
-      HapticFeedback.heavyImpact();
+      HapticFeedback.lightImpact();
     }
     
     final dates = goal.dates.map((d) {
@@ -1048,7 +1048,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             if (savedGoals.isNotEmpty && !_isSidebarOpen)
               Positioned(
                 right: 20,
-                bottom: MediaQuery.of(context).padding.bottom + 95, // Выше панели навигации (60px высота + 15px отступ + 20px зазор)
+                bottom: MediaQuery.of(context).padding.bottom + 60, // Выше панели навигации (опущено на 15px)
                 child: GestureDetector(
                   onTap: _openAiPlan,
                   child: AnimatedBuilder(
@@ -1060,11 +1060,15 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                           width: 56,
                           height: 56,
                           decoration: BoxDecoration(
-                            color: Colors.black,
+                            color: Colors.white,
                             shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFFE0E0E0),
+                              width: 1,
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withOpacity(0.15),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -2010,8 +2014,8 @@ class _TaskTileState extends State<_TaskTile> {
                 onEnter: (_) => setState(() => _isHovered = true),
                 onExit: (_) => setState(() => _isHovered = false),
                 child: Container(
-                  width: 24,
-                  height: 24,
+                  width: 22,
+                  height: 22,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
@@ -2029,7 +2033,7 @@ class _TaskTileState extends State<_TaskTile> {
                   child: widget.task.isCompleted
                       ? const Icon(
                           Icons.check,
-                          size: 16,
+                          size: 14,
                           color: Colors.white,
                         )
                       : null,

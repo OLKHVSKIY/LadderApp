@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -12,26 +13,21 @@ class TaskSoundPlayer {
     // Создаем новый AudioPlayer для каждого воспроизведения
     // Это гарантирует параллельное воспроизведение без конфликтов
     final player = AudioPlayer();
-    // Настраиваем без await для мгновенного запуска
-    player.setReleaseMode(ReleaseMode.stop);
-    player.setPlayerMode(PlayerMode.lowLatency);
     
-    // Воспроизводим звук сразу, без await для одновременного запуска с вибрацией
-    player.play(AssetSource('sounds/Выполнено.mp3'), volume: 0.9).then((_) {
-      // После окончания воспроизведения освобождаем ресурсы
-      Future.delayed(const Duration(seconds: 1), () {
-        try {
-          player.dispose();
-        } catch (e) {
-          // Игнорируем ошибки при dispose
-        }
-      });
-    }).catchError((error) {
-      debugPrint('Ошибка воспроизведения звука: $error');
+    // Воспроизводим звук СРАЗУ, без await и без предварительных настроек
+    // Все настройки делаем асинхронно после запуска воспроизведения
+    player.play(AssetSource('sounds/Выполнено.mp3'), volume: 0.9);
+    
+    // Настройки делаем параллельно, не блокируя воспроизведение
+    unawaited(player.setReleaseMode(ReleaseMode.stop));
+    unawaited(player.setPlayerMode(PlayerMode.lowLatency));
+    
+    // Освобождаем ресурсы после окончания
+    Future.delayed(const Duration(milliseconds: 500), () {
       try {
         player.dispose();
       } catch (e) {
-        // Игнорируем ошибки
+        // Игнорируем ошибки при dispose
       }
     });
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' as dr;
 import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
@@ -37,6 +38,7 @@ class _GreetingPanelState extends State<GreetingPanel>
   AnimationController? _fallingController;
   Timer? _fallingTimer;
   int _fallingIndex = 0;
+  final GlobalKey<_CustomScreensSectionState> _screensSectionKey = GlobalKey();
   final List<Offset> _fallingStarPositions = const [
     Offset(40, 30),
     Offset(120, 60),
@@ -362,6 +364,10 @@ class _GreetingPanelState extends State<GreetingPanel>
         onPanStart: _handlePanStart,
         onPanUpdate: _handlePanUpdate,
         onPanEnd: _handlePanEnd,
+        onTap: () {
+          // При нажатии по шторке (но не по контенту) скрываем крестики
+          _screensSectionKey.currentState?.hideDeleteButtons();
+        },
         child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -406,8 +412,8 @@ class _GreetingPanelState extends State<GreetingPanel>
                 // Контент
                 GestureDetector(
                   onTap: () {
-                    // Перехватываем клики, но не закрываем клавиатуру
-                    // Не вызываем unfocus, чтобы клавиатура оставалась открытой
+                    // При нажатии в области контента выше блока овалов скрываем крестики
+                    // (это обрабатывается через отдельный GestureDetector выше блока овалов)
                   },
                   behavior: HitTestBehavior.translucent,
                   child: Padding(
@@ -463,9 +469,20 @@ class _GreetingPanelState extends State<GreetingPanel>
                             color: Colors.white,
                           ),
                         ),
-                        const Spacer(),
+                        // Область выше блока овалов - для обработки нажатий
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              // При нажатии выше блока овалов скрываем крестики
+                              _screensSectionKey.currentState?.hideDeleteButtons();
+                            },
+                            behavior: HitTestBehavior.translucent,
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
                         // Кнопка "Новый экран +" и список экранов
                         _CustomScreensSection(
+                          key: _screensSectionKey,
                           isPanelOpen: widget.isOpen,
                         ),
                       ],
@@ -553,16 +570,19 @@ class _TwinkleDot extends StatelessWidget {
 
 class _CustomScreensSection extends StatefulWidget {
   final bool? isPanelOpen;
+  final VoidCallback? onHideDeleteButtons;
 
   const _CustomScreensSection({
     this.isPanelOpen,
+    this.onHideDeleteButtons,
   });
 
   @override
   State<_CustomScreensSection> createState() => _CustomScreensSectionState();
 }
 
-class _CustomScreensSectionState extends State<_CustomScreensSection> {
+class _CustomScreensSectionState extends State<_CustomScreensSection>
+    with SingleTickerProviderStateMixin {
   bool _isExpanded = false;
   final TextEditingController _nameController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
@@ -570,10 +590,18 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
   List<db.CustomTaskScreen> _screens = [];
   bool _isLoading = false;
   int? _newlyCreatedScreenId;
+  bool _showDeleteButtons = false;
+  Timer? _longPressTimer;
+  int? _pressedScreenId;
+  AnimationController? _shakeController;
 
   @override
   void initState() {
     super.initState();
+    _shakeController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
     _loadScreens();
     // Слушаем изменения фокуса
     _focusNode.addListener(() {
@@ -588,10 +616,10 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
   @override
   void didUpdateWidget(_CustomScreensSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // При закрытии шторки сворачиваем поле ввода (клавиатуру не закрываем)
+    // При закрытии шторки сворачиваем поле ввода (крестики не скрываем)
     final wasOpen = oldWidget.isPanelOpen ?? false;
     final isNowOpen = widget.isPanelOpen ?? false;
-    if (wasOpen && !isNowOpen && _isExpanded) {
+    if (wasOpen && !isNowOpen) {
       setState(() {
         _isExpanded = false;
       });
@@ -603,6 +631,8 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
     _nameController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
+    _longPressTimer?.cancel();
+    _shakeController?.dispose();
     super.dispose();
   }
 
@@ -685,27 +715,17 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
         });
       }
 
-      // Открываем страницу задач
-      if (mounted) {
-        Navigator.of(context).push(
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 220),
-            pageBuilder: (_, animation, __) => FadeTransition(
-              opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-              child: CustomTasksPage(
-                screenId: screenId,
-                screenName: name,
-              ),
-            ),
-          ),
-        );
-      }
+      // Не открываем страницу задач после создания - остаемся на месте
     } catch (e) {
       debugPrint('Ошибка создания экрана: $e');
     }
   }
 
   void _openScreen(db.CustomTaskScreen screen) {
+    // Если показываются кнопки удаления, не открываем экран
+    if (_showDeleteButtons) {
+      return;
+    }
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 220),
@@ -720,6 +740,144 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
     );
   }
 
+  void _handleLongPressStart(db.CustomTaskScreen screen) {
+    _longPressTimer?.cancel();
+    setState(() {
+      _pressedScreenId = screen.id;
+    });
+    _longPressTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted && _pressedScreenId == screen.id) {
+        // Вибрация при появлении крестиков
+        HapticFeedback.lightImpact();
+        setState(() {
+          _showDeleteButtons = true;
+          _pressedScreenId = null;
+        });
+        // Запускаем анимацию покачивания
+        _shakeController?.forward(from: 0);
+      }
+    });
+  }
+
+  void _handleLongPressEnd() {
+    _longPressTimer?.cancel();
+    setState(() {
+      _pressedScreenId = null;
+    });
+  }
+
+  void _hideDeleteButtons() {
+    if (_showDeleteButtons) {
+      setState(() {
+        _showDeleteButtons = false;
+      });
+      // Останавливаем анимацию покачивания
+      _shakeController?.stop();
+      _shakeController?.reset();
+    }
+  }
+
+  // Публичный метод для скрытия крестиков из родительского виджета
+  void hideDeleteButtons() {
+    _hideDeleteButtons();
+  }
+
+  Future<void> _deleteScreen(db.CustomTaskScreen screen) async {
+    try {
+      await (appDatabase.delete(appDatabase.customTaskScreens)
+            ..where((s) => s.id.equals(screen.id)))
+          .go();
+      // Не скрываем крестики после удаления
+      await _loadScreens();
+    } catch (e) {
+      debugPrint('Ошибка удаления экрана: $e');
+    }
+  }
+
+  Widget _buildScreenWidget(db.CustomTaskScreen screen) {
+    return GestureDetector(
+      onTap: () {
+        // Если крестики видны, не открываем экран, но и не скрываем крестики
+        if (_showDeleteButtons) {
+          return;
+        }
+        _openScreen(screen);
+      },
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (_) => _handleLongPressStart(screen),
+      onLongPressEnd: (_) => _handleLongPressEnd(),
+      child: SizedBox(
+        height: 32,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(0),
+              child: Container(
+                padding: const EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 7,
+                  bottom: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  screen.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+            // Крестик для удаления с плавной анимацией
+            Positioned(
+              right: -6,
+              top: -6,
+              child: AnimatedOpacity(
+                opacity: _showDeleteButtons ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: IgnorePointer(
+                  ignoring: !_showDeleteButtons,
+                  child: GestureDetector(
+                    onTap: () {
+                      // Удаляем экран - крестики остаются видимыми на других овалах
+                      _deleteScreen(screen);
+                    },
+                    behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -729,6 +887,11 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
             ? const SizedBox.shrink()
             : GestureDetector(
                 onTap: () {
+                  // При нажатии вне блока овалов убираем крестики
+                  // Это обрабатывается через проверку, что нажатие не на овал
+                  if (_showDeleteButtons) {
+                    _hideDeleteButtons();
+                  }
                   // Перехватываем клики, чтобы не закрывать клавиатуру
                   if (_isExpanded && _focusNode.hasFocus) {
                     _focusNode.requestFocus();
@@ -738,19 +901,24 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     return ClipRect(
-                      clipBehavior: Clip.none,
-                      child: SingleChildScrollView(
-                        controller: _scrollController,
-                        scrollDirection: Axis.horizontal,
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+                        clipBehavior: Clip.none,
+                        child: SingleChildScrollView(
+                              controller: _scrollController,
+                              scrollDirection: Axis.horizontal,
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
                     // Кнопка "Новый экран +"
                     Padding(
-                      padding: const EdgeInsets.only(left: 0, right: 12),
+                      padding: const EdgeInsets.only(left: 0, right: 12, top: 10, bottom: 10),
                       child: GestureDetector(
                         onTap: () {
+                          // Если крестики видны, скрываем их
+                          if (_showDeleteButtons) {
+                            _hideDeleteButtons();
+                            return;
+                          }
                           setState(() {
                             _isExpanded = true;
                           });
@@ -777,7 +945,7 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
                               bottom: 7,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.3),
+                              color: Colors.white.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             alignment: Alignment.center,
@@ -870,7 +1038,7 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
                     ..._screens.map((screen) {
                       final isNew = screen.id == _newlyCreatedScreenId;
                       return Padding(
-                        padding: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.only(right: 8, top: 10, bottom: 10),
                         key: ValueKey(screen.id),
                         child: TweenAnimationBuilder<double>(
                           duration: const Duration(milliseconds: 300),
@@ -884,48 +1052,40 @@ class _CustomScreensSectionState extends State<_CustomScreensSection> {
                               opacity: value,
                               child: Transform.scale(
                                 scale: isNew ? 0.8 + (value * 0.2) : 1.0,
-                                child: GestureDetector(
-                                  onTap: () => _openScreen(screen),
-                                  child: SizedBox(
-                                    height: 32,
-                                    child: Container(
-                                      padding: const EdgeInsets.only(
-                                        left: 16,
-                                        right: 16,
-                                        top: 7,
-                                        bottom: 7,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.3),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        screen.name,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          height: 1.0,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                                child: _shakeController != null
+                                    ? AnimatedBuilder(
+                                        animation: _shakeController!,
+                                        builder: (context, child) {
+                                          // Анимация покачивания (как в iOS) - продолжается пока крестики видны
+                                          if (!_showDeleteButtons) {
+                                            return child!;
+                                          }
+                                          final progress = _shakeController!.value;
+                                          // Покачивание: влево-вправо (повторяется непрерывно)
+                                          // Используем синусоиду для плавного покачивания
+                                          final shakeValue = math.sin(progress * 2 * math.pi * 2) * 3.0;
+                                          return Transform.translate(
+                                            offset: Offset(shakeValue, 0),
+                                            child: child!,
+                                          );
+                                        },
+                                        child: _buildScreenWidget(screen),
+                                      )
+                                    : _buildScreenWidget(screen),
                               ),
                             );
                           },
                         ),
                       );
                     }).toList(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
+                                  ],
+                                ),
+                              ),
+                            ),
+                      );
+                  },
+                  ),
                 ),
-              ),
       ],
     );
   }
