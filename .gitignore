@@ -31,7 +31,12 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/build
 /coverage/
+
+# Дубликаты, которые плодит iCloud при конфликте синхронизации ("... 2")
+**/* 2
+**/* 2.*
 
 # Symbolication related
 app.*.symbols
