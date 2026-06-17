@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' as dr;
+import 'package:uuid/uuid.dart';
 
 import '../app_database.dart';
 import '../../models/goal_model.dart';
@@ -44,6 +45,7 @@ class PlanRepository {
       // Дубликатов не найдено - создаем новую запись
       return db.into(db.plans).insert(
             PlansCompanion.insert(
+              uuid: dr.Value(const Uuid().v4()),
               userId: userId,
               title: goal.title,
               description: dr.Value(jsonStr),
@@ -55,11 +57,17 @@ class PlanRepository {
   }
 
   Future<void> deleteGoal(int dbId) async {
-    await (db.delete(db.plans)..where((p) => p.id.equals(dbId))).go();
+    await (db.update(db.plans)..where((p) => p.id.equals(dbId))).write(
+      PlansCompanion(
+        isDeleted: dr.Value(true),
+        updatedAt: dr.Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<List<GoalModel>> loadGoals(int userId) async {
     final rows = await (db.select(db.plans)
+          ..where((p) => p.isDeleted.equals(false))
           ..where((p) => p.userId.equals(userId))
           ..orderBy([(p) => dr.OrderingTerm.desc(p.updatedAt)]))
         .get();

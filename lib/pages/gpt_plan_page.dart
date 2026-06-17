@@ -1,19 +1,18 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 
+import '../theme/app_colors.dart';
 import '../widgets/main_header.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
-import '../widgets/ios_page_route.dart';
 import '../widgets/spotlight_search.dart';
 import '../widgets/custom_snackbar.dart';
 import 'tasks_page.dart';
 import 'plan_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
-import 'notes_page.dart';
 import 'list_page.dart';
+import '../l10n/app_translations.dart';
 
 class GptPlanPage extends StatefulWidget {
   const GptPlanPage({super.key});
@@ -66,8 +65,8 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   }
 
   void _navigateTo(Widget page, {bool slideFromRight = false}) {
-    if (page is SettingsPage) {
-      // Для настроек используем push с CupertinoPageRoute для iOS swipe back
+    if (page is SettingsPage || page is ChatPage) {
+      // Для настроек и чата — push с CupertinoPageRoute (нативный iOS swipe back)
       Navigator.of(context).push(
         CupertinoPageRoute(
           builder: (_) => page,
@@ -77,7 +76,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 220),
-          pageBuilder: (_, animation, __) => FadeTransition(
+          pageBuilder: (_, animation, _) => FadeTransition(
             opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
             child: page,
           ),
@@ -98,7 +97,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
         _currentStep++;
       });
     } else {
-      CustomSnackBar.show(context, 'Генерация плана скоро будет доступна');
+      CustomSnackBar.show(context, tr('Генерация плана скоро будет доступна'));
     }
   }
 
@@ -116,7 +115,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).background,
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
@@ -125,7 +124,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
             child: Column(
               children: [
                 MainHeader(
-                  title: 'GPT План',
+                  title: tr('GPT План'),
                   onMenuTap: null,
                   showBackButton: true,
                   onBack: () {
@@ -191,9 +190,8 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
               _toggleSidebar();
               _navigateTo(const TasksPage(), slideFromRight: false);
             },
-            onChatTap: () {
-              _toggleSidebar();
-              _navigateTo(const ChatPage(), slideFromRight: true);
+            onSettingsTap: () {
+              _navigateTo(const SettingsPage(), slideFromRight: true);
             },
           ),
           BottomNavigation(
@@ -207,8 +205,8 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
               Navigator.of(context).pop(); // Возвращаемся на PlanPage
             },
             onGptTap: () {},
-            onNotesTap: () {
-              _navigateTo(const NotesPage());
+            onAiTap: () {
+              _navigateTo(const ChatPage(), slideFromRight: true);
             },
             onIndexChanged: (index) {
               if (index == 0) {
@@ -218,7 +216,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
               } else if (index == 2) {
                 _navigateTo(const PlanPage(), slideFromRight: true);
               } else if (index == 3) {
-                _navigateTo(const NotesPage());
+                _navigateTo(const ChatPage(), slideFromRight: true);
               }
             },
           ),
@@ -228,13 +226,14 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   }
 
   Widget _buildProgress() {
+    final colors = AppColors.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(3, (index) {
         final isActive = index == _currentStep;
         final isCompleted = index < _currentStep;
-        final color = isActive || isCompleted ? Colors.black : const Color(0xFFE5E5E5);
-        final textColor = isActive || isCompleted ? Colors.white : const Color(0xFF999999);
+        final color = isActive || isCompleted ? colors.inverseSurface : colors.border;
+        final textColor = isActive || isCompleted ? colors.onInverseSurface : colors.textTertiary;
         return GestureDetector(
           onTap: () => _setStep(index),
           child: AnimatedScale(
@@ -284,6 +283,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   }
 
   Widget _buildStepOne() {
+    final colors = AppColors.of(context);
     return Column(
       key: const ValueKey('step1'),
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -298,147 +298,150 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
           ),
         ),
         const SizedBox(height: 20),
-        const Text(
-          'Создайте план проекта с помощью нейросети. Опишите вашу цель, и AI разобьет её на шаги и задачи.',
+        Text(
+          tr('Создайте план проекта с помощью нейросети. Опишите вашу цель, и AI разобьет её на шаги и задачи.'),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 16,
             height: 1.6,
-            color: Color(0xFF666666),
+            color: colors.textSecondary,
           ),
         ),
         const SizedBox(height: 37),
         _inputBlock(
-          label: 'Название плана',
+          label: tr('Название плана'),
           child: TextField(
             controller: _planNameController,
             decoration: InputDecoration(
-              hintText: 'Например: Подготовка к марафону',
-              hintStyle: const TextStyle(color: Color(0xFF999999)),
+              hintText: tr('Например: Подготовка к марафону'),
+              hintStyle: TextStyle(color: colors.textTertiary),
               contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Colors.black, width: 2),
+                borderSide: BorderSide(color: colors.textPrimary, width: 2),
               ),
             ),
           ),
         ),
         const SizedBox(height: 24),
-        _primaryButton('Продолжить', _nextStep),
+        _primaryButton(tr('Продолжить'), _nextStep),
       ],
     );
   }
 
   Widget _buildStepTwo() {
+    final colors = AppColors.of(context);
     return Column(
       key: const ValueKey('step2'),
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _inputBlock(
-          label: 'Описание цели',
+          label: tr('Описание цели'),
           child: TextField(
             controller: _goalDescriptionController,
             maxLines: 6,
             decoration: InputDecoration(
-              hintText: 'Опишите вашу цель подробно...',
-              hintStyle: const TextStyle(color: Color(0xFF999999)),
+              hintText: tr('Опишите вашу цель подробно...'),
+              hintStyle: TextStyle(color: colors.textTertiary),
               contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Colors.black, width: 2),
+                borderSide: BorderSide(color: colors.textPrimary, width: 2),
               ),
             ),
           ),
         ),
         const SizedBox(height: 24),
-        _primaryButton('Продолжить', _nextStep),
+        _primaryButton(tr('Продолжить'), _nextStep),
       ],
     );
   }
 
   Widget _buildStepThree() {
+    final colors = AppColors.of(context);
     return Column(
       key: const ValueKey('step3'),
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         _inputBlock(
-          label: 'С какого дня начинать план?',
+          label: tr('С какого дня начинать план?'),
           child: TextField(
             controller: _startDateController,
             keyboardType: TextInputType.datetime,
             decoration: InputDecoration(
-              hintText: 'ДД.ММ.ГГГГ',
-              hintStyle: const TextStyle(color: Color(0xFF999999)),
+              hintText: tr('ДД.ММ.ГГГГ'),
+              hintStyle: TextStyle(color: colors.textTertiary),
               contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Colors.black, width: 2),
+                borderSide: BorderSide(color: colors.textPrimary, width: 2),
               ),
             ),
           ),
         ),
         const SizedBox(height: 18),
         _inputBlock(
-          label: 'На сколько дней разбить план?',
+          label: tr('На сколько дней разбить план?'),
           child: TextField(
             controller: _daysCountController,
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
               hintText: '30',
-              hintStyle: const TextStyle(color: Color(0xFF999999)),
+              hintStyle: TextStyle(color: colors.textTertiary),
               contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
+                borderSide: BorderSide(color: colors.border, width: 2),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Colors.black, width: 2),
+                borderSide: BorderSide(color: colors.textPrimary, width: 2),
               ),
             ),
           ),
         ),
         const SizedBox(height: 18),
         _inputBlock(
-          label: 'Выходные дни',
+          label: tr('Выходные дни'),
           child: _buildWeekendSelector(),
         ),
         const SizedBox(height: 24),
-        _primaryButton('Сгенерировать', _nextStep),
+        _primaryButton(tr('Сгенерировать'), _nextStep),
       ],
     );
   }
 
   Widget _buildWeekendSelector() {
-    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    final colors = AppColors.of(context);
+    final days = [tr('Пн'), tr('Вт'), tr('Ср'), tr('Чт'), tr('Пт'), tr('Сб'), tr('Вс')];
     return Row(
       children: List.generate(days.length, (index) {
         final isActive = _weekendDays.contains(index);
@@ -449,10 +452,10 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
-                color: isActive ? Colors.black : Colors.white,
+                color: isActive ? colors.inverseSurface : colors.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isActive ? Colors.black : const Color(0x1A000000),
+                  color: isActive ? colors.inverseSurface : colors.border,
                   width: 2,
                 ),
               ),
@@ -469,7 +472,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: isActive ? Colors.white : Colors.black,
+                          color: isActive ? colors.onInverseSurface : colors.textPrimary,
                         ),
                       ),
                     ),
@@ -489,10 +492,10 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppColors.of(context).textPrimary,
           ),
         ),
         const SizedBox(height: 12),
@@ -502,12 +505,13 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
   }
 
   Widget _primaryButton(String text, VoidCallback onTap) {
+    final colors = AppColors.of(context);
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
+          backgroundColor: colors.inverseSurface,
+          foregroundColor: colors.onInverseSurface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(17),
           ),

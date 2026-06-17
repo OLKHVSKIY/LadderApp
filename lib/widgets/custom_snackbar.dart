@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 class CustomSnackBar {
   static void show(BuildContext context, String message, {Duration? duration}) {
@@ -88,7 +89,8 @@ class _TopSnackBarState extends State<_TopSnackBar>
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-    
+    final colors = AppColors.of(context);
+
     return Positioned(
       top: topPadding,
       left: 0,
@@ -104,17 +106,18 @@ class _TopSnackBarState extends State<_TopSnackBar>
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colors.elevatedSurface,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: colors.border, width: 0.5),
                 ),
                 child: Center(
                   child: Text(
                     widget.message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: Colors.black,
+                      color: colors.textPrimary,
                     ),
                   ),
                 ),

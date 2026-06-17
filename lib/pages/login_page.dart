@@ -3,6 +3,8 @@ import '../data/database_instance.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/user_session.dart';
 import 'tasks_page.dart';
+import '../l10n/app_translations.dart';
+import '../widgets/name_setup_dialog.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -19,7 +21,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   late final AuthRepository _authRepository;
   bool _isLoading = false;
   String? _error;
-  bool _obscurePassword = true;
+  final bool _obscurePassword = true;
 
   late final AnimationController _animController;
   late final Animation<double> _fade;
@@ -90,12 +92,17 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Введите почту и пароль');
+      setState(() => _error = tr('Введите почту и пароль'));
+      return;
+    }
+    // Проверяем, что почта похожа на настоящий email (есть имя, @ и домен).
+    if (!_isValidEmail(email)) {
+      setState(() => _error = tr('Введите корректный адрес почты'));
       return;
     }
     // Проверяем длину пароля при регистрации (минимум 9 символов)
     if (password.length < 9) {
-      setState(() => _error = 'Пароль должен содержать минимум 9 символов');
+      setState(() => _error = tr('Пароль должен содержать минимум 9 символов'));
       return;
     }
     setState(() {
@@ -105,12 +112,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     try {
       await _authRepository.loginOrRegister(email, password);
       if (!mounted) return;
-      _goToApp();
+      await _goToApp();
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Простая проверка формата email: имя@домен.зона (без пробелов).
+  bool _isValidEmail(String email) {
+    final regex = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.-]+$');
+    return regex.hasMatch(email);
   }
 
   Future<void> _socialLogin(String provider) async {
@@ -121,7 +134,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     try {
       await _authRepository.socialLogin(provider);
       if (!mounted) return;
-      _goToApp();
+      await _goToApp();
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -129,12 +142,23 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     }
   }
 
-  void _goToApp() {
+  Future<void> _goToApp() async {
     UserSession.currentEmail = _emailController.text.trim();
+    // Первый вход: имени ещё нет — просим ввести (закрыть без имени нельзя).
+    final hasName = UserSession.currentName?.trim().isNotEmpty == true;
+    if (!hasName) {
+      final name = await showNameDialog(context, dismissible: false);
+      if (!mounted) return;
+      final userId = UserSession.currentUserId;
+      if (name != null && name.isNotEmpty && userId != null) {
+        await _authRepository.updateName(userId, name);
+        if (!mounted) return;
+      }
+    }
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 240),
-        pageBuilder: (_, animation, __) => FadeTransition(
+        pageBuilder: (_, animation, _) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
           child: const TasksPage(),
         ),
@@ -157,7 +181,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             border: Border.all(color: const Color(0xFFE5E5E5), width: 2),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -185,9 +209,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     if (isPhone) {
       _initializeWhiteBlockAnimation();
     }
-    
-    // Вычисляем высоту черного блока
-    final blackBlockHeight = top + 40 + 43 + 10 + 16 + 40; // top padding + title + spacing + subtitle + bottom padding
     
     return Scaffold(
       backgroundColor: Colors.black,
@@ -241,9 +262,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      const Text(
-                        'Войдите, чтобы продолжить',
-                        style: TextStyle(
+                      Text(
+                        tr('Войдите, чтобы продолжить'),
+                        style: const TextStyle(
                           fontSize: 14,
                           color: Colors.white,
                           fontWeight: FontWeight.w400,
@@ -323,7 +344,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             ),
                             const SizedBox(height: 16),
                     _buildField(
-                      label: 'Пароль',
+                      label: tr('Пароль'),
                       controller: _passwordController,
                       focusNode: _passwordFocusNode,
                       hint: '••••••••',
@@ -350,9 +371,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                           color: Colors.white,
                                         ),
                                       )
-                                    : const Text(
-                                        'Войти',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                                    : Text(
+                                        tr('Войти'),
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                                       ),
                               ),
                             ),
@@ -365,12 +386,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             ],
                             const SizedBox(height: 18),
                             Row(
-                              children: const [
-                                Expanded(child: Divider(color: Color(0xFFE5E5E5), thickness: 1)),
-                                SizedBox(width: 12),
-                                Text('или', style: TextStyle(color: Color(0xFF999999))),
-                                SizedBox(width: 12),
-                                Expanded(child: Divider(color: Color(0xFFE5E5E5), thickness: 1)),
+                              children: [
+                                const Expanded(child: Divider(color: Color(0xFFE5E5E5), thickness: 1)),
+                                const SizedBox(width: 12),
+                                Text(tr('или'), style: const TextStyle(color: Color(0xFF999999))),
+                                const SizedBox(width: 12),
+                                const Expanded(child: Divider(color: Color(0xFFE5E5E5), thickness: 1)),
                               ],
                             ),
                             const SizedBox(height: 18),
@@ -592,7 +613,7 @@ class _StarsPainter extends CustomPainter {
       // Рисуем свечение (ауру) - только когда звезда яркая
       if (opacity > 0.6) {
         final glowOpacity = (opacity - 0.6) * 0.4; // Свечение появляется при яркости > 60%
-        paint.color = Colors.white.withOpacity(glowOpacity);
+        paint.color = Colors.white.withValues(alpha: glowOpacity);
         // Внешнее свечение (больший радиус, более прозрачное)
         canvas.drawCircle(
           Offset(x, y),
@@ -600,7 +621,7 @@ class _StarsPainter extends CustomPainter {
           paint,
         );
         // Среднее свечение
-        paint.color = Colors.white.withOpacity(glowOpacity * 0.6);
+        paint.color = Colors.white.withValues(alpha: glowOpacity * 0.6);
         canvas.drawCircle(
           Offset(x, y),
           3.0,
@@ -609,7 +630,7 @@ class _StarsPainter extends CustomPainter {
       }
       
       // Рисуем саму звезду (чуть меньше размера)
-      paint.color = Colors.white.withOpacity(opacity);
+      paint.color = Colors.white.withValues(alpha: opacity);
       canvas.drawCircle(
         Offset(x, y),
         1.8,

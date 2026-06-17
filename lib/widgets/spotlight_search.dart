@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui';
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:open_filex/open_filex.dart';
@@ -18,11 +18,12 @@ import '../models/note_model.dart';
 import '../models/goal_model.dart';
 import '../models/attached_file.dart';
 import '../pages/tasks_page.dart';
-import '../pages/notes_page.dart';
+import '../pages/list_page.dart';
 import '../pages/plan_page.dart';
 import '../services/yandex_gpt_service.dart';
 import '../widgets/custom_snackbar.dart';
-import 'main_header.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 enum SearchResultType {
   task,
@@ -105,8 +106,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
   late Animation<double> _scaleAnimation;
 
   List<SearchResult> _results = [];
-  List<_SpotlightChatMessage> _chatMessages = [];
-  bool _isSearching = false;
+  final List<_SpotlightChatMessage> _chatMessages = [];
   bool _isSending = false;
   bool _isChatMode = false;
   String _currentQuery = '';
@@ -130,7 +130,8 @@ class _SpotlightSearchState extends State<SpotlightSearch>
 
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: const Duration(milliseconds: 220),
     );
 
     _fadeAnimation = Tween<double>(
@@ -138,15 +139,18 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeOut,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     ));
 
+    // Чуть выраженный «всплывающий» масштаб с лёгким перелётом для приятного появления.
     _scaleAnimation = Tween<double>(
-      begin: 0.95,
+      begin: 0.9,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeOut,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInCubic,
     ));
 
     _animationController.forward();
@@ -170,7 +174,6 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       setState(() {
         _results = [];
         _currentQuery = '';
-        _isSearching = false;
         _isChatMode = _chatMessages.isNotEmpty; // Если есть сообщения, остаемся в режиме чата
       });
       return;
@@ -197,16 +200,11 @@ class _SpotlightSearchState extends State<SpotlightSearch>
   }
 
   Future<void> _performSearch(String query) async {
-    setState(() {
-      _isSearching = true;
-    });
-
     try {
       final userId = UserSession.currentUserId;
       if (userId == null) {
         setState(() {
           _results = [];
-          _isSearching = false;
         });
         return;
       }
@@ -301,7 +299,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
               title: note.title,
               subtitle: subtitle,
               data: note,
-              date: note.updatedAt ?? note.createdAt,
+              date: note.updatedAt,
             ));
           }
         }
@@ -334,7 +332,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                 results.add(SearchResult(
                   type: SearchResultType.file,
                   title: file.fileName,
-                  subtitle: 'Файл в задаче: ${task.title}',
+                  subtitle: tr('Файл в задаче: {0}', [task.title]),
                   data: file,
                   date: task.date,
                 ));
@@ -352,9 +350,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                 results.add(SearchResult(
                   type: SearchResultType.file,
                   title: file.fileName,
-                  subtitle: 'Файл в заметке: ${note.title}',
+                  subtitle: tr('Файл в заметке: {0}', [note.title]),
                   data: file,
-                  date: note.updatedAt ?? note.createdAt,
+                  date: note.updatedAt,
                 ));
               }
             }
@@ -368,12 +366,10 @@ class _SpotlightSearchState extends State<SpotlightSearch>
 
       setState(() {
         _results = results;
-        _isSearching = false;
       });
     } catch (e) {
       setState(() {
         _results = [];
-        _isSearching = false;
       });
     }
   }
@@ -599,7 +595,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     
     if (taskDateNormalized.isBefore(todayNormalized)) {
       final errorMessage = _SpotlightChatMessage(
-        text: 'Нельзя создать задачу на прошедшую дату. Выберите сегодняшнюю или будущую дату.',
+        text: tr('Нельзя создать задачу на прошедшую дату. Выберите сегодняшнюю или будущую дату.'),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -641,7 +637,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       }
       
       final successMessage = _SpotlightChatMessage(
-        text: 'Задача "$title" успешно создана на ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year} с приоритетом $priority 🌿',
+        text: tr('Задача "{0}" успешно создана на {1}.{2}.{3} с приоритетом {4} 🌿', [title, date.day.toString().padLeft(2, '0'), date.month.toString().padLeft(2, '0'), date.year, priority]),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -672,7 +668,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       }
     } catch (e) {
       final errorMessage = _SpotlightChatMessage(
-        text: 'Не удалось создать задачу: $e',
+        text: tr('Не удалось создать задачу: {0}', [e]),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -755,7 +751,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       
       // Спрашиваем про приоритет
       final priorityQuestion = _SpotlightChatMessage(
-        text: 'Какой приоритет выбрать для задачи? 1, 2 или 3?',
+        text: tr('Какой приоритет выбрать для задачи? 1, 2 или 3?'),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -812,7 +808,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       }
       
       final priorityQuestion = _SpotlightChatMessage(
-        text: 'Какой приоритет выбрать для задачи? 1, 2 или 3?',
+        text: tr('Какой приоритет выбрать для задачи? 1, 2 или 3?'),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -913,7 +909,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         });
       }
     } catch (e) {
-      final errorMessage = 'Извините, произошла ошибка. Попробуйте еще раз.';
+      final errorMessage = tr('Извините, произошла ошибка. Попробуйте еще раз.');
       final errorMessageObj = _SpotlightChatMessage(
         text: errorMessage,
         isUser: false,
@@ -957,34 +953,35 @@ class _SpotlightSearchState extends State<SpotlightSearch>
   }
 
   void _onResultTap(SearchResult result) {
-    _close();
-    
-    // Небольшая задержка для завершения анимации закрытия
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (!mounted) return;
-      
-      switch (result.type) {
-        case SearchResultType.task:
-          _navigateToTask(result.data as task_model.Task);
-          break;
-        case SearchResultType.note:
-          _navigateToNote(result.data as NoteModel);
-          break;
-        case SearchResultType.goal:
-          _navigateToGoal(result.data as GoalModel);
-          break;
-        case SearchResultType.file:
-          _openFile(result.data);
-          break;
-      }
-    });
+    // ВАЖНО: навигация делается напрямую через pushReplacement, который сам
+    // убирает диалог поиска. Раньше дополнительно вызывался _close() с
+    // отложенным pop(), и из-за гонки этот pop снимал только что открытую
+    // целевую страницу — переход «не срабатывал».
+    switch (result.type) {
+      case SearchResultType.task:
+        _navigateToTask(result.data as task_model.Task);
+        break;
+      case SearchResultType.note:
+        _navigateToNote(result.data as NoteModel);
+        break;
+      case SearchResultType.goal:
+        _navigateToGoal(result.data as GoalModel);
+        break;
+      case SearchResultType.file:
+        // Для файла навигации нет — закрываем диалог и открываем файл.
+        _close();
+        Future.delayed(const Duration(milliseconds: 200), () {
+          _openFile(result.data as AttachedFile);
+        });
+        break;
+    }
   }
   
   void _navigateToTask(task_model.Task task) {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, __) => FadeTransition(
+        pageBuilder: (_, animation, _) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
           child: TasksPage(
             animateNavIn: false,
@@ -999,11 +996,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, __) => FadeTransition(
+        pageBuilder: (_, animation, _) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: NotesPage(
-            initialNoteToOpen: note,
-          ),
+          child: const ListPage(),
         ),
       ),
     );
@@ -1013,7 +1008,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, __) => FadeTransition(
+        pageBuilder: (_, animation, _) => FadeTransition(
           opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
           child: PlanPage(
             initialGoalIdToOpen: goal.id,
@@ -1031,7 +1026,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       if (!await sourceFile.exists()) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Файл не найден')),
+          SnackBar(content: Text(tr('Файл не найден'))),
         );
         return;
       }
@@ -1082,7 +1077,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       if (result.type != ResultType.done) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Файл сохранен: $cleanFileName'),
+            content: Text(tr('Файл сохранен: {0}', [cleanFileName])),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -1090,13 +1085,14 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при открытии файла: $e')),
+        SnackBar(content: Text(tr('Ошибка при открытии файла: {0}', [e]))),
         );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Material(
       color: Colors.transparent,
       child: Stack(
@@ -1116,13 +1112,17 @@ class _SpotlightSearchState extends State<SpotlightSearch>
             animation: _animationController,
             builder: (context, child) {
               return Opacity(
-                opacity: _fadeAnimation.value,
-                child: Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: child!,
-              ),
-            );
-          },
+                opacity: _fadeAnimation.value.clamp(0.0, 1.0),
+                child: Transform.translate(
+                  // Лёгкий «спуск» сверху при появлении.
+                  offset: Offset(0, (1 - _fadeAnimation.value) * -14),
+                  child: Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: child!,
+                  ),
+                ),
+              );
+            },
           child: LayoutBuilder(
             builder: (context, constraints) {
               final screenHeight = MediaQuery.of(context).size.height;
@@ -1142,22 +1142,48 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                                   width: MediaQuery.of(context).size.width * 0.94,
                                   constraints: const BoxConstraints(maxWidth: 600),
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  child: Material(
-                                    color: Colors.white,
                                     borderRadius: BorderRadius.circular(28),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
+                                    // Мягкая тень снаружи стекла (внутри ClipRRect обрезалась бы).
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: colors.isDark ? 0.4 : 0.18),
+                                        blurRadius: 30,
+                                        offset: const Offset(0, 12),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(28),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          // Светлая тема — белая панель, тёмная — её surface.
+                                          color: colors.isDark
+                                              ? colors.surface
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(28),
+                                          border: Border.all(
+                                            color: colors.isDark
+                                                ? Colors.white.withValues(alpha: 0.25)
+                                                : Colors.black,
+                                            width: colors.isDark ? 0.5 : 1,
+                                          ),
+                                        ),
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          borderRadius: BorderRadius.circular(28),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
                                         // Поле ввода
                                         Padding(
                                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
                                           child: Row(
                                             children: [
-                                              const Icon(
+                                              Icon(
                                                 Icons.search,
-                                                color: Colors.grey,
+                                                color: colors.textTertiary,
                                                 size: 26,
                                               ),
                                               const SizedBox(width: 12),
@@ -1166,14 +1192,14 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                                                   controller: _searchController,
                                                   focusNode: _focusNode,
                                                   autofocus: true,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontSize: 18,
-                                                    color: Colors.black,
+                                                    color: colors.textPrimary,
                                                   ),
-                                                  decoration: const InputDecoration(
-                                                    hintText: 'Поиск задач, заметок, целей..',
+                                                  decoration: InputDecoration(
+                                                    hintText: tr('Поиск задач, заметок, целей..'),
                                                     hintStyle: TextStyle(
-                                                      color: Colors.grey,
+                                                      color: colors.textTertiary,
                                                       fontSize: 18,
                                                     ),
                                                     border: InputBorder.none,
@@ -1191,19 +1217,20 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                                               GestureDetector(
                                                 onTap: _searchController.text.trim().isEmpty ? null : _handleSearchSubmit,
                                                 child: AnimatedContainer(
-                                                  duration: const Duration(milliseconds: 150),
+                                                  duration: const Duration(milliseconds: 220),
+                                                  curve: Curves.easeOutCubic,
                                                   width: 36,
                                                   height: 36,
                                                   decoration: BoxDecoration(
                                                     color: _searchController.text.trim().isEmpty
-                                                        ? const Color(0xFFCCCCCC)
-                                                        : Colors.black,
+                                                        ? colors.textTertiary
+                                                        : colors.inverseSurface,
                                                     shape: BoxShape.circle,
                                                   ),
-                                                  child: const Icon(
+                                                  child: Icon(
                                                     Icons.arrow_upward,
                                                     size: 18,
-                                                    color: Colors.white,
+                                                    color: colors.onInverseSurface,
                                                   ),
                                                 ),
                                               ),
@@ -1248,12 +1275,12 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                                           )
                                         else if (_results.isEmpty &&
                                             _searchController.text.isNotEmpty)
-                                          const Padding(
-                                            padding: EdgeInsets.all(20),
+                                          Padding(
+                                            padding: const EdgeInsets.all(20),
                                             child: Text(
-                                              'Ничего не найдено',
+                                              tr('Ничего не найдено'),
                                               style: TextStyle(
-                                                color: Colors.grey,
+                                                color: colors.textTertiary,
                                                 fontSize: 16,
                                               ),
                                             ),
@@ -1282,6 +1309,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                                             ),
                                           ),
                                       ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1296,12 +1326,8 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     );
   }
 
-  // Виджет бабла сообщения для Spotlight
-  Widget _buildChatMessageBubble(_SpotlightChatMessage message) {
-    return _SpotlightMessageBubble(message: message);
-  }
-
   Widget _buildResultItem(SearchResult result, {bool isLast = false}) {
+    final colors = AppColors.of(context);
     IconData icon;
     Color iconColor;
     String typeLabel;
@@ -1320,17 +1346,17 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         } else {
           iconColor = Colors.blue; // По умолчанию синий
         }
-        typeLabel = 'Задача';
+        typeLabel = tr('Задача');
         break;
       case SearchResultType.note:
         icon = Icons.note_outlined;
         iconColor = Colors.orange;
-        typeLabel = 'Заметка';
+        typeLabel = tr('Заметка');
         break;
       case SearchResultType.goal:
         icon = Icons.flag_outlined;
         iconColor = Colors.green;
-        typeLabel = 'Цель';
+        typeLabel = tr('Цель');
         break;
       case SearchResultType.file:
         final file = result.data as dynamic;
@@ -1351,7 +1377,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
           icon = Icons.insert_drive_file;
           iconColor = Colors.grey;
         }
-        typeLabel = 'Файл';
+        typeLabel = tr('Файл');
         break;
     }
 
@@ -1370,7 +1396,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
+                color: iconColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -1386,10 +1412,10 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                 children: [
                   Text(
                     result.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black,
+                      color: colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1408,9 +1434,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                     const SizedBox(height: 4),
                     Text(
                       result.subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey,
+                        color: colors.textTertiary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1422,9 +1448,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                     const SizedBox(height: 4),
                     Text(
                       result.subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey,
+                        color: colors.textTertiary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1435,16 +1461,16 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                     typeLabel,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey[600],
+                      color: colors.textTertiary,
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.arrow_forward_ios,
               size: 16,
-              color: Colors.grey,
+              color: colors.textTertiary,
             ),
           ],
         ),
@@ -1453,6 +1479,7 @@ class _SpotlightSearchState extends State<SpotlightSearch>
   }
 
   Widget _buildTaskSubtitle(String? description, List<String>? tags) {
+    final colors = AppColors.of(context);
     final hasDescription = description != null && description.isNotEmpty;
     final hasTags = tags != null && tags.isNotEmpty;
     
@@ -1471,9 +1498,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         children: [
           Text(
             description,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: Colors.grey,
+              color: colors.textTertiary,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1482,9 +1509,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
             const SizedBox(height: 2),
             Text(
               tags.join(' '),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey,
+                color: colors.textTertiary,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1508,9 +1535,9 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       }
       return Text(
         subtitle,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
-          color: Colors.grey,
+          color: colors.textTertiary,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -1616,7 +1643,7 @@ class _SpotlightMessageBubbleState extends State<_SpotlightMessageBubble> {
         // Вибрация (усиленная)
         HapticFeedback.heavyImpact();
         // Показываем уведомление
-        CustomSnackBar.show(context, 'Текст скопирован в буфер обмена');
+        CustomSnackBar.show(context, tr('Текст скопирован в буфер обмена'));
         _isPressed = false;
       }
     });
@@ -1634,9 +1661,10 @@ class _SpotlightMessageBubbleState extends State<_SpotlightMessageBubble> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final isUser = widget.message.isUser;
-    final bgColor = isUser ? Colors.black : const Color(0xFFF5F5F5);
-    final textColor = isUser ? Colors.white : Colors.black;
+    final bgColor = isUser ? colors.inverseSurface : colors.surfaceVariant;
+    final textColor = isUser ? colors.onInverseSurface : colors.textPrimary;
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
@@ -1680,7 +1708,7 @@ class _SpotlightMessageBubbleState extends State<_SpotlightMessageBubble> {
                       'by AI',
                       style: TextStyle(
                         fontSize: 11,
-                        color: const Color(0xFF999999),
+                        color: colors.textTertiary,
                         height: 1.0,
                       ),
                     ),

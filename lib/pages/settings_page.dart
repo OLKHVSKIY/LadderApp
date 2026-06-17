@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:drift/drift.dart' as dr;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -10,7 +11,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 
+
+import '../theme/theme_controller.dart';
+import '../theme/app_colors.dart';
+import '../l10n/locale_controller.dart';
+import '../l10n/app_translations.dart';
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
 import 'tasks_page.dart';
@@ -19,7 +26,11 @@ import 'subscription_page.dart';
 import '../data/database_instance.dart';
 import '../data/user_session.dart';
 import '../data/app_database.dart';
+import '../data/repositories/auth_repository.dart';
 import '../widgets/custom_snackbar.dart';
+import '../widgets/name_setup_dialog.dart';
+import '../services/google_calendar_service.dart';
+import '../services/apple_calendar_service.dart';
 
 class SettingsPage extends StatefulWidget {
   final Widget Function() buildReturnPage;
@@ -38,13 +49,65 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderStateMixin {
   bool _isSidebarOpen = false;
   late AnimationController _starsController;
-  String _selectedTheme = 'Светлая';
-  String _selectedLanguage = 'Русский';
   final TextEditingController _emailController = TextEditingController();
   bool _saving = false;
   String? _avatarPath;
   String? _userName;
   bool _isAvatarHovered = false;
+  bool _importingCalendar = false;
+  bool _importingAppleCalendar = false;
+  int _googleNewEvents = 0; // не импортированных событий Google (для бейджа)
+  int _appleNewEvents = 0; // не импортированных событий Apple (для бейджа)
+  bool _notificationsEnabled = true;
+  bool _emailNotificationsEnabled = true;
+  OverlayEntry? _selectMenuOverlay;
+  final GlobalKey _themeAnchorKey = GlobalKey();
+  final GlobalKey _languageAnchorKey = GlobalKey();
+
+  void _removeSelectMenu() {
+    _selectMenuOverlay?.remove();
+    _selectMenuOverlay = null;
+  }
+
+  // Открывает стеклянное выпадающее меню (liquid glass), привязанное к контролу выбора.
+  void _showSelectMenu({
+    required GlobalKey anchorKey,
+    required String title,
+    required List<String> options,
+    required String currentValue,
+    required ValueChanged<String> onChanged,
+  }) {
+    _removeSelectMenu();
+    final overlay = Overlay.of(context);
+    final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final anchorPosition = renderBox.localToGlobal(Offset.zero);
+    final anchorSize = renderBox.size;
+    const menuWidth = 200.0;
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Правый край меню совмещаем с правым краем контрола, не вылезая за экран.
+    double left = anchorPosition.dx + anchorSize.width - menuWidth;
+    if (left < 12) left = 12;
+    if (left + menuWidth > screenWidth - 12) left = screenWidth - 12 - menuWidth;
+    final top = anchorPosition.dy + anchorSize.height + 6;
+
+    _selectMenuOverlay = OverlayEntry(
+      builder: (context) => _GlassSelectMenu(
+        left: left,
+        top: top,
+        width: menuWidth,
+        title: title,
+        options: options,
+        currentValue: currentValue,
+        onSelected: (v) {
+          _removeSelectMenu();
+          onChanged(v);
+        },
+        onClose: _removeSelectMenu,
+      ),
+    );
+    overlay.insert(_selectMenuOverlay!);
+  }
 
   void _toggleSidebar() {
     // Скрываем клавиатуру при открытии/закрытии сайдбара
@@ -62,7 +125,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 220),
-          pageBuilder: (_, animation, __) => FadeTransition(
+          pageBuilder: (_, animation, _) => FadeTransition(
             opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
             child: widget.buildReturnPage(),
           ),
@@ -79,10 +142,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       duration: const Duration(seconds: 5),
     )..repeat();
     _loadUserProfile();
+    // Считаем не импортированные события календарей для индикаторов.
+    _refreshCalendarBadges();
   }
 
   @override
   void dispose() {
+    // Снимаем оверлей напрямую — setState в dispose недопустим.
+    _selectMenuOverlay?.remove();
+    _selectMenuOverlay = null;
     _starsController.dispose();
     _emailController.dispose();
     super.dispose();
@@ -147,12 +215,32 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
+  Future<void> _editName() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    final name = await showNameDialog(
+      context,
+      initialName: _userName,
+      dismissible: true,
+    );
+    if (!mounted || name == null || name.isEmpty) return;
+    await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
+      UsersCompanion(
+        name: dr.Value(name),
+        updatedAt: dr.Value(DateTime.now()),
+      ),
+    );
+    UserSession.currentName = name;
+    if (!mounted) return;
+    setState(() => _userName = name);
+  }
+
   Future<void> _saveProfile() async {
     final userId = UserSession.currentUserId;
     if (userId == null) return;
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      CustomSnackBar.show(context, 'Введите email');
+      CustomSnackBar.show(context, tr('Введите email'));
       return;
     }
     // Вибрация при сохранении (такая же как при отметках)
@@ -176,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       _saving = false;
     });
     if (mounted) {
-      CustomSnackBar.show(context, 'Сохранено');
+      CustomSnackBar.show(context, tr('Сохранено'));
     }
   }
 
@@ -223,7 +311,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         } catch (e) {
           debugPrint('Ошибка image_picker: $e');
           if (mounted) {
-            CustomSnackBar.show(context, 'Не удалось открыть галерею');
+            CustomSnackBar.show(context, tr('Не удалось открыть галерею'));
           }
           return;
         }
@@ -246,16 +334,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             final useAlternative = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                title: const Text('Не удалось открыть файловый диалог'),
-                content: const Text('Пожалуйста, перезапустите приложение полностью (не hot reload).'),
+                title: Text(tr('Не удалось открыть файловый диалог')),
+                content: Text(tr('Пожалуйста, перезапустите приложение полностью (не hot reload).')),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Отмена'),
+                    child: Text(tr('Отмена')),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Попробовать еще раз'),
+                    child: Text(tr('Попробовать еще раз')),
                   ),
                 ],
               ),
@@ -271,7 +359,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               } catch (e2) {
                 debugPrint('Ошибка file_picker при повторной попытке: $e2');
                 if (mounted) {
-                  CustomSnackBar.show(context, 'Перезапустите приложение полностью');
+                  CustomSnackBar.show(context, tr('Перезапустите приложение полностью'));
                 }
                 return;
               }
@@ -305,7 +393,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           } catch (e) {
             debugPrint('Ошибка при обработке выбранного файла: $e');
             if (mounted) {
-              CustomSnackBar.show(context, 'Ошибка обработки файла');
+              CustomSnackBar.show(context, tr('Ошибка обработки файла'));
             }
             return;
           }
@@ -325,7 +413,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       if (!await sourceFile.exists()) {
         debugPrint('Файл не существует: $filePath');
         if (mounted) {
-          CustomSnackBar.show(context, 'Файл не найден');
+          CustomSnackBar.show(context, tr('Файл не найден'));
         }
         return;
       }
@@ -344,7 +432,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       } catch (e) {
         debugPrint('Ошибка копирования файла: $e');
         if (mounted) {
-          CustomSnackBar.show(context, 'Ошибка обработки файла');
+          CustomSnackBar.show(context, tr('Ошибка обработки файла'));
         }
         return;
       }
@@ -358,14 +446,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
           uiSettings: [
             AndroidUiSettings(
-              toolbarTitle: 'Обрезка аватара',
+              toolbarTitle: tr('Обрезка аватара'),
               toolbarColor: Colors.black,
               toolbarWidgetColor: Colors.white,
               initAspectRatio: CropAspectRatioPreset.square,
               lockAspectRatio: true,
             ),
             IOSUiSettings(
-              title: 'Обрезка аватара',
+              title: tr('Обрезка аватара'),
               aspectRatioLockEnabled: true,
               resetAspectRatioEnabled: false,
             ),
@@ -391,7 +479,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           }
         } catch (_) {}
         if (mounted) {
-          CustomSnackBar.show(context, 'Ошибка обрезки изображения');
+          CustomSnackBar.show(context, tr('Ошибка обрезки изображения'));
         }
         return;
       }
@@ -463,7 +551,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             } else {
               debugPrint('ОШИБКА: Файл не существует ни по одному пути!');
               if (mounted) {
-                CustomSnackBar.show(context, 'Ошибка сохранения аватара');
+                CustomSnackBar.show(context, tr('Ошибка сохранения аватара'));
               }
               return;
             }
@@ -471,7 +559,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         } catch (e) {
           debugPrint('Ошибка при сохранении через writeAsBytes: $e');
           if (mounted) {
-            CustomSnackBar.show(context, 'Ошибка сохранения аватара: $e');
+            CustomSnackBar.show(context, tr('Ошибка сохранения аватара: {0}', [e]));
           }
           return;
         }
@@ -489,7 +577,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         }
       }
 
-      if (finalPath != null && finalPath.isNotEmpty) {
+      if (finalPath.isNotEmpty) {
         debugPrint('Сохраняем аватар по пути: $finalPath');
         
         // Обновляем состояние сразу, так как файл уже сохранен и проверен выше
@@ -516,25 +604,25 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           } catch (e) {
             debugPrint('Ошибка сохранения имени файла аватара в БД: $e');
             if (mounted) {
-              CustomSnackBar.show(context, 'Аватар обновлен, но не сохранен в профиле');
+              CustomSnackBar.show(context, tr('Аватар обновлен, но не сохранен в профиле'));
             }
             return;
           }
         }
         
         if (mounted) {
-          CustomSnackBar.show(context, 'Аватар обновлен');
+          CustomSnackBar.show(context, tr('Аватар обновлен'));
         }
       } else {
         debugPrint('ОШИБКА: finalPath равен null или пустой!');
         if (mounted) {
-          CustomSnackBar.show(context, 'Не удалось сохранить аватар');
+          CustomSnackBar.show(context, tr('Не удалось сохранить аватар'));
         }
       }
     } catch (e) {
       debugPrint('Ошибка выбора/обрезки изображения: $e');
       if (mounted) {
-        CustomSnackBar.show(context, 'Не удалось обновить аватар');
+        CustomSnackBar.show(context, tr('Не удалось обновить аватар'));
       }
     }
   }
@@ -542,7 +630,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).background,
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
@@ -553,7 +641,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               child: Column(
                 children: [
                   MainHeader(
-                    title: 'Настройки',
+                    title: tr('Настройки'),
                     onMenuTap: _toggleSidebar,
                     onSearchTap: null,
                     onSettingsTap: null,
@@ -574,6 +662,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                           const SizedBox(height: 32),
                           _buildAppearance(),
                           const SizedBox(height: 32),
+                          _buildIntegrations(),
+                          const SizedBox(height: 32),
                           _buildNotifications(),
                           const SizedBox(height: 32),
                           _buildAbout(),
@@ -592,9 +682,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               onTasksTap: () {
                 _goBack();
               },
-              onChatTap: () {
-                // Вернуться к задачам, откуда можно в чат
-                _goBack();
+              onSettingsTap: () {
+                // Уже на настройках — просто закрываем сайдбар
+                _toggleSidebar();
               },
             ),
           ],
@@ -609,23 +699,18 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _buildSectionTitle(''),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.of(context).surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFF5F5F5)),
+            border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 20),
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: Color(0xFFF5F5F5)),
-                  ),
-                ),
+                padding: const EdgeInsets.only(left: 25, right: 25, top: 10, bottom: 20),
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 20, bottom: 20),
+                      padding: const EdgeInsets.only(top: 20, bottom: 15),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -661,7 +746,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                                       height: 140,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: const Color(0xFFF5F5F5),
+                                        color: AppColors.of(context).surfaceVariant,
                                         image: hasAvatar
                                             ? DecorationImage(
                                                 image: FileImage(File(_avatarPath!)),
@@ -686,7 +771,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                                   height: 140,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Colors.black.withOpacity(_isAvatarHovered ? 0.4 : 0.0),
+                                    color: Colors.black.withValues(alpha: _isAvatarHovered ? 0.4 : 0.0),
                                   ),
                                   child: _isAvatarHovered
                                       ? const Icon(
@@ -700,13 +785,28 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                             ),
                           ),
                           const SizedBox(height: 28),
-                          // Имя пользователя (не редактируется)
-                          Text(
-                            _userName ?? 'Пользователь',
-                            style: const TextStyle(
-                              fontSize: 25,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black,
+                          // Имя пользователя + иконка смены имени
+                          GestureDetector(
+                            onTap: _editName,
+                            behavior: HitTestBehavior.opaque,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _userName ?? tr('Пользователь'),
+                                  style: TextStyle(
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.of(context).textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  CupertinoIcons.pencil,
+                                  size: 20,
+                                  color: AppColors.of(context).textSecondary,
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -715,9 +815,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ],
                 ),
               ),
+              Divider(height: 1, color: AppColors.of(context).divider),
               _buildReadOnlyItem(
                 title: 'Email',
-                subtitle: 'Для уведомлений и\nприглашений',
+                subtitle: tr('Для уведомлений и\nприглашений'),
                 value: _emailController.text,
               ),
             ],
@@ -731,7 +832,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('ПОДПИСКА'),
+        _buildSectionTitle(tr('ПОДПИСКА')),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -740,21 +841,21 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Текущий тариф',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xFF333333)),
+                  Text(
+                    tr('Текущий тариф'),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.of(context).textSecondary),
                   ),
                   TextButton(
                     style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFFF5F5F5),
-                      foregroundColor: const Color(0xFF333333),
+                      backgroundColor: AppColors.of(context).surfaceVariant,
+                      foregroundColor: AppColors.of(context).textSecondary,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
                     onPressed: () {},
-                    child: const Text(
-                      'Бесплатный',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    child: Text(
+                      tr('Бесплатный'),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -801,9 +902,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         const SizedBox(width: 8),
                         DecoratedBox(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.25),
+                            color: Colors.white.withValues(alpha: 0.25),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                           ),
                           child: const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -820,9 +921,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                       ],
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      'Оформи Pro, чтобы получить больше',
-                      style: TextStyle(
+                    Text(
+                      tr('Оформи Pro, чтобы получить больше'),
+                      style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
                         color: Colors.white,
@@ -834,12 +935,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               const SizedBox(width: 12),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white.withOpacity(0.2),
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: Colors.white.withOpacity(0.3)),
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
                   ),
                   elevation: 0,
                 ),
@@ -850,9 +951,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     ),
                   );
                 },
-                child: const Text(
-                  'Обновить',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                child: Text(
+                  tr('Обновить'),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -908,7 +1009,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.white.withOpacity(opacity),
+                              color: Colors.white.withValues(alpha: opacity),
                               blurRadius: 6,
                               spreadRadius: 1,
                             ),
@@ -927,29 +1028,43 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Внешний вид'),
+        _buildSectionTitle(tr('Внешний вид')),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.of(context).surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFF5F5F5)),
+            border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
             children: [
               _buildSelectItem(
-                title: 'Тема',
-                subtitle: 'Светлая или темная',
-                options: const ['Светлая', 'Темная'],
-                currentValue: _selectedTheme,
-                onChanged: (v) => setState(() => _selectedTheme = v),
+                anchorKey: _themeAnchorKey,
+                title: tr('Тема'),
+                subtitle: tr('Светлая или темная'),
+                options: [tr('Светлая'), tr('Темная')],
+                currentValue:
+                    ThemeController.isDark ? tr('Темная') : tr('Светлая'),
+                onChanged: (v) {
+                  setState(() {});
+                  ThemeController.setDark(v == tr('Темная'));
+                },
               ),
-              const Divider(height: 1, color: Color(0xFFF5F5F5)),
+              Divider(height: 1, color: AppColors.of(context).divider),
               _buildSelectItem(
-                title: 'Язык',
-                subtitle: 'Язык интерфейса',
-                options: const ['Русский', 'English', 'Español'],
-                currentValue: _selectedLanguage,
-                onChanged: (v) => setState(() => _selectedLanguage = v),
+                anchorKey: _languageAnchorKey,
+                title: tr('Язык'),
+                subtitle: tr('Язык интерфейса'),
+                // Подписи языков не переводим — каждый язык на своём языке.
+                options: LocaleController.supported.values.toList(),
+                currentValue: LocaleController.label,
+                onChanged: (v) {
+                  // Находим код языка по выбранной подписи и применяем.
+                  final code = LocaleController.supported.entries
+                      .firstWhere((e) => e.value == v)
+                      .key;
+                  LocaleController.setLanguage(code);
+                  setState(() {});
+                },
               ),
             ],
           ),
@@ -962,23 +1077,33 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Уведомления'),
+        _buildSectionTitle(tr('Уведомления')),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.of(context).surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFF5F5F5)),
+            border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
             children: [
               _buildToggleItem(
-                title: 'Уведомления',
-                subtitle: 'Получать уведомления о задачах',
+                title: tr('Уведомления'),
+                subtitle: tr('Получать уведомления о задачах'),
+                value: _notificationsEnabled,
+                onChanged: (v) {
+                  HapticFeedback.lightImpact();
+                  setState(() => _notificationsEnabled = v);
+                },
               ),
-              const Divider(height: 1, color: Color(0xFFF5F5F5)),
+              Divider(height: 1, color: AppColors.of(context).divider),
               _buildToggleItem(
-                title: 'Email уведомления',
-                subtitle: 'Получать уведомления на email',
+                title: tr('Email уведомления'),
+                subtitle: tr('Получать уведомления на email'),
+                value: _emailNotificationsEnabled,
+                onChanged: (v) {
+                  HapticFeedback.lightImpact();
+                  setState(() => _emailNotificationsEnabled = v);
+                },
               ),
             ],
           ),
@@ -987,19 +1112,245 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildIntegrations() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(tr('Интеграции')),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.of(context).surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.of(context).border),
+          ),
+          child: Column(
+            children: [
+              _buildIntegrationItem(
+                icon: CupertinoIcons.calendar,
+                title: tr('Google Календарь'),
+                subtitle: tr('Импортировать события в задачи'),
+                loading: _importingCalendar,
+                badge: _googleNewEvents,
+                onTap: _importGoogleCalendar,
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildIntegrationItem(
+                icon: CupertinoIcons.calendar_today,
+                title: tr('Apple Календарь'),
+                subtitle: tr('Импортировать события в задачи'),
+                loading: _importingAppleCalendar,
+                badge: _appleNewEvents,
+                onTap: _importAppleCalendar,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIntegrationItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool loading,
+    required VoidCallback onTap,
+    int badge = 0,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: loading ? null : onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.of(context).surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, size: 22, color: AppColors.of(context).textSecondary),
+                ),
+                // Индикатор: есть новые, ещё не импортированные события.
+                if (badge > 0)
+                  Positioned(
+                    top: -3,
+                    right: -3,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF3B30),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: AppColors.of(context).surface, width: 2),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        badge > 99 ? '99+' : '$badge',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.of(context).textPrimary),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            loading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CupertinoActivityIndicator(),
+                  )
+                : Icon(
+                    CupertinoIcons.chevron_forward,
+                    size: 18,
+                    color: AppColors.of(context).textTertiary,
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _importAppleCalendar() async {
+    // Защита от повторных нажатий: пока идёт импорт, новый запуск игнорируем,
+    // иначе параллельные импорты читают БД до записи и плодят дубликаты.
+    if (_importingAppleCalendar) return;
+    setState(() => _importingAppleCalendar = true);
+    try {
+      final result = await AppleCalendarService().importEvents();
+      if (!mounted) return;
+      if (result.imported > 0) {
+        CustomSnackBar.show(context, tr('Импортировано задач: {0}', [result.imported]));
+      } else if (result.skipped > 0) {
+        // Все найденные события уже были импортированы ранее — показываем
+        // явный алерт, чтобы пользователь не жал импорт повторно.
+        await _showCalendarAlert(tr('Все события уже импортированы'));
+      } else {
+        CustomSnackBar.show(context, tr('Новых событий нет'));
+      }
+      _refreshCalendarBadges();
+    } on CalendarPermissionDenied {
+      if (mounted) {
+        CustomSnackBar.show(context, tr('Нет доступа к календарю. Разрешите в Настройках iOS'));
+      }
+    } catch (e) {
+      debugPrint('Ошибка импорта Apple Календаря: $e');
+      if (mounted) {
+        CustomSnackBar.show(context, tr('Не удалось импортировать календарь'));
+      }
+    } finally {
+      if (mounted) setState(() => _importingAppleCalendar = false);
+    }
+  }
+
+  // Алерт-диалог о результате импорта календаря.
+  Future<void> _showCalendarAlert(String title, [String? message]) {
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(title),
+        content: (message == null || message.isEmpty)
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(message),
+              ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(tr('OK')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _importGoogleCalendar() async {
+    // Защита от повторных нажатий: пока идёт импорт, новый запуск игнорируем,
+    // иначе параллельные импорты читают БД до записи и плодят дубликаты.
+    if (_importingCalendar) return;
+    setState(() => _importingCalendar = true);
+    try {
+      final result = await GoogleCalendarService().importEvents();
+      if (!mounted) return;
+      if (result.imported > 0) {
+        CustomSnackBar.show(context, tr('Импортировано задач: {0}', [result.imported]));
+      } else if (result.skipped > 0) {
+        await _showCalendarAlert(tr('Все события уже импортированы'));
+      } else {
+        CustomSnackBar.show(context, tr('Новых событий нет'));
+      }
+      _refreshCalendarBadges();
+    } on GoogleSignInCancelled {
+      // Пользователь сам отменил вход — молча выходим.
+    } on GoogleNotConfigured {
+      if (mounted) {
+        CustomSnackBar.show(context, tr('Google Календарь ещё не настроен'));
+      }
+    } catch (e) {
+      debugPrint('Ошибка импорта календаря: $e');
+      if (mounted) {
+        CustomSnackBar.show(context, tr('Не удалось импортировать календарь'));
+      }
+    } finally {
+      if (mounted) setState(() => _importingCalendar = false);
+    }
+  }
+
+  // Пересчитывает количество ещё не импортированных событий для бейджей.
+  Future<void> _refreshCalendarBadges() async {
+    try {
+      final apple = await AppleCalendarService().countNewEvents();
+      if (mounted) setState(() => _appleNewEvents = apple);
+    } catch (_) {/* индикатор не критичен */}
+    try {
+      final google = await GoogleCalendarService().countNewEvents();
+      if (mounted) setState(() => _googleNewEvents = google);
+    } catch (_) {/* индикатор не критичен */}
+  }
+
   Widget _buildAbout() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('О приложении'),
+        _buildSectionTitle(tr('О приложении')),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.of(context).surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFF5F5F5)),
+            border: Border.all(color: AppColors.of(context).border),
           ),
           child: _buildSimpleItem(
-            title: 'Версия',
+            title: tr('Версия'),
             subtitle: '1.0.1',
           ),
         ),
@@ -1014,35 +1365,38 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         Expanded(
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
+              backgroundColor: AppColors.of(context).inverseSurface,
+              foregroundColor: AppColors.of(context).onInverseSurface,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               elevation: 0,
             ),
             onPressed: _saving ? null : _saveProfile,
             child: _saving
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: AppColors.of(context).onInverseSurface,
                     ),
                   )
-                : const Text(
-                    'Сохранить',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                : Text(
+                    tr('Сохранить'),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
           ),
         ),
         const SizedBox(width: 12),
         GestureDetector(
-          onTap: () {
+          onTap: () async {
+            // Полный выход: чистим сохранённую сессию (иначе автологин вернёт).
+            await AuthRepository(appDatabase).logout();
+            if (!mounted) return;
             Navigator.of(context).pushReplacement(
               PageRouteBuilder(
                 transitionDuration: const Duration(milliseconds: 220),
-                pageBuilder: (_, animation, __) => FadeTransition(
+                pageBuilder: (_, animation, _) => FadeTransition(
                   opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
                   child: const LoginPage(),
                 ),
@@ -1054,7 +1408,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             height: 56,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: const Color(0xFFFFEEEE),
+              // В тёмной теме серая заливка вместо светло-розовой.
+              color: AppColors.of(context).isDark
+                  ? AppColors.of(context).surfaceVariant
+                  : const Color(0xFFFFEEEE),
               border: Border.all(color: const Color(0xFFD60000), width: 1.5),
             ),
             alignment: Alignment.center,
@@ -1075,10 +1432,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       padding: const EdgeInsets.only(left: 4, right: 4, bottom: 12),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF999999),
+          color: AppColors.of(context).textTertiary,
           letterSpacing: 0.5,
         ),
       ),
@@ -1090,13 +1447,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     required String subtitle,
     required String value,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFF5F5F5)),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
       child: Row(
         children: [
           Expanded(
@@ -1105,7 +1457,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.of(context).textPrimary),
                 ),
                 const SizedBox(height: 4),
                 subtitle.contains('\n')
@@ -1114,14 +1466,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         children: subtitle.split('\n').map((line) {
                           return Text(
                             line,
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                            style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
                             softWrap: line == subtitle.split('\n').first ? false : true,
                           );
                         }).toList(),
                       )
                     : Text(
                         subtitle,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                        style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
                       ),
               ],
             ),
@@ -1131,7 +1483,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             width: 220,
             child: Text(
               value,
-              style: const TextStyle(color: Colors.black, fontSize: 16),
+              style: TextStyle(color: AppColors.of(context).textPrimary, fontSize: 16),
               textAlign: TextAlign.right,
             ),
           ),
@@ -1143,14 +1495,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildToggleItem({
     required String title,
     required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Color(0xFFF5F5F5)),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
       child: Row(
         children: [
           Expanded(
@@ -1159,33 +1508,38 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.of(context).textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          _Toggle(),
+          // Нативный переключатель iOS 26 (liquid glass) из adaptive_platform_ui.
+          AdaptiveSwitch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: const Color(0xFF34C759),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildSelectItem({
+    required GlobalKey anchorKey,
     required String title,
     required String subtitle,
     required List<String> options,
     required String currentValue,
     required ValueChanged<String> onChanged,
   }) {
-    final key = GlobalKey();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
       child: Row(
         children: [
           Expanded(
@@ -1194,95 +1548,47 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.of(context).textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
+          // Значение с шевронами ↑↓ открывает стеклянное (liquid glass)
+          // выпадающее меню со списком вариантов.
           GestureDetector(
-            key: key,
-            onTap: () async {
-              final RenderBox box = key.currentContext!.findRenderObject() as RenderBox;
-              final Offset pos = box.localToGlobal(Offset.zero);
-              final Size size = box.size;
-              final selected = await showMenu<String>(
-                context: context,
-                position: RelativeRect.fromLTRB(
-                  pos.dx,
-                  pos.dy + size.height,
-                  pos.dx + size.width,
-                  pos.dy,
-                ),
-                color: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 6,
-                items: options
-                    .map((o) => PopupMenuItem<String>(
-                          value: o,
-                          height: 40,
-              padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-                            child: SizedBox(
-                              width: 100,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 15),
-                                    child: Text(
-                                      o,
-                                      style: const TextStyle(fontSize: 15, color: Colors.black),
-                                    ),
-                                  ),
-                                  if (o != options.last)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 16),
-                                      child: Center(
-                                        child: Transform.translate(
-                                          offset: const Offset(4, 0), // slight nudge to center visually
-                                          child: const SizedBox(
-                                            width: 90,
-                                            child: Divider(
-                                              height: 1,
-                                              thickness: 1,
-                                              color: Color(0xFFE5E5E5),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                        ))
-                    .toList(),
+            key: anchorKey,
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _showSelectMenu(
+                anchorKey: anchorKey,
+                title: title,
+                options: options,
+                currentValue: currentValue,
+                onChanged: onChanged,
               );
-              if (selected != null) {
-                onChanged(selected);
-              }
             },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              constraints: const BoxConstraints(minHeight: 40),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE5E5E5)),
-              ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     currentValue,
-                    style: const TextStyle(fontSize: 16, color: Colors.black),
+                    style: TextStyle(fontSize: 16, color: AppColors.of(context).textTertiary),
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.black),
+                  const SizedBox(width: 4),
+                  Icon(
+                    CupertinoIcons.chevron_up_chevron_down,
+                    size: 16,
+                    color: AppColors.of(context).textTertiary,
+                  ),
                 ],
               ),
             ),
@@ -1297,7 +1603,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     required String subtitle,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
       child: Row(
         children: [
           Expanded(
@@ -1306,12 +1612,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.of(context).textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
                 ),
               ],
             ),
@@ -1322,54 +1628,174 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 }
 
-class _Toggle extends StatefulWidget {
+// Стеклянное (liquid glass) выпадающее меню выбора для настроек.
+// Привязано к контролу значения, с галочкой у текущего варианта.
+class _GlassSelectMenu extends StatefulWidget {
+  final double left;
+  final double top;
+  final double width;
+  final String title;
+  final List<String> options;
+  final String currentValue;
+  final ValueChanged<String> onSelected;
+  final VoidCallback onClose;
+
+  const _GlassSelectMenu({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.title,
+    required this.options,
+    required this.currentValue,
+    required this.onSelected,
+    required this.onClose,
+  });
+
   @override
-  State<_Toggle> createState() => _ToggleState();
+  State<_GlassSelectMenu> createState() => _GlassSelectMenuState();
 }
 
-class _ToggleState extends State<_Toggle> {
-  bool _active = false;
+class _GlassSelectMenuState extends State<_GlassSelectMenu> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+  bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 240),
+      reverseDuration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    // Плавное появление одним куском: рост от верхнего правого угла + проявление.
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+        reverseCurve: Curves.easeIn,
+      ),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ),
+    );
+    _animationController.forward();
+  }
+
+  // Плавно сворачиваем меню обратно, затем выполняем действие (закрытие/выбор).
+  void _close(VoidCallback then) {
+    if (_closing) return;
+    _closing = true;
+    _animationController.reverse().whenComplete(then);
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _active = !_active;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: 50,
-        height: 30,
-        decoration: BoxDecoration(
-          color: _active ? Colors.black : const Color(0xFFE5E5E5),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          alignment: _active ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.all(3),
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+    final colors = AppColors.of(context);
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: () => _close(widget.onClose),
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          children: [
+            Positioned(
+              left: widget.left,
+              top: widget.top,
+              child: Material(
+                color: Colors.transparent,
+                // В светлой теме добавляем тень, чтобы меню отделялось от
+                // белого фона; в тёмной тень не нужна.
+                elevation: colors.isDark ? 0 : 10,
+                shadowColor: Colors.black.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(18),
+                child: GestureDetector(
+                  onTap: () {},
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: ScaleTransition(
+                      scale: _scaleAnimation,
+                      alignment: Alignment.topRight,
+                      // Стекло на BackdropFilter (стиль iOS 26): рисуется
+                      // корректно с первого кадра, без чёрной вспышки
+                      // ожидавшего инициализации liquid-glass шейдера.
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: BackdropFilter(
+                          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              // В светлой теме слегка приглушаем белизну и
+                              // усиливаем границу с тенью, чтобы меню не
+                              // сливалось с белым фоном настроек.
+                              color: colors.isDark
+                                  ? colors.surface.withValues(alpha: 0.72)
+                                  : const Color(0xFFF6F7F8).withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: colors.isDark
+                                    ? colors.border.withValues(alpha: 0.6)
+                                    : const Color(0xFFD2D4D9),
+                                width: colors.isDark ? 0.5 : 1,
+                              ),
+                            ),
+                            child: SizedBox(
+                          width: widget.width,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: widget.options.map((option) {
+                              final isSelected = option == widget.currentValue;
+                              return InkWell(
+                                onTap: () => _close(() => widget.onSelected(option)),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          option,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                            color: colors.textPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Icon(
+                                          CupertinoIcons.check_mark,
+                                          size: 16,
+                                          color: colors.textPrimary,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 }
-
 

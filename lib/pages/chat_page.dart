@@ -4,18 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/app_colors.dart';
 import '../widgets/main_header.dart';
 import '../widgets/sidebar.dart';
-import '../widgets/ios_page_route.dart';
 import '../widgets/spotlight_search.dart';
 import '../services/yandex_gpt_service.dart';
 import 'tasks_page.dart';
 import 'settings_page.dart';
+import 'notifications_page.dart';
 import '../data/database_instance.dart';
 import '../data/repositories/chat_repository.dart';
 import '../data/repositories/task_repository.dart';
 import '../models/task.dart';
 import '../widgets/custom_snackbar.dart';
+import '../l10n/app_translations.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -32,7 +34,7 @@ class _ChatPageState extends State<ChatPage> {
   final YandexGptService _gptService = YandexGptService();
   late final ChatRepository _chatRepository;
   TaskRepository? _taskRepository;
-  String _currentLanguage = 'ru'; // TODO: получать из настроек
+  final String _currentLanguage = 'ru'; // TODO: получать из настроек
   bool _isLoadingHistory = true;
   // Состояние для ожидания выбора приоритета задачи
   _PendingTask? _pendingTask;
@@ -98,7 +100,7 @@ class _ChatPageState extends State<ChatPage> {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 220),
-          pageBuilder: (_, animation, __) => FadeTransition(
+          pageBuilder: (_, animation, _) => FadeTransition(
             opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
             child: page,
           ),
@@ -231,7 +233,7 @@ class _ChatPageState extends State<ChatPage> {
     
     if (taskDateNormalized.isBefore(todayNormalized)) {
       final errorMessage = _ChatMessage(
-        text: 'Нельзя создать задачу на прошедшую дату. Выберите сегодняшнюю или будущую дату.',
+        text: tr('Нельзя создать задачу на прошедшую дату. Выберите сегодняшнюю или будущую дату.'),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -269,7 +271,7 @@ class _ChatPageState extends State<ChatPage> {
       await taskRepository.addTask(task);
       
       final successMessage = _ChatMessage(
-        text: 'Задача "$title" успешно создана на ${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year} с приоритетом $priority 🌿',
+        text: tr('Задача "{0}" успешно создана на {1}.{2}.{3} с приоритетом {4} 🌿', [title, date.day.toString().padLeft(2, '0'), date.month.toString().padLeft(2, '0'), date.year, priority]),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -291,7 +293,7 @@ class _ChatPageState extends State<ChatPage> {
       }
     } catch (e) {
       final errorMessage = _ChatMessage(
-        text: 'Не удалось создать задачу: $e',
+        text: tr('Не удалось создать задачу: {0}', [e]),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -363,7 +365,7 @@ class _ChatPageState extends State<ChatPage> {
       
       // Спрашиваем про приоритет
       final priorityQuestion = _ChatMessage(
-        text: 'Какой приоритет выбрать для задачи? 1, 2 или 3?',
+        text: tr('Какой приоритет выбрать для задачи? 1, 2 или 3?'),
         isUser: false,
         timestamp: DateTime.now(),
       );
@@ -450,7 +452,7 @@ class _ChatPageState extends State<ChatPage> {
         }
       }
     } catch (e) {
-      final errorMessage = 'Извините, произошла ошибка. Попробуйте еще раз.';
+      final errorMessage = tr('Извините, произошла ошибка. Попробуйте еще раз.');
       final errorMessageObj = _ChatMessage(
         text: errorMessage,
         isUser: false,
@@ -479,7 +481,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).background,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
@@ -490,8 +492,11 @@ class _ChatPageState extends State<ChatPage> {
             child: Column(
               children: [
                 MainHeader(
-                  title: 'Чат с AI',
-                  onMenuTap: _toggleSidebar,
+                  title: tr('Чат с AI'),
+                  showBackButton: true,
+                  onBack: () {
+                    Navigator.of(context).pop();
+                  },
                   onSearchTap: () {
                     showDialog(
                       context: context,
@@ -500,7 +505,7 @@ class _ChatPageState extends State<ChatPage> {
                     );
                   },
                   onSettingsTap: () {
-                    _navigateTo(const SettingsPage(), slideFromRight: true);
+                    _navigateTo(const NotificationsPage(), slideFromRight: true);
                   },
                   onGreetingToggle: null,
                 ),
@@ -536,9 +541,8 @@ class _ChatPageState extends State<ChatPage> {
             onTasksTap: () {
               _navigateTo(const TasksPage(animateNavIn: true), slideFromRight: false);
             },
-            onChatTap: () {
-              // Уже на чате — просто закрываем
-              _toggleSidebar();
+            onSettingsTap: () {
+              _navigateTo(const SettingsPage(), slideFromRight: true);
             },
           ),
         ],
@@ -552,7 +556,7 @@ class _ChatPageState extends State<ChatPage> {
       child: ListView.separated(
         reverse: true,
         itemCount: _messages.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 16),
+        separatorBuilder: (_, _) => const SizedBox(height: 16),
         itemBuilder: (context, index) {
           final msg = _messages[_messages.length - 1 - index];
           final actualIndex = _messages.length - 1 - index;
@@ -573,18 +577,19 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildInput() {
+    final colors = AppColors.of(context);
     final bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: Color(0xFFE5E5E5), width: 1),
+          top: BorderSide(color: colors.border, width: 1),
         ),
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
+          color: colors.surfaceVariant,
           borderRadius: BorderRadius.circular(24),
         ),
         child: Row(
@@ -614,22 +619,22 @@ class _ChatPageState extends State<ChatPage> {
                       textAlignVertical: TextAlignVertical.center,
                       textInputAction: TextInputAction.send,
                       keyboardType: TextInputType.text,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         height: 1.4,
-                        color: Colors.black,
+                        color: colors.textPrimary,
                       ),
                       onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isCollapsed: true,
-                        hintText: 'Напишите сообщение...',
+                        hintText: tr('Напишите сообщение...'),
                         hintStyle: TextStyle(
                           fontSize: 15,
                           height: 1.4,
-                          color: Color(0xFF999999),
+                          color: colors.textTertiary,
                         ),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 0),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
                       ),
                       onSubmitted: (_) => _sendMessage(),
                     ),
@@ -646,14 +651,14 @@ class _ChatPageState extends State<ChatPage> {
                 height: 36,
                 decoration: BoxDecoration(
                   color: _controller.text.trim().isEmpty
-                      ? const Color(0xFFCCCCCC)
-                      : Colors.black,
+                      ? colors.textTertiary
+                      : colors.inverseSurface,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.arrow_upward,
                   size: 18,
-                  color: Colors.white,
+                  color: colors.onInverseSurface,
                 ),
               ),
             ),
@@ -664,29 +669,30 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildEmptyState() {
+    final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 155),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
-        children: const [
+        children: [
           Text(
-            'Чат с AI',
+            tr('Чат с AI'),
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.5,
-              color: Colors.black,
+              color: colors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
-            'Спрашивайте, получайте подсказки и планируйте задачи с помощью AI',
+            tr('Спрашивайте, получайте подсказки и планируйте задачи с помощью AI'),
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w400,
-              color: Color(0xFF666666),
+              color: colors.textSecondary,
               height: 1.5,
             ),
             textAlign: TextAlign.center,
@@ -815,7 +821,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
         // Вибрация (усиленная)
         HapticFeedback.heavyImpact();
         // Показываем уведомление
-        CustomSnackBar.show(context, 'Текст скопирован в буфер обмена');
+        CustomSnackBar.show(context, tr('Текст скопирован в буфер обмена'));
         _isPressed = false;
       }
     });
@@ -833,9 +839,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final isUser = widget.message.isUser;
-    final bgColor = isUser ? Colors.black : const Color(0xFFF5F5F5);
-    final textColor = isUser ? Colors.white : Colors.black;
+    final bgColor = isUser ? colors.inverseSurface : colors.surfaceVariant;
+    final textColor = isUser ? colors.onInverseSurface : colors.textPrimary;
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
@@ -879,7 +886,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       'by AI',
                       style: TextStyle(
                         fontSize: 11,
-                        color: const Color(0xFF999999),
+                        color: colors.textTertiary,
                         height: 1.0,
                       ),
                     ),

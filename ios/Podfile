@@ -39,5 +39,10 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      # iCloud (Desktop sync) добавляет xattr-ы к артефактам сборки, из-за чего
+      # codesign падает с "detritus not allowed". Для симулятора подпись не нужна.
+      config.build_settings['CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]'] = 'NO'
+    end
   end
 end

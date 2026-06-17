@@ -1,4 +1,7 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class MainHeader extends StatefulWidget {
   final VoidCallback? onMenuTap;
@@ -13,8 +16,8 @@ class MainHeader extends StatefulWidget {
   final bool showBackButton;
   final VoidCallback? onBack;
   final String? searchIconPath;
+  // Иконка правой кнопки. Если null — показываем колокольчик (уведомления).
   final String? settingsIconPath;
-  final bool disableSettingsSpin;
 
   const MainHeader({
     super.key,
@@ -31,7 +34,6 @@ class MainHeader extends StatefulWidget {
     this.onBack,
     this.searchIconPath,
     this.settingsIconPath,
-    this.disableSettingsSpin = false,
   });
 
   @override
@@ -39,21 +41,14 @@ class MainHeader extends StatefulWidget {
 }
 
 class _MainHeaderState extends State<MainHeader> {
-  double _settingsTurns = 0;
-
-  void _spinSettings() {
-    setState(() {
-      _settingsTurns += 1 / 3; // 120 градусов
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Stack(
       children: [
         Container(
           height: 60,
-          color: Colors.white,
+          color: colors.background,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Stack(
             children: [
@@ -75,10 +70,11 @@ class _MainHeaderState extends State<MainHeader> {
                                 height: 44,
                                 color: Colors.transparent,
                                 alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.arrow_back_ios_new,
-                                  size: 20,
-                                  color: Colors.black,
+                                child: Icon(
+                                  // Стандартный шеврон "назад" как в iOS.
+                                  CupertinoIcons.back,
+                                  size: 24,
+                                  color: colors.icon,
                                 ),
                               ),
                             )
@@ -92,7 +88,7 @@ class _MainHeaderState extends State<MainHeader> {
                                 alignment: Alignment.center,
                                 child: CustomPaint(
                                   size: const Size(24, 24),
-                                  painter: BurgerMenuPainter(),
+                                  painter: BurgerMenuPainter(color: colors.icon),
                                 ),
                               ),
                             ),
@@ -103,11 +99,11 @@ class _MainHeaderState extends State<MainHeader> {
               Positioned.fill(
                 child: Center(
                   child: Text(
-                    widget.title ?? 'Мои задачи',
-                    style: const TextStyle(
+                    widget.title ?? tr('Все задачи'),
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black,
+                      color: colors.textPrimary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -136,53 +132,40 @@ class _MainHeaderState extends State<MainHeader> {
                                   width: 24,
                                   height: 24,
                                   fit: BoxFit.contain,
+                                  // В тёмной теме перекрашиваем чёрную PNG-иконку в белую.
+                                  color: colors.isDark ? colors.icon : null,
+                                  colorBlendMode: colors.isDark ? BlendMode.srcIn : null,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            widget.disableSettingsSpin
-                                ? GestureDetector(
-                                    onTap: widget.onSettingsTap,
-                                    child: Container(
-                                      width: 24,
-                                      height: 24,
-                                      color: Colors.transparent,
-                                      alignment: Alignment.center,
-                                      child: Image.asset(
-                                        widget.settingsIconPath ?? 'assets/icon/settings.png',
+                            GestureDetector(
+                              onTap: widget.onSettingsTap,
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                color: Colors.transparent,
+                                alignment: Alignment.center,
+                                // По умолчанию — колокольчик (уведомления).
+                                // Если задан settingsIconPath — кастомная иконка
+                                // (напр. делегирование на кастомных экранах).
+                                child: widget.settingsIconPath != null
+                                    ? Image.asset(
+                                        widget.settingsIconPath!,
                                         width: 24,
                                         height: 24,
                                         fit: BoxFit.contain,
+                                        color: colors.isDark ? colors.icon : null,
+                                        colorBlendMode:
+                                            colors.isDark ? BlendMode.srcIn : null,
+                                      )
+                                    : Icon(
+                                        CupertinoIcons.bell,
+                                        size: 23,
+                                        color: colors.icon,
                                       ),
-                                    ),
-                                  )
-                                : MouseRegion(
-                                    onEnter: (_) => _spinSettings(),
-                                    onHover: (_) => _spinSettings(),
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        _spinSettings();
-                                        widget.onSettingsTap?.call();
-                                      },
-                                      child: AnimatedRotation(
-                                        duration: const Duration(milliseconds: 200),
-                                        turns: _settingsTurns,
-                                        curve: Curves.easeOut,
-                                        child: Container(
-                                          width: 24,
-                                          height: 24,
-                                          color: Colors.transparent,
-                                          alignment: Alignment.center,
-                                          child: Image.asset(
-                                            widget.settingsIconPath ?? 'assets/icon/settings.png',
-                                            width: 24,
-                                            height: 24,
-                                            fit: BoxFit.contain,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                              ),
+                            ),
                           ],
                         ),
                 ),
@@ -223,10 +206,14 @@ class _MainHeaderState extends State<MainHeader> {
 }
 
 class BurgerMenuPainter extends CustomPainter {
+  final Color color;
+
+  BurgerMenuPainter({this.color = Colors.black});
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.black
+      ..color = color
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round;
 
@@ -245,6 +232,7 @@ class BurgerMenuPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant BurgerMenuPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 

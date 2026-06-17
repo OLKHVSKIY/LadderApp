@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:convert';
 import '../models/note_model.dart';
 import '../models/attached_file.dart';
+import '../theme/app_colors.dart';
 import 'file_attachment_picker.dart';
 import 'file_attachment_display.dart';
+import 'swipe_down_sheet.dart';
+import '../l10n/app_translations.dart';
 
 class NoteEditor extends StatefulWidget {
   final NoteModel? note;
@@ -111,10 +112,10 @@ class _NoteEditorState extends State<NoteEditor> {
     return Text.rich(
       _parseMarkdown(cleanedText),
       textAlign: align ?? _textAlign,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 16,
         height: 1.6,
-        color: Colors.black,
+        color: AppColors.of(context).textPrimary,
       ),
     );
   }
@@ -214,7 +215,7 @@ class _NoteEditorState extends State<NoteEditor> {
       i = next == text.length ? text.length : next;
     }
 
-    return TextSpan(children: spans, style: const TextStyle(color: Colors.black));
+    return TextSpan(children: spans, style: TextStyle(color: AppColors.of(context).textPrimary));
   }
 
   @override
@@ -241,27 +242,22 @@ class _NoteEditorState extends State<NoteEditor> {
 
     String selectedText = text.substring(start, end);
     String formattedText = '';
-    int offset = 0;
 
     switch (format) {
       case 'bold':
         // Проверяем, уже ли выделен жирным
         if (selectedText.startsWith('**') && selectedText.endsWith('**') && selectedText.length > 4) {
           formattedText = selectedText.substring(2, selectedText.length - 2);
-          offset = -4;
         } else {
           formattedText = '**$selectedText**';
-          offset = 4;
         }
         break;
       case 'italic':
         // Проверяем, уже ли выделен курсивом
         if (selectedText.startsWith('*') && selectedText.endsWith('*') && selectedText.length > 2 && !selectedText.startsWith('**')) {
           formattedText = selectedText.substring(1, selectedText.length - 1);
-          offset = -2;
         } else {
           formattedText = '*$selectedText*';
-          offset = 2;
         }
         break;
       case 'underline':
@@ -270,16 +266,13 @@ class _NoteEditorState extends State<NoteEditor> {
           // Удаляем одинарное подчеркивание
           if (!selectedText.startsWith('__') || !selectedText.endsWith('__')) {
             formattedText = selectedText.substring(1, selectedText.length - 1);
-            offset = -2;
           } else {
             // Удаляем двойное подчеркивание
             formattedText = selectedText.substring(2, selectedText.length - 2);
-            offset = -4;
           }
         } else {
           // Используем одинарное подчеркивание _text_
           formattedText = '_${selectedText}_';
-          offset = 2;
         }
         break;
     }
@@ -338,7 +331,7 @@ class _NoteEditorState extends State<NoteEditor> {
 
     // Убираем все существующие div-теги с выравниванием (рекурсивно)
     String cleanedText = selectedText;
-    RegExp divPattern = RegExp(r'<div\s+style=["'']text-align:\s*\w+["'']>(.*?)</div>', dotAll: true);
+    RegExp divPattern = RegExp(r'<div\s+style=["'']text-align:s*w+["'']>(.*?)</div>', dotAll: true);
     
     // Убираем все вложенные div-теги с выравниванием до тех пор, пока они есть
     int iterations = 0;
@@ -514,6 +507,7 @@ class _NoteEditorState extends State<NoteEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Stack(
       children: [
         GestureDetector(
@@ -523,7 +517,7 @@ class _NoteEditorState extends State<NoteEditor> {
           },
           behavior: HitTestBehavior.translucent,
           child: Container(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             child: GestureDetector(
               onTap: () {}, // Предотвращаем закрытие при клике на модалку
               child: DraggableScrollableSheet(
@@ -531,32 +525,32 @@ class _NoteEditorState extends State<NoteEditor> {
                 minChildSize: 0.5,
                 maxChildSize: 0.95,
                 builder: (context, scrollController) {
-              return GestureDetector(
-                onVerticalDragEnd: (details) {
-                  if (details.primaryVelocity != null && details.primaryVelocity! > 1000) {
-                    // Свайп вниз - закрываем и сбрасываем содержимое
-                    _controller.clear();
-                    widget.onClose();
-                  }
+              return SwipeDownSheet(
+                onDismiss: () {
+                  // Свайп вниз за шапку — закрываем и сбрасываем содержимое.
+                  _controller.clear();
+                  widget.onClose();
                 },
+                handleHeight: 56,
+                animateOut: true,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
                   ),
                   child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
+                  decoration: BoxDecoration(
+                    color: colors.surface,
                   ),
                   child: Column(
                     children: [
                       // Панель инструментов
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFF8F8F8),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceVariant,
                           border: Border(
-                            bottom: BorderSide(color: Color(0xFFE5E5E5), width: 1),
+                            bottom: BorderSide(color: colors.border, width: 1),
                           ),
                         ),
                         child: Row(
@@ -647,9 +641,9 @@ class _NoteEditorState extends State<NoteEditor> {
                                           context: context,
                                           backgroundColor: Colors.transparent,
                                           builder: (context) => Container(
-                                            decoration: const BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                            decoration: BoxDecoration(
+                                              color: colors.surface,
+                                              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                                             ),
                                             padding: const EdgeInsets.all(20),
                                             child: FileAttachmentPicker(
@@ -680,13 +674,13 @@ class _NoteEditorState extends State<NoteEditor> {
                                 child: Container(
                                   width: 36,
                                   height: 36,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black,
+                                  decoration: BoxDecoration(
+                                    color: colors.inverseSurface,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.check,
-                                    color: Colors.white,
+                                    color: colors.onInverseSurface,
                                     size: 20,
                                   ),
                                 ),
@@ -724,12 +718,12 @@ class _NoteEditorState extends State<NoteEditor> {
                                     style: TextStyle(
                                       fontSize: 16,
                                       height: 1.6,
-                                      color: _focusNode.hasFocus ? Colors.black : Colors.transparent,
+                                      color: _focusNode.hasFocus ? colors.textPrimary : Colors.transparent,
                                     ),
-                                    decoration: const InputDecoration(
-                                      hintText: 'Начните писать...',
+                                    decoration: InputDecoration(
+                                      hintText: tr('Начните писать...'),
                                       hintStyle: TextStyle(
-                                        color: Color(0xFF999999),
+                                        color: colors.textTertiary,
                                       ),
                                       border: InputBorder.none,
                                     ),
@@ -744,10 +738,10 @@ class _NoteEditorState extends State<NoteEditor> {
                             if (_attachedFiles.isNotEmpty)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFF8F8F8),
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceVariant,
                                   border: Border(
-                                    top: BorderSide(color: Color(0xFFE5E5E5), width: 1),
+                                    top: BorderSide(color: colors.border, width: 1),
                                   ),
                                 ),
                                 child: FileAttachmentDisplay(
@@ -775,9 +769,9 @@ class _NoteEditorState extends State<NoteEditor> {
   Widget _buildToolbarGroup(List<Widget> children) {
     return Container(
       padding: const EdgeInsets.only(right: 12),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          right: BorderSide(color: Color(0xFFE5E5E5), width: 1),
+          right: BorderSide(color: AppColors.of(context).border, width: 1),
         ),
       ),
       child: Row(
@@ -792,7 +786,8 @@ class _NoteEditorState extends State<NoteEditor> {
     Color? color,
     required VoidCallback onTap,
   }) {
-    final buttonColor = color ?? (isActive ? Colors.black : const Color(0xFF666666));
+    final colors = AppColors.of(context);
+    final buttonColor = color ?? (isActive ? colors.textPrimary : colors.textSecondary);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -800,7 +795,7 @@ class _NoteEditorState extends State<NoteEditor> {
         height: 36,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
-          color: isActive ? const Color(0xFFE5E5E5) : Colors.transparent,
+          color: isActive ? colors.border : Colors.transparent,
         ),
         child: Icon(
           icon,

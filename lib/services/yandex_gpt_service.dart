@@ -12,7 +12,6 @@ class YandexGptService {
 
   final String _apiKey = dotenv.env['YANDEX_GPT_API_KEY'] ?? '';
   final String _folderId = dotenv.env['YANDEX_GPT_FOLDER_ID'] ?? '';
-  final String _apiUrl = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
   Future<String> sendMessage(
     String userMessage,
@@ -27,7 +26,7 @@ class YandexGptService {
       final tasks = await taskRepository.tasksForDateRange(
         today.subtract(const Duration(days: 30)),
         today.add(const Duration(days: 30)),
-      ) as List<task_model.Task>;
+      );
 
       // Формируем промпт
       final systemPrompt = _buildSystemPrompt(tasks, language);

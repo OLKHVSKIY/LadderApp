@@ -8,18 +8,30 @@ import '../widgets/week_calendar.dart';
 import '../widgets/spotlight_search.dart';
 import '../widgets/task_list.dart';
 import '../widgets/bottom_navigation.dart';
+import 'dart:ui' as ui;
 import '../widgets/task_create_modal.dart';
 import '../widgets/sidebar.dart';
-import '../widgets/ios_page_route.dart';
 import '../widgets/apple_calendar.dart';
 import 'plan_page.dart';
+import '../services/widget_data_sync.dart';
+import '../services/deep_link_handler.dart';
 import 'list_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
-import 'notes_page.dart';
+import 'notifications_page.dart';
+import 'analytics_page.dart';
+import '../services/streak_service.dart';
+import '../widgets/streak_celebration.dart';
 import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
 import '../data/repositories/task_repository.dart';
+import '../data/repositories/habit_repository.dart';
+import '../models/habit.dart';
+import '../widgets/habits_section.dart';
+import '../data/repositories/event_repository.dart';
+import '../models/event.dart';
+import '../widgets/events_section.dart';
+import '../services/notification_service.dart';
 import '../data/user_session.dart';
 import 'package:drift/drift.dart' as dr;
 import '../widgets/custom_snackbar.dart';
@@ -27,6 +39,8 @@ import '../widgets/delegate_task_modal.dart';
 import '../widgets/delegated_task_accept_modal.dart';
 import '../data/repositories/delegated_task_repository.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class TasksPage extends StatefulWidget {
   final bool animateNavIn;
@@ -50,11 +64,19 @@ class _TasksPageState extends State<TasksPage> {
   int _todayCompleted = 0;
   String? _openMenuTaskId;
   OverlayEntry? _menuOverlayEntry;
+  OverlayEntry? _streakCelebrationEntry;
   late final TaskRepository _taskRepository;
   late final DelegatedTaskRepository _delegatedTaskRepository;
+  late final HabitRepository _habitRepository;
+  List<HabitWithStats> _habits = [];
+  late final EventRepository _eventRepository;
+  List<Event> _events = []; // события выбранного дня (для секции)
+  List<Event> _allEvents = []; // все события (для меток под днями недели)
   bool _loadedUserName = false;
-  bool _userReady = false;
   Task? _editingTask;
+  Habit? _editingHabit;
+  Event? _editingEvent;
+  bool _eventViewMode = false; // открыть событие в режиме просмотра
   double _headerDragDistance = 0.0;
   List<DelegatedTaskInfo> _pendingDelegatedTasks = [];
   bool _isLoadingTasks = false;
@@ -66,6 +88,17 @@ class _TasksPageState extends State<TasksPage> {
     _selectedDate = widget.initialTaskToOpen?.date ?? DateTime.now();
     _taskRepository = TaskRepository(appDatabase);
     _delegatedTaskRepository = DelegatedTaskRepository(appDatabase);
+    _habitRepository = HabitRepository(appDatabase);
+    _eventRepository = EventRepository(appDatabase);
+
+    // Настраиваем обработчик deep link для открытия шторки создания задачи
+    DeepLinkHandler.onOpenAddTaskPanel = () {
+      if (mounted) {
+        _openTaskModal();
+        _toggleGreetingPanel();
+      }
+    };
+    
     if (widget.animateNavIn) {
       _navHidden = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,8 +116,14 @@ class _TasksPageState extends State<TasksPage> {
         _loadTasksForDate(_selectedDate);
         _loadWeekTasks();
         _loadTodayCounts();
+        _loadHabits();
+        _loadEvents();
         _loadUserNameIfNeeded();
         _checkDelegatedTasks();
+        // Открыта из поиска — сразу показываем саму задачу.
+        if (widget.initialTaskToOpen != null) {
+          _openTaskModal(task: widget.initialTaskToOpen);
+        }
       });
     });
   }
@@ -171,7 +210,128 @@ class _TasksPageState extends State<TasksPage> {
     setState(() {
       _isTaskModalOpen = false;
       _editingTask = null;
+      _editingHabit = null;
+      _editingEvent = null;
     });
+  }
+
+  // ===== Привычки =====
+
+  void _loadHabits() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    final habits =
+        await _habitRepository.loadHabitsWithStats(userId, _selectedDate);
+    if (mounted) {
+      setState(() {
+        _habits = habits;
+      });
+    }
+  }
+
+  void _openHabitModal(Habit habit) {
+    setState(() {
+      _editingHabit = habit;
+      _isTaskModalOpen = true;
+    });
+  }
+
+  void _saveHabit(Habit habit, int? screenId) async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) {
+      _showError(tr('Нет авторизованного пользователя'));
+      return;
+    }
+    try {
+      if (habit.id == null) {
+        await _habitRepository.addHabit(habit, userId, screenId: screenId);
+      } else {
+        await _habitRepository.updateHabit(habit);
+      }
+      _editingHabit = null;
+      _loadHabits();
+      _closeTaskModal();
+    } catch (e) {
+      _showError(tr('Не удалось сохранить привычку: {0}', [e]));
+    }
+  }
+
+  // Сегодняшний ли это день (привычку можно отмечать только за сегодня).
+  bool _isToday(DateTime d) {
+    final now = DateTime.now();
+    return d.year == now.year && d.month == now.month && d.day == now.day;
+  }
+
+  void _toggleHabit(int habitId) async {
+    // Отмечать привычку разрешено только за текущий день.
+    if (!_isToday(_selectedDate)) return;
+    await _habitRepository.toggleCompletion(habitId, _selectedDate);
+    _loadHabits();
+  }
+
+  void _deleteHabit(int habitId) async {
+    await _habitRepository.deleteHabit(habitId);
+    _loadHabits();
+  }
+
+  // ===== События =====
+
+  void _loadEvents() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    final all = await _eventRepository.loadAllEvents(userId);
+    if (mounted) {
+      setState(() {
+        _allEvents = all;
+        _events = all.where((e) => e.occursOn(_selectedDate)).toList();
+      });
+    }
+  }
+
+  void _openEventModal(Event event, {bool viewMode = false}) {
+    setState(() {
+      _editingEvent = event;
+      _eventViewMode = viewMode;
+      _isTaskModalOpen = true;
+    });
+  }
+
+  void _saveEvent(Event event, int? screenId) async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) {
+      _showError(tr('Нет авторизованного пользователя'));
+      return;
+    }
+    try {
+      final int eventId;
+      if (event.id == null) {
+        eventId = await _eventRepository.addEvent(event, userId,
+            screenId: screenId);
+      } else {
+        await _eventRepository.updateEvent(event);
+        eventId = event.id!;
+      }
+      // Планируем/перепланируем уведомления о событии.
+      await NotificationService.instance.scheduleEventReminders(
+        id: eventId,
+        title: event.title,
+        date: event.date,
+        repeatYearly: event.repeatYearly,
+        notifyDayBefore: event.notifyDayBefore,
+        notifyOnDay: event.notifyOnDay,
+      );
+      _editingEvent = null;
+      _loadEvents();
+      _closeTaskModal();
+    } catch (e) {
+      _showError(tr('Не удалось сохранить событие: {0}', [e]));
+    }
+  }
+
+  void _deleteEvent(int eventId) async {
+    await _eventRepository.deleteEvent(eventId);
+    await NotificationService.instance.cancelEventReminders(eventId);
+    _loadEvents();
   }
 
   DateTime _normalizeDate(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -179,7 +339,7 @@ class _TasksPageState extends State<TasksPage> {
   void _addTask(Task task, int? screenId) async {
     final userId = UserSession.currentUserId;
     if (userId == null) {
-      _showError('Нет авторизованного пользователя');
+      _showError(tr('Нет авторизованного пользователя'));
       return;
     }
 
@@ -191,7 +351,6 @@ class _TasksPageState extends State<TasksPage> {
         final endDate = end.isBefore(start) ? start : end;
 
         var day = start;
-        var counter = 0;
         while (!day.isAfter(endDate)) {
           await appDatabase.into(appDatabase.customTasks).insert(
             db.CustomTasksCompanion(
@@ -205,7 +364,6 @@ class _TasksPageState extends State<TasksPage> {
               isCompleted: dr.Value(false),
             ),
           );
-          counter++;
           day = day.add(const Duration(days: 1));
         }
 
@@ -214,7 +372,7 @@ class _TasksPageState extends State<TasksPage> {
         _loadTodayCounts();
         _closeTaskModal();
       } catch (e) {
-        _showError('Не удалось создать задачу: $e');
+        _showError(tr('Не удалось создать задачу: {0}', [e]));
       }
       return;
     }
@@ -249,7 +407,7 @@ class _TasksPageState extends State<TasksPage> {
       _loadTodayCounts();
       _closeTaskModal();
     } catch (e) {
-      _showError('Не удалось создать задачу: $e');
+      _showError(tr('Не удалось создать задачу: {0}', [e]));
     }
   }
 
@@ -258,11 +416,38 @@ class _TasksPageState extends State<TasksPage> {
     if (intId == null) return;
     // Вибрация при отметке задачи
     HapticFeedback.lightImpact();
-    _taskRepository.updateCompletion(intId, isCompleted).then((_) {
+    _taskRepository.updateCompletion(intId, isCompleted).then((_) async {
+      // Отмечаем выполнение для «серии» (стрик) — только при завершении задачи.
+      if (isCompleted) {
+        final before = await StreakService.getInfo();
+        final after = await StreakService.recordCompletion();
+        // Показываем празднование только при первой задаче за сегодня
+        // (когда серия реально начинается/продлевается).
+        if (!before.completedToday && mounted) {
+          _showStreakCelebration(before.current, after.current);
+        }
+      }
       _loadTasksForDate(_selectedDate);
       _loadWeekTasks();
       _loadTodayCounts();
     });
+  }
+
+  // Баннер-празднование серии сверху экрана (огонь + перемотка счётчика).
+  void _showStreakCelebration(int from, int to) {
+    _streakCelebrationEntry?.remove();
+    final overlay = Overlay.of(context);
+    _streakCelebrationEntry = OverlayEntry(
+      builder: (_) => StreakCelebration(
+        fromValue: from,
+        toValue: to,
+        onDismiss: () {
+          _streakCelebrationEntry?.remove();
+          _streakCelebrationEntry = null;
+        },
+      ),
+    );
+    overlay.insert(_streakCelebrationEntry!);
   }
 
   void _selectDate(DateTime date) {
@@ -274,6 +459,8 @@ class _TasksPageState extends State<TasksPage> {
     });
     _loadTasksForDate(date);
     _loadWeekTasks();
+    _loadHabits();
+    _loadEvents();
     _checkDelegatedTasks();
   }
 
@@ -307,6 +494,8 @@ class _TasksPageState extends State<TasksPage> {
       _todayTotal = todayTasks.length;
       _todayCompleted = todayTasks.where((t) => t.isCompleted).length;
     });
+    // Синхронизируем данные для виджета
+    WidgetDataSync.syncTodayTasks();
   }
 
   void _loadUserNameIfNeeded() async {
@@ -325,7 +514,6 @@ class _TasksPageState extends State<TasksPage> {
 
   Future<void> _ensureUserSession() async {
     if (UserSession.currentUserId != null) {
-      _userReady = true;
       return;
     }
     final user = await (appDatabase.select(appDatabase.users)
@@ -337,25 +525,8 @@ class _TasksPageState extends State<TasksPage> {
         email: user.email,
         name: user.name,
       );
-      _userReady = true;
     } else {
-      _showError('Нет сохранённого аккаунта, войдите заново');
-      _userReady = false;
-    }
-  }
-
-  void _deleteTask(String taskId) async {
-    final intId = int.tryParse(taskId);
-    if (intId == null) return;
-    // Вибрация при удалении задачи
-    HapticFeedback.heavyImpact();
-    try {
-      await _taskRepository.deleteTask(intId);
-      _loadTasksForDate(_selectedDate);
-      _loadWeekTasks();
-      _loadTodayCounts();
-    } catch (e) {
-      _showError('Не удалось удалить: $e');
+      _showError(tr('Нет сохранённого аккаунта, войдите заново'));
     }
   }
 
@@ -377,7 +548,7 @@ class _TasksPageState extends State<TasksPage> {
       _loadTodayCounts();
       _closeTaskModal();
     } catch (e) {
-      _showError('Не удалось обновить: $e');
+      _showError(tr('Не удалось обновить: {0}', [e]));
     }
   }
 
@@ -387,24 +558,24 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   void _navigateTo(Widget page) {
-    if (page is SettingsPage) {
-      // Для настроек используем push с CupertinoPageRoute для iOS swipe back
+    if (page is ChatPage) {
+      // Чат — push с CupertinoPageRoute (нативный iOS swipe back).
       Navigator.of(context).push(
         CupertinoPageRoute(
           builder: (_) => page,
         ),
       );
-    } else {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 220),
-          pageBuilder: (_, animation, __) => FadeTransition(
-            opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-            child: page,
-          ),
-        ),
-      );
+      return;
     }
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, animation, _) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: page,
+        ),
+      ),
+    );
   }
 
   void _handleMenuToggle(String? taskId, GlobalKey? menuButtonKey) {
@@ -442,7 +613,7 @@ class _TasksPageState extends State<TasksPage> {
     
     _menuOverlayEntry = OverlayEntry(
       builder: (context) => _TaskMenuOverlay(
-        position: Offset(position.dx + size.width - 150, position.dy + size.height + 8),
+        position: Offset(position.dx + size.width - 200, position.dy + size.height + 8),
         task: task,
         onClose: () => _handleMenuToggle(null, null),
         onEdit: () {
@@ -458,22 +629,27 @@ class _TasksPageState extends State<TasksPage> {
         },
         onDelete: () async {
           _handleMenuToggle(null, null);
-          final intId = int.tryParse(task.id);
-          if (intId == null) {
-            _showError('Некорректный id задачи');
-            return;
-          }
           // Вибрация при удалении задачи
           HapticFeedback.heavyImpact();
-          await _taskRepository.deleteTask(intId);
-          _loadTasksForDate(_selectedDate);
-          _loadWeekTasks();
-          _loadTodayCounts();
+          await _deleteTaskById(task.id);
         },
       ),
     );
-    
+
     overlay.insert(_menuOverlayEntry!);
+  }
+
+  /// Удаляет задачу по строковому id и обновляет списки.
+  Future<void> _deleteTaskById(String id) async {
+    final intId = int.tryParse(id);
+    if (intId == null) {
+      _showError(tr('Некорректный id задачи'));
+      return;
+    }
+    await _taskRepository.deleteTask(intId);
+    _loadTasksForDate(_selectedDate);
+    _loadWeekTasks();
+    _loadTodayCounts();
   }
 
   void _removeMenuOverlay() {
@@ -486,7 +662,7 @@ class _TasksPageState extends State<TasksPage> {
       context: context,
       barrierDismissible: true,
       barrierLabel: '',
-      barrierColor: Colors.black.withOpacity(0.4), // Затемнение сразу видимо
+      barrierColor: Colors.black.withValues(alpha: 0.4), // Затемнение сразу видимо
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (context, animation, secondaryAnimation) => DelegateTaskModal(
         task: task,
@@ -494,7 +670,7 @@ class _TasksPageState extends State<TasksPage> {
           try {
             final intId = int.tryParse(task.id);
             if (intId == null) {
-              _showError('Некорректный id задачи');
+              _showError(tr('Некорректный id задачи'));
               return;
             }
             await _delegatedTaskRepository.delegateTask(
@@ -507,11 +683,11 @@ class _TasksPageState extends State<TasksPage> {
               _loadWeekTasks();
               _loadTodayCounts();
             }
-            if (mounted) {
-              CustomSnackBar.show(context, 'Задача делегирована пользователю $email');
+            if (context.mounted) {
+              CustomSnackBar.show(context, tr('Задача делегирована пользователю {0}', [email]));
             }
           } catch (e) {
-            _showError('Ошибка при делегировании: $e');
+            _showError(tr('Ошибка при делегировании: {0}', [e]));
           }
         },
       ),
@@ -596,9 +772,8 @@ class _TasksPageState extends State<TasksPage> {
       _loadTasksForDate(taskDate);
       _loadWeekTasks();
       _loadTodayCounts();
-      if (mounted) {
-        CustomSnackBar.show(context, 'Задача принята');
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(context, tr('Задача принята'));
       // Если задач больше нет, закрываем модальное окно
       if (_pendingDelegatedTasks.isEmpty) {
         Navigator.of(context).pop();
@@ -608,7 +783,7 @@ class _TasksPageState extends State<TasksPage> {
         _showAcceptModal();
       }
     } catch (e) {
-      _showError('Ошибка при принятии задачи: $e');
+      _showError(tr('Ошибка при принятии задачи: {0}', [e]));
     }
   }
 
@@ -618,9 +793,8 @@ class _TasksPageState extends State<TasksPage> {
       setState(() {
         _pendingDelegatedTasks.removeWhere((t) => t.id == taskId);
       });
-      if (mounted) {
-        CustomSnackBar.show(context, 'Задача отклонена');
-      }
+      if (!mounted) return;
+      CustomSnackBar.show(context, tr('Задача отклонена'));
       // Если задач больше нет, закрываем модальное окно
       if (_pendingDelegatedTasks.isEmpty) {
         Navigator.of(context).pop();
@@ -630,20 +804,22 @@ class _TasksPageState extends State<TasksPage> {
         _showAcceptModal();
       }
     } catch (e) {
-      _showError('Ошибка при отклонении задачи: $e');
+      _showError(tr('Ошибка при отклонении задачи: {0}', [e]));
     }
   }
 
   @override
   void dispose() {
     _removeMenuOverlay();
+    _streakCelebrationEntry?.remove();
+    _streakCelebrationEntry = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).background,
       resizeToAvoidBottomInset: false,
       body: ClipRect(
         clipBehavior: Clip.hardEdge,
@@ -675,7 +851,11 @@ class _TasksPageState extends State<TasksPage> {
                       );
                     },
                     onSettingsTap: () {
-                      _navigateTo(const SettingsPage());
+                      // Колокольчик в хедере открывает уведомления.
+                      Navigator.of(context).push(
+                        CupertinoPageRoute(
+                            builder: (_) => const NotificationsPage()),
+                      );
                     },
                     onGreetingToggle: _toggleGreetingPanel,
                     onGreetingPanUpdate: _handleHeaderPanUpdate,
@@ -691,7 +871,9 @@ class _TasksPageState extends State<TasksPage> {
                         final bottomPadding = MediaQuery.of(context).padding.bottom;
                         
                         return SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
+                          // Скроллим только когда контент не помещается на экран:
+                          // если всё влезает — скролла (и баунса) нет.
+                          physics: const ClampingScrollPhysics(),
                           padding: EdgeInsets.only(
                             left: 10,
                             right: 10,
@@ -709,8 +891,29 @@ class _TasksPageState extends State<TasksPage> {
                                 selectedDate: _selectedDate,
                                 onDateSelected: _selectDate,
                                 tasks: _weekTasks,
+                                habits: _habits,
+                                events: _allEvents,
                               ),
                               const SizedBox(height: 14),
+                              // Секция событий (день рождения и т.п. — не
+                              // закрываются галочкой, просто отображаются)
+                              EventsSection(
+                                events: _events,
+                                onView: (e) =>
+                                    _openEventModal(e, viewMode: true),
+                                onEdit: _openEventModal,
+                                onDelete: _deleteEvent,
+                              ),
+                              // Секция привычек (показывается, если на выбранный
+                              // день есть запланированные привычки)
+                              HabitsSection(
+                                habits: _habits,
+                                onToggle: _toggleHabit,
+                                onEdit: _openHabitModal,
+                                onDelete: _deleteHabit,
+                                // Отмечать привычку можно только за сегодня.
+                                canToggle: _isToday(_selectedDate),
+                              ),
                               // Список задач
                               TaskList(
                                 tasks: _tasks,
@@ -718,6 +921,7 @@ class _TasksPageState extends State<TasksPage> {
                                 onTaskToggle: _updateTaskCompletion,
                                 openMenuTaskId: _openMenuTaskId,
                                 onMenuToggle: _handleMenuToggle,
+                                onTaskDelete: _deleteTaskById,
                                 isLoading: _isLoadingTasks,
                               ),
                             ],
@@ -754,7 +958,9 @@ class _TasksPageState extends State<TasksPage> {
                 top: MediaQuery.of(context).padding.top - 10, // От самого верха
                 left: 80, // Исключаем левую область (кнопка меню)
                 right: 80, // Исключаем правую область (кнопки поиска и настроек)
-                height: 140, // Достаточная область для начала свайпа
+                // Только зона хедера: если зона больше, её pan-распознаватель
+                // перехватывает тапы по дате и календарь не открывается.
+                height: 70,
                 child: GestureDetector(
                   onPanStart: (details) {
                     _headerDragDistance = 0.0;
@@ -799,8 +1005,17 @@ class _TasksPageState extends State<TasksPage> {
               onTasksTap: () {
                 // Уже на странице задач, просто закрываем сайдбар
               },
-              onChatTap: () {
-                _navigateTo(const ChatPage());
+              onAnalyticsTap: () {
+                Navigator.of(context).push(
+                  CupertinoPageRoute(
+                    builder: (_) => const AnalyticsPage(),
+                  ),
+                );
+              },
+              onSettingsTap: () {
+                Navigator.of(context).push(
+                  CupertinoPageRoute(builder: (_) => const SettingsPage()),
+                );
               },
             ),
             // Нижняя навигация
@@ -814,8 +1029,8 @@ class _TasksPageState extends State<TasksPage> {
               onPlanTap: () {
                 _navigateTo(const PlanPage());
               },
-              onNotesTap: () {
-                _navigateTo(const NotesPage());
+              onAiTap: () {
+                _navigateTo(const ChatPage());
               },
               onIndexChanged: (index) {
                 if (index == 1) {
@@ -823,7 +1038,7 @@ class _TasksPageState extends State<TasksPage> {
                 } else if (index == 2) {
                   _navigateTo(const PlanPage());
                 } else if (index == 3) {
-                  _navigateTo(const NotesPage());
+                  _navigateTo(const ChatPage());
                 }
               },
             ),
@@ -836,6 +1051,11 @@ class _TasksPageState extends State<TasksPage> {
                 isEdit: _editingTask != null,
                 initialDate: _editingTask == null ? _selectedDate : null,
                 currentScreenId: null, // "Мои задачи"
+                onSaveHabit: _saveHabit,
+                initialHabit: _editingHabit,
+                onSaveEvent: _saveEvent,
+                initialEvent: _editingEvent,
+                eventViewMode: _eventViewMode,
               ),
           ],
         ),
@@ -844,12 +1064,16 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> _showCalendarDialog() async {
+    // Грузим все задачи пользователя, чтобы точки в календаре показывались
+    // на каждый день (любой месяц), а не только за текущую неделю.
+    final allTasks = await _taskRepository.searchAllTasks();
+    if (!mounted) return;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
         return Padding(
@@ -862,9 +1086,13 @@ class _TasksPageState extends State<TasksPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Выберите дату',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Text(
+                tr('Выберите дату'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.of(ctx).textPrimary,
+                ),
               ),
               const SizedBox(height: 12),
               AppleCalendar(
@@ -886,7 +1114,9 @@ class _TasksPageState extends State<TasksPage> {
                     Navigator.of(ctx).pop();
                   }
                 },
-                tasks: _weekTasks,
+                tasks: allTasks,
+                habits: _habits,
+                events: _allEvents,
               ),
               const SizedBox(height: 12),
             ],
@@ -897,19 +1127,19 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   String _getMonthName(int month) {
-    const months = [
-      'янв.',
-      'фев.',
-      'мар.',
-      'апр.',
-      'май',
-      'июн.',
-      'июл.',
-      'авг.',
-      'сен.',
-      'окт.',
-      'ноя.',
-      'дек.',
+    final months = [
+      tr('янв.'),
+      tr('фев.'),
+      tr('мар.'),
+      tr('апр.'),
+      tr('май'),
+      tr('июн.'),
+      tr('июл.'),
+      tr('авг.'),
+      tr('сен.'),
+      tr('окт.'),
+      tr('ноя.'),
+      tr('дек.'),
     ];
     return months[month - 1];
   }
@@ -928,20 +1158,20 @@ class _TasksPageState extends State<TasksPage> {
         children: [
           Text(
             '$day',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 43,
               fontWeight: FontWeight.w800,
-              color: Colors.black,
+              color: AppColors.of(context).textPrimary,
               height: 1,
             ),
           ),
           const SizedBox(width: 8),
           Text(
             '$month $year',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 34,
               fontWeight: FontWeight.w700,
-              color: Color(0xFFD1CBD1),
+              color: AppColors.of(context).textTertiary,
             ),
           ),
         ],
@@ -976,31 +1206,40 @@ class _TaskMenuOverlay extends StatefulWidget {
 class _TaskMenuOverlayState extends State<_TaskMenuOverlay> with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 240),
+      reverseDuration: const Duration(milliseconds: 200),
       vsync: this,
     );
+    // Плавное появление: лёгкий рост от угла-якоря + проявление.
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: Curves.easeOut,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+        reverseCurve: Curves.easeIn,
       ),
     );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.1),
-      end: Offset.zero,
-    ).animate(
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: Curves.easeOut,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
       ),
     );
     _animationController.forward();
+  }
+
+  // Плавно сворачиваем меню обратно, затем выполняем действие.
+  void _close(VoidCallback then) {
+    if (_closing) return;
+    _closing = true;
+    _animationController.reverse().whenComplete(then);
   }
 
   @override
@@ -1011,9 +1250,10 @@ class _TaskMenuOverlayState extends State<_TaskMenuOverlay> with SingleTickerPro
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Positioned.fill(
       child: GestureDetector(
-        onTap: widget.onClose,
+        onTap: () => _close(widget.onClose),
         child: Container(
           color: Colors.transparent,
           child: Stack(
@@ -1023,33 +1263,65 @@ class _TaskMenuOverlayState extends State<_TaskMenuOverlay> with SingleTickerPro
                 top: widget.position.dy,
                 child: Material(
                   color: Colors.transparent,
-                  elevation: 8,
+                  // В светлой теме добавляем тень, чтобы меню отделялось от
+                  // белого фона; в тёмной тень не нужна.
+                  elevation: colors.isDark ? 0 : 10,
+                  shadowColor: Colors.black.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(18),
                   child: GestureDetector(
                     onTap: () {}, // Предотвращаем закрытие при клике на меню
                     child: FadeTransition(
                       opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: Container(
-                          width: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
+                      child: ScaleTransition(
+                        scale: _scaleAnimation,
+                        alignment: Alignment.topRight,
+                        // Стекло на BackdropFilter (стиль iOS 26): рисуется
+                        // корректно с первого кадра, без чёрной вспышки.
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: colors.isDark
+                                    ? colors.surface.withValues(alpha: 0.72)
+                                    : const Color(0xFFF6F7F8)
+                                        .withValues(alpha: 0.92),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: colors.isDark
+                                      ? colors.border.withValues(alpha: 0.6)
+                                      : const Color(0xFFD2D4D9),
+                                  width: colors.isDark ? 0.5 : 1,
+                                ),
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildMenuItem('Редактировать', widget.onEdit),
-                              _buildMenuItem('Поделиться', widget.onShare),
-                              _buildMenuItem('Удалить', widget.onDelete),
-                            ],
+                              child: SizedBox(
+                                width: 200,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildMenuItem(
+                                      CupertinoIcons.pencil,
+                                      tr('Редактировать'),
+                                      () => _close(widget.onEdit),
+                                    ),
+                                    _buildMenuDivider(),
+                                    _buildMenuItem(
+                                      CupertinoIcons.share,
+                                      tr('Поделиться'),
+                                      () => _close(widget.onShare),
+                                    ),
+                                    _buildMenuDivider(),
+                                    _buildMenuItem(
+                                      CupertinoIcons.delete,
+                                      tr('Удалить'),
+                                      () => _close(widget.onDelete),
+                                      color: const Color(0xFFFF3B30),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1064,21 +1336,41 @@ class _TaskMenuOverlayState extends State<_TaskMenuOverlay> with SingleTickerPro
     );
   }
 
-  Widget _buildMenuItem(String text, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            text,
-            textAlign: TextAlign.left,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF333333),
-            ),
+  Widget _buildMenuDivider() {
+    final colors = AppColors.of(context);
+    return Container(
+      height: 0.5,
+      color: colors.isDark
+          ? Colors.white.withValues(alpha: 0.10)
+          : Colors.black.withValues(alpha: 0.07),
+    );
+  }
+
+  Widget _buildMenuItem(IconData icon, String text, VoidCallback onTap,
+      {Color? color}) {
+    final itemColor = color ?? AppColors.of(context).textPrimary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: itemColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  text,
+                  textAlign: TextAlign.left,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: itemColor,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

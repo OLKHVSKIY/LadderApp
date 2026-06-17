@@ -1,6 +1,8 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class AiMenuModal extends StatefulWidget {
   final bool isOpen;
@@ -95,7 +97,7 @@ class _AiMenuModalState extends State<AiMenuModal> with TickerProviderStateMixin
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
                   child: Container(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                   ),
                 ),
               ),
@@ -119,16 +121,17 @@ class _AiMenuModalState extends State<AiMenuModal> with TickerProviderStateMixin
   }
 
   Widget _buildModalContent(BuildContext context) {
+    final colors = AppColors.of(context);
     return Container(
       width: 375,
       constraints: const BoxConstraints(maxWidth: 395),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 32,
             offset: const Offset(0, 8),
           ),
@@ -146,6 +149,7 @@ class _AiMenuModalState extends State<AiMenuModal> with TickerProviderStateMixin
   }
 
   Widget _buildHeader() {
+    final colors = AppColors.of(context);
     return Column(
       children: [
         ScaleTransition(
@@ -158,21 +162,21 @@ class _AiMenuModalState extends State<AiMenuModal> with TickerProviderStateMixin
           ),
         ),
         const SizedBox(height: 20),
-        const Text(
-          'Выберите тип проекта',
+        Text(
+          tr('Выберите тип проекта'),
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: colors.textPrimary,
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Создайте обычный проект или используйте ИИ для автоматического планирования',
+        Text(
+          tr('Создайте обычный проект или используйте ИИ для автоматического планирования'),
           style: TextStyle(
             fontSize: 14,
-            color: Color(0xFF666666),
+            color: colors.textSecondary,
             height: 1.5,
           ),
           textAlign: TextAlign.center,
@@ -186,8 +190,8 @@ class _AiMenuModalState extends State<AiMenuModal> with TickerProviderStateMixin
       children: [
         _AiOptionButton(
           isPrimary: true,
-          title: 'Чат с AI',
-          subtitle: 'Общайтесь с AI и получайте помощь',
+          title: tr('Чат с AI'),
+          subtitle: tr('Общайтесь с AI и получайте помощь'),
           onTap: () {
             widget.onClose();
             widget.onChat();
@@ -196,8 +200,8 @@ class _AiMenuModalState extends State<AiMenuModal> with TickerProviderStateMixin
         const SizedBox(height: 12),
         _AiOptionButton(
           isPrimary: false,
-          title: 'AI создание плана',
-          subtitle: 'AI создаст план автоматически',
+          title: tr('AI создание плана'),
+          subtitle: tr('AI создаст план автоматически'),
           onTap: () {
             widget.onClose();
             widget.onPlan();
@@ -230,10 +234,11 @@ class _AiOptionButtonState extends State<_AiOptionButton> {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = widget.isPrimary ? Colors.black : Colors.white;
-    final borderColor = widget.isPrimary ? Colors.black : const Color(0xFFE5E5E5);
-    final textColor = widget.isPrimary ? Colors.white : Colors.black;
-    final subtitleColor = widget.isPrimary ? Colors.white.withOpacity(0.8) : const Color(0xFF666666);
+    final colors = AppColors.of(context);
+    final baseColor = widget.isPrimary ? colors.inverseSurface : colors.elevatedSurface;
+    final borderColor = widget.isPrimary ? colors.inverseSurface : colors.border;
+    final textColor = widget.isPrimary ? colors.onInverseSurface : colors.textPrimary;
+    final subtitleColor = widget.isPrimary ? colors.onInverseSurface.withValues(alpha: 0.8) : colors.textSecondary;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -248,7 +253,7 @@ class _AiOptionButtonState extends State<_AiOptionButton> {
             : [
                 if (!widget.isPrimary)
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
+                    color: Colors.black.withValues(alpha: 0.08),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),

@@ -3,19 +3,23 @@ import 'package:flutter/cupertino.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '../pages/subscription_page.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class Sidebar extends StatefulWidget {
   final bool isOpen;
   final VoidCallback onClose;
   final VoidCallback? onTasksTap;
-  final VoidCallback? onChatTap;
+  final VoidCallback? onAnalyticsTap;
+  final VoidCallback? onSettingsTap;
 
   const Sidebar({
     super.key,
     required this.isOpen,
     required this.onClose,
     this.onTasksTap,
-    this.onChatTap,
+    this.onAnalyticsTap,
+    this.onSettingsTap,
   });
 
   @override
@@ -128,13 +132,14 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
       return const SizedBox.shrink();
     }
 
+    final colors = AppColors.of(context);
     return Positioned.fill(
       child: IgnorePointer(
         ignoring: !widget.isOpen,
         child: FadeTransition(
           opacity: _animationController,
           child: Container(
-            color: Colors.white,
+            color: colors.background,
             child: Stack(
               children: [
                 // Фон для закрытия (перехватывает клики на пустое место)
@@ -158,21 +163,21 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                       padding: EdgeInsets.only(
                         top: MediaQuery.of(context).padding.top,
                       ),
-                      color: Colors.white,
+                      color: colors.background,
                       child: SingleChildScrollView(
                         controller: _scrollController,
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: List.generate(
                             30,
-                            (index) => const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 20),
+                            (index) => Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
                               child: Text(
                                 'Ladder',
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.w900,
-                                  color: Colors.black,
+                                  color: colors.textPrimary,
                                 ),
                               ),
                             ),
@@ -200,19 +205,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 _buildSidebarItem(
-                                  text: 'Чат с AI',
-                                  onTap: () {
-                                    // Если передан callback чата — вызываем, иначе просто закрываем
-                                    if (widget.onChatTap != null) {
-                                      widget.onChatTap!();
-                                    } else {
-                                      widget.onClose();
-                                    }
-                                  },
-                                ),
-                                const SizedBox(height: 14),
-                                _buildSidebarItem(
-                                  text: 'Задачи',
+                                  text: tr('Задачи'),
                                   onTap: () {
                                     widget.onTasksTap?.call();
                                     widget.onClose();
@@ -220,17 +213,28 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                                 ),
                                 const SizedBox(height: 14),
                                 _buildSidebarItem(
-                                  text: 'Информация',
+                                  text: tr('Аналитика'),
+                                  onTap: () {
+                                    widget.onClose();
+                                    widget.onAnalyticsTap?.call();
+                                  },
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSidebarItem(
+                                  text: tr('Настройки'),
+                                  onTap: () {
+                                    widget.onClose();
+                                    widget.onSettingsTap?.call();
+                                  },
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSidebarItem(
+                                  text: tr('Поддержка'),
                                   onTap: () {},
                                 ),
                                 const SizedBox(height: 14),
                                 _buildSidebarItem(
-                                  text: 'Поддержка',
-                                  onTap: () {},
-                                ),
-                                const SizedBox(height: 14),
-                                _buildSidebarItem(
-                                  text: 'Предложить идею',
+                                  text: tr('Предложить идею'),
                                   onTap: () {},
                                 ),
                                 const SizedBox(height: 14),
@@ -256,6 +260,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     required String text,
     required VoidCallback onTap,
   }) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -263,20 +268,24 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.25),
+          color: colors.isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.black.withOpacity(0.1),
+            color: colors.isDark
+                ? Colors.white.withValues(alpha: 0.14)
+                : Colors.black.withValues(alpha: 0.1),
             width: 1,
           ),
         ),
         child: Text(
           text,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w500,
-            color: Color(0xFF1A1A1A),
+            color: colors.textPrimary,
           ),
         ),
       ),
@@ -321,7 +330,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
+                      color: Colors.white.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
@@ -336,8 +345,8 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                 ],
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Оформи Pro, чтобы получить больше',
+              Text(
+                tr('Оформи Pro, чтобы получить больше'),
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w400,
@@ -393,7 +402,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity((opacity * 0.9).clamp(0.0, 1.0)),
+                    color: Colors.white.withValues(alpha: (opacity * 0.9).clamp(0.0, 1.0)),
                     blurRadius: 6,
                     spreadRadius: 2,
                   ),
@@ -484,7 +493,7 @@ class _TwinklingStar extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity((opacity * 0.8).clamp(0.0, 1.0)),
+                    color: Colors.white.withValues(alpha: (opacity * 0.8).clamp(0.0, 1.0)),
                     blurRadius: 3,
                     spreadRadius: 1,
                   ),

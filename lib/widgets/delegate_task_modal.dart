@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/task.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 import 'custom_snackbar.dart';
+import 'glass.dart';
 
 class DelegateTaskModal extends StatefulWidget {
   final Task task;
@@ -68,11 +71,11 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
   void _handleDelegate() {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      CustomSnackBar.show(context, 'Введите email получателя');
+      CustomSnackBar.show(context, tr('Введите email получателя'));
       return;
     }
     if (!_isValidEmail(email)) {
-      CustomSnackBar.show(context, 'Введите корректный email');
+      CustomSnackBar.show(context, tr('Введите корректный email'));
       return;
     }
     HapticFeedback.mediumImpact();
@@ -82,6 +85,7 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final screenHeight = MediaQuery.of(context).size.height;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final availableHeight = screenHeight - keyboardHeight;
@@ -108,9 +112,9 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
               child: GestureDetector(
                 onTap: () {}, // Предотвращаем закрытие при клике на контент
                 child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                   child: Material(
-                    color: Colors.white,
+                    color: colors.surface,
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxHeight: maxHeight),
                       child: Column(
@@ -121,30 +125,19 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                       padding: const EdgeInsets.all(20),
                       child: Row(
                         children: [
-                          const Text(
-                            'Поделиться задачей',
+                          Text(
+                            tr('Поделиться задачей'),
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w600,
-                              color: Colors.black,
+                              color: colors.textPrimary,
                             ),
                           ),
                           const Spacer(),
-                          GestureDetector(
+                          GlassCircleButton(
                             onTap: () => Navigator.of(context).pop(),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                size: 18,
-                                color: Colors.black87,
-                              ),
-                            ),
+                            size: 32,
+                            iconSize: 16,
                           ),
                         ],
                       ),
@@ -163,7 +156,7 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: Colors.grey[100],
+                                color: colors.surfaceVariant,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -172,28 +165,28 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                                 children: [
                                   Text(
                                     widget.task.title,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.black,
+                                      color: colors.textPrimary,
                                     ),
                                   ),
                                   if (widget.task.description != null && widget.task.description!.isNotEmpty) ...[
                                     const SizedBox(height: 8),
                                     Text(
                                       widget.task.description!,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.black87,
+                                        color: colors.textSecondary,
                                       ),
                                     ),
                                   ],
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Дата: ${widget.task.date.day.toString().padLeft(2, '0')}.${widget.task.date.month.toString().padLeft(2, '0')}.${widget.task.date.year}',
+                                    tr('Дата: {0}', ['${widget.task.date.day.toString().padLeft(2, '0')}.${widget.task.date.month.toString().padLeft(2, '0')}.${widget.task.date.year}']),
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.grey[600],
+                                      color: colors.textTertiary,
                                     ),
                                   ),
                                 ],
@@ -217,28 +210,28 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                                     width: 24,
                                     height: 24,
                                     decoration: BoxDecoration(
-                                      color: _deleteFromMe ? Colors.black : Colors.transparent,
+                                      color: _deleteFromMe ? colors.inverseSurface : Colors.transparent,
                                       border: Border.all(
-                                        color: _deleteFromMe ? Colors.black : Colors.grey[400]!,
+                                        color: _deleteFromMe ? colors.inverseSurface : colors.border,
                                         width: 2,
                                       ),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: _deleteFromMe
-                                        ? const Icon(
+                                        ? Icon(
                                             Icons.check,
                                             size: 16,
-                                            color: Colors.white,
+                                            color: colors.onInverseSurface,
                                           )
                                         : null,
                                   ),
                                   const SizedBox(width: 12),
-                                  const Expanded(
+                                  Expanded(
                                     child: Text(
-                                      'Удалить у меня',
+                                      tr('Удалить у меня'),
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.black87,
+                                        color: colors.textSecondary,
                                       ),
                                     ),
                                   ),
@@ -254,9 +247,9 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: colors.surface,
                         border: Border(
-                          top: BorderSide(color: Colors.grey[200]!),
+                          top: BorderSide(color: colors.divider),
                         ),
                       ),
                       child: SizedBox(
@@ -264,16 +257,16 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                         child: ElevatedButton(
                           onPressed: _handleDelegate,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            foregroundColor: Colors.white,
+                            backgroundColor: colors.inverseSurface,
+                            foregroundColor: colors.onInverseSurface,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'Поделиться',
-                            style: TextStyle(
+                          child: Text(
+                            tr('Поделиться'),
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -295,7 +288,8 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
   }
 
   Widget _buildEmailField() {
-    const borderColor = Colors.black;
+    final colors = AppColors.of(context);
+    final borderColor = colors.textPrimary;
     return Padding(
       key: _emailFieldKey,
       padding: const EdgeInsets.only(top: 2, bottom: 10),
@@ -306,7 +300,7 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(17),
               border: Border.all(color: borderColor, width: 1),
-              color: Colors.white,
+              color: colors.surface,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
@@ -314,13 +308,13 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
                 controller: _emailController,
                 focusNode: _emailFocusNode,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isCollapsed: true,
                   hintText: 'whom@example.com',
-                  hintStyle: TextStyle(color: Color(0xFF999999), fontSize: 16),
+                  hintStyle: TextStyle(color: colors.textTertiary, fontSize: 16),
                   border: InputBorder.none,
                 ),
-                style: const TextStyle(fontSize: 18, color: Colors.black),
+                style: TextStyle(fontSize: 18, color: colors.textPrimary),
                 cursorColor: borderColor,
               ),
             ),
@@ -329,10 +323,10 @@ class _DelegateTaskModalState extends State<DelegateTaskModal> {
             left: 16,
             top: -11,
             child: Container(
-              color: Colors.white,
+              color: colors.surface,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                'Email получателя',
+                tr('Email получателя'),
                 style: TextStyle(
                   color: borderColor,
                   fontSize: 17,

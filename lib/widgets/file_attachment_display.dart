@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:open_filex/open_filex.dart';
 import '../models/attached_file.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class FileAttachmentDisplay extends StatelessWidget {
   final List<AttachedFile> files;
@@ -31,16 +33,17 @@ class FileAttachmentDisplay extends StatelessWidget {
   }
 
   Widget _buildFileItem(BuildContext context, AttachedFile file) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: () => _downloadFile(context, file),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
+          color: colors.surfaceVariant,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFFE5E5E5),
+            color: colors.border,
             width: 1,
           ),
         ),
@@ -51,9 +54,9 @@ class FileAttachmentDisplay extends StatelessWidget {
             Expanded(
               child: Text(
                 file.fileName,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: Colors.black,
+                  color: colors.textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,
@@ -104,7 +107,7 @@ class FileAttachmentDisplay extends StatelessWidget {
       width: isCompact ? 28 : 32,
       height: isCompact ? 28 : 32,
       decoration: BoxDecoration(
-        color: iconColor.withOpacity(0.1),
+        color: iconColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(
@@ -123,7 +126,7 @@ class FileAttachmentDisplay extends StatelessWidget {
       if (!await sourceFile.exists()) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Файл не найден')),
+          SnackBar(content: Text(tr('Файл не найден'))),
         );
         return;
       }
@@ -173,7 +176,7 @@ class FileAttachmentDisplay extends StatelessWidget {
       if (result.type != ResultType.done) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Файл сохранен: $cleanFileName'),
+            content: Text(tr('Файл сохранен: {0}', [cleanFileName])),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -181,7 +184,7 @@ class FileAttachmentDisplay extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при открытии файла: $e')),
+        SnackBar(content: Text(tr('Ошибка при открытии файла: {0}', [e]))),
       );
     }
   }

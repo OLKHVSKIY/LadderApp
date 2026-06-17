@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/task.dart';
-import '../models/attached_file.dart';
+import '../theme/app_colors.dart';
 import 'file_attachment_display.dart';
 import 'task_sound_player.dart';
 
@@ -18,6 +18,7 @@ class TaskCard extends StatefulWidget {
   final Function(bool) onToggle;
   final String? openMenuTaskId;
   final Function(String?, GlobalKey?)? onMenuToggle;
+  final Function(String)? onDelete;
 
   const TaskCard({
     super.key,
@@ -25,6 +26,7 @@ class TaskCard extends StatefulWidget {
     required this.onToggle,
     this.openMenuTaskId,
     this.onMenuToggle,
+    this.onDelete,
   });
 
   @override
@@ -36,8 +38,6 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
   final GlobalKey _menuButtonKey = GlobalKey();
   final GlobalKey _checkboxKey = GlobalKey();
   late AnimationController _menuAnimationController;
-  late Animation<double> _menuFadeAnimation;
-  late Animation<Offset> _menuSlideAnimation;
   AnimationController? _strikeController;
   Animation<double>? _strikeAnimation;
   
@@ -49,21 +49,6 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
     _menuAnimationController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
-    );
-    _menuFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _menuAnimationController,
-        curve: Curves.easeOut,
-      ),
-    );
-    _menuSlideAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.1),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _menuAnimationController,
-        curve: Curves.easeOut,
-      ),
     );
     _initStrike();
   }
@@ -131,26 +116,24 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
     widget.onMenuToggle?.call(null, null);
   }
 
+  // Долгое нажатие на задачу: открываем меню с тактильной отдачей.
+  void _handleLongPress() {
+    if (_isMenuOpen) return;
+    HapticFeedback.mediumImpact();
+    widget.onMenuToggle?.call(widget.task.id, _menuButtonKey);
+  }
+
   Color _getPriorityColor(int priority) {
     switch (priority) {
       case 1:
-        return Colors.red.withOpacity(0.9);
+        return Colors.red.withValues(alpha: 0.9);
       case 2:
-        return Colors.orange.withOpacity(0.9);
+        return Colors.orange.withValues(alpha: 0.9);
       case 3:
-        return Colors.blue.withOpacity(0.9);
+        return Colors.blue.withValues(alpha: 0.9);
       default:
-        return Colors.grey.withOpacity(0.9);
+        return Colors.grey.withValues(alpha: 0.9);
     }
-  }
-
-  double _measureTextWidth(String text, TextStyle style) {
-    final tp = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout(minWidth: 0, maxWidth: double.infinity);
-    return tp.size.width;
   }
 
   List<TextLineMetrics> _getTextLineMetrics(String text, TextStyle style, double maxWidth) {
@@ -282,17 +265,21 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    final colors = AppColors.of(context);
+    final card = Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
+        GestureDetector(
+          // Долгое нажатие на любую часть карточки открывает меню.
+          onLongPress: _handleLongPress,
+          child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F6F7),
+            color: colors.surfaceVariant,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -328,11 +315,15 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
+                        // Незавершённый чекбокс: видимая, но мягкая рамка.
+                        // В светлой теме чуть светлее textTertiary.
                         color: widget.task.isCompleted
                             ? _getPriorityColor(widget.task.priority)
                             : _isHovered
-                                ? const Color(0xFFCCCCCC)
-                                : const Color(0xFFE5E5E5),
+                                ? colors.textSecondary
+                                : (colors.isDark
+                                    ? colors.textTertiary
+                                    : const Color(0xFFB8B8BD)),
                         width: 2,
                       ),
                       color: widget.task.isCompleted
@@ -361,8 +352,8 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                           color: widget.task.isCompleted
-                              ? const Color(0xFF999999)
-                              : Colors.black,
+                              ? colors.textTertiary
+                              : colors.textPrimary,
                         );
                         final availableWidth = constraints.maxWidth;
                         final titleLineMetrics = _getTextLineMetrics(
@@ -404,8 +395,7 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                                   // Получаем реальные координаты каждой строки названия
                                   final titleLineCenterPositions = <double>[];
                                   double currentY = 0;
-                                  int lastOffset = 0;
-                                  
+
                                   for (int i = 0; i < titleLineMetrics.length; i++) {
                                     final position = titleTp.getPositionForOffset(Offset(0, currentY));
                                     final caretOffset = titleTp.getOffsetForCaret(position, Rect.zero);
@@ -421,9 +411,8 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                                     final lineCenterY = caretOffset.dy + (actualLineHeight / 2) + correction;
                                     titleLineCenterPositions.add(lineCenterY);
                                     
-                                    lastOffset = position.offset;
                                     currentY += actualLineHeight;
-                                    
+
                                     if (position.offset >= widget.task.title.length) {
                                       break;
                                     }
@@ -458,7 +447,7 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                                           color: (widget.task.isCompleted
                                                   ? const Color(0xFF999999)
                                                   : const Color(0xFF666666))
-                                              .withOpacity(0.6),
+                                              .withValues(alpha: 0.6),
                                         ),
                                       );
                                     }).toList(),
@@ -477,8 +466,8 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                           final textStyle = TextStyle(
                             fontSize: 14,
                             color: widget.task.isCompleted
-                                ? const Color(0xFF999999)
-                                : const Color(0xFF666666),
+                                ? colors.textTertiary
+                                : colors.textSecondary,
                           );
                           final availableWidth = constraints.maxWidth;
                           final lineMetrics = _getTextLineMetrics(
@@ -523,8 +512,7 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                                     // Используем тот же алгоритм, что и в _getTextLineMetrics для определения позиций строк
                                     // Проходим по тексту и определяем центр каждой строки
                                     double currentY = 0;
-                                    int lastOffset = 0;
-                                    
+
                                     for (int i = 0; i < lineMetrics.length; i++) {
                                       // Получаем позицию текста на текущей Y координате
                                       final position = textTp.getPositionForOffset(Offset(0, currentY));
@@ -557,7 +545,6 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                                       lineCenterPositions.add(lineCenterY);
                                       
                                       // Переходим к следующей строке
-                                      lastOffset = position.offset;
                                       currentY += actualLineHeight;
                                       
                                       // Если достигли конца текста, выходим
@@ -599,7 +586,7 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                                             color: (widget.task.isCompleted
                                                     ? const Color(0xFF999999)
                                                     : const Color(0xFF666666))
-                                                .withOpacity(0.6),
+                                                .withValues(alpha: 0.6),
                                           ),
                                         );
                                       }).toList(),
@@ -623,14 +610,14 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF5F5F5),
+                              color: colors.border,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               tag,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF666666),
+                                color: colors.textSecondary,
                               ),
                             ),
                           );
@@ -656,17 +643,58 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                   width: 32,
                   height: 32,
                   alignment: Alignment.center,
-                  child: const Icon(
+                  child: Icon(
                     Icons.more_vert,
                     size: 20,
-                    color: Color(0xFF666666),
+                    color: colors.textSecondary,
                   ),
                 ),
               ),
             ],
           ),
         ),
+        ),
       ],
+    );
+
+    // Свайп справа налево удаляет задачу.
+    if (widget.onDelete == null) return card;
+    return Dismissible(
+      key: ValueKey('dismiss_${widget.task.id}'),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        widget.onDelete!(widget.task.id);
+      },
+      background: Padding(
+        // Совпадает с нижним отступом карточки, чтобы кнопка центрировалась
+        // по её высоте.
+        padding: const EdgeInsets.only(bottom: 4, right: 6),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF3B30),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF3B30).withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.delete_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
+      child: card,
     );
   }
 }

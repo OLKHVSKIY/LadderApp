@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:async';
+import '../l10n/app_translations.dart';
 
 class SubscriptionPage extends StatefulWidget {
   const SubscriptionPage({super.key});
@@ -26,7 +27,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
   bool _headerVisible = false;
   double _maxScrollOffset = 0.0; // Максимальная позиция скролла для отслеживания прокрутки вниз
   double _currentTopPadding = 0.0; // Текущий верхний отступ для плавной анимации
-  Set<int> _vibratedBenefits = {}; // Отслеживание вибрированных блоков
+  final Set<int> _vibratedBenefits = {}; // Отслеживание вибрированных блоков
   bool _isUpdating = false; // Флаг для предотвращения множественных обновлений
   bool _headerWasSticked = false; // Флаг, что заголовок уже был закреплен
 
@@ -288,13 +289,14 @@ class _SubscriptionPageState extends State<SubscriptionPage>
                               width: 40,
                               height: 40,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.1),
+                                color: Colors.white.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: Colors.white24),
                               ),
                               child: const Icon(
-                                Icons.arrow_back_ios_new,
-                                size: 18,
+                                // Стандартный шеврон "назад" как в iOS.
+                                CupertinoIcons.back,
+                                size: 22,
                                 color: Colors.white,
                               ),
                             ),
@@ -316,8 +318,6 @@ class _SubscriptionPageState extends State<SubscriptionPage>
   }
 
   Widget _buildScrollContent() {
-    final screenHeight = MediaQuery.of(context).size.height;
-    
     // Используем текущий анимированный topPadding
     return NotificationListener<OverscrollIndicatorNotification>(
       onNotification: (o) {
@@ -336,18 +336,18 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             opacity: _headerVisible ? 1 : 0,
             child: Column(
               children: [
-                const Text(
-                  'Преимущества Pro',
-                  style: TextStyle(
+                Text(
+                  tr('Преимущества Pro'),
+                  style: const TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Листай ниже',
-                  style: TextStyle(
+                Text(
+                  tr('Листай ниже'),
+                  style: const TextStyle(
                     fontSize: 16,
                     color: Colors.white70,
                   ),
@@ -397,7 +397,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
               ),
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }
@@ -411,7 +411,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
       padding: const EdgeInsets.only(bottom: 24),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white10),
         ),
@@ -423,7 +423,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.12),
+                color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -475,9 +475,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Выберите план',
-              style: TextStyle(
+            Text(
+              tr('Выберите план'),
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
@@ -486,32 +486,32 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             const SizedBox(height: 20),
             _buildPlanCard(
               plan: 'yearly',
-              title: 'Годовая',
+              title: tr('Годовая'),
               price: '2199.00₽',
               subtitle: '',
-              savings: 'Экономия 40%',
+              savings: tr('Экономия 40%'),
               isPopular: true,
             ),
             const SizedBox(height: 12),
             _buildPlanCard(
               plan: 'monthly',
-              title: 'Месячная',
+              title: tr('Месячная'),
               price: '490.00₽',
-              subtitle: 'Подписка на Ladder Pro',
+              subtitle: tr('Подписка на Ladder Pro'),
             ),
             const SizedBox(height: 12),
             _buildPlanCard(
               plan: 'weekly',
-              title: 'Недельная',
+              title: tr('Недельная'),
               price: '149.00₽',
-              subtitle: 'Подписка на Ladder Pro',
+              subtitle: tr('Подписка на Ladder Pro'),
             ),
             const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
-                'Попробуй 3-х дневный период, а дальше\n2199 ₽/год',
-                style: TextStyle(
+                tr('Попробуй 3-х дневный период, а дальше\n2199 ₽/год'),
+                style: const TextStyle(
                   fontSize: 14,
                   color: Colors.white70,
                 ),
@@ -541,7 +541,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
               curve: Curves.easeOut,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: Colors.white,
@@ -563,7 +563,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
               curve: Curves.easeOut,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.white : Colors.white.withOpacity(0.06),
+                color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: isSelected ? Colors.white : Colors.white24,
@@ -632,9 +632,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
                         gradient: badgeGradient,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text(
-                        'ПОПУЛЯРНО',
-                        style: TextStyle(
+                      child: Text(
+                        tr('ПОПУЛЯРНО'),
+                        style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -700,7 +700,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
               }
             : null,
         child: Text(
-          'Оформить',
+          tr('Оформить'),
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
@@ -721,9 +721,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             onPressed: () {
               // TODO: Реализовать восстановление покупок
             },
-            child: const Text(
-              'Лицензия',
-              style: TextStyle(
+            child: Text(
+              tr('Лицензия'),
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.white,
               ),
@@ -742,9 +742,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             onPressed: () {
               // TODO: Реализовать помощь
             },
-            child: const Text(
-              'Код',
-              style: TextStyle(
+            child: Text(
+              tr('Код'),
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.white,
               ),
@@ -762,9 +762,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
           TextButton(
             onPressed: () {
             },
-            child: const Text(
-              'Помощь',
-              style: TextStyle(
+            child: Text(
+              tr('Помощь'),
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.white,
               ),
@@ -783,9 +783,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             onPressed: () {
               // TODO: Открыть условия использования
             },
-            child: const Text(
-              'Условия использования',
-              style: TextStyle(
+            child: Text(
+              tr('Условия использования'),
+              style: const TextStyle(
                 fontSize: 13,
                 color: Colors.white70,
               ),
@@ -795,9 +795,9 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             onPressed: () {
               // TODO: Открыть политику конфиденциальности
             },
-            child: const Text(
-              'Политика конфиденциальности',
-              style: TextStyle(
+            child: Text(
+              tr('Политика конфиденциальности'),
+              style: const TextStyle(
                 fontSize: 13,
                 color: Colors.white70,
               ),
@@ -807,59 +807,59 @@ class _SubscriptionPageState extends State<SubscriptionPage>
             onPressed: () {
               // TODO: Открыть политику возврата
             },
-            child: const Text(
-              'Политика возврата',
-              style: TextStyle(
+            child: Text(
+              tr('Политика возврата'),
+              style: const TextStyle(
                 fontSize: 13,
                 color: Colors.white70,
               ),
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Подписка автоматически продлевается. Отменить можно в настройках App Store.',
+          Text(
+            tr('Подписка автоматически продлевается. Отменить можно в настройках App Store.'),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: Colors.white54,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Цена и условия могут отличаться в зависимости от региона. Оплата будет списана с вашей учетной записи Apple ID при подтверждении покупки.',
+          Text(
+            tr('Цена и условия могут отличаться в зависимости от региона. Оплата будет списана с вашей учетной записи Apple ID при подтверждении покупки.'),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: Colors.white54,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Подписка продлевается автоматически, если не отменить её по крайней мере за 24 часа до окончания текущего периода.',
+          Text(
+            tr('Подписка продлевается автоматически, если не отменить её по крайней мере за 24 часа до окончания текущего периода.'),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: Colors.white54,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Пользователь может управлять подписками и отменять их в настройках своей учетной записи App Store после покупки.',
+          Text(
+            tr('Пользователь может управлять подписками и отменять их в настройках своей учетной записи App Store после покупки.'),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: Colors.white54,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Любая неиспользованная часть бесплатного пробного периода, если он предлагается, будет аннулирована, когда пользователь приобретет подписку.',
+          Text(
+            tr('Любая неиспользованная часть бесплатного пробного периода, если он предлагается, будет аннулирована, когда пользователь приобретет подписку.'),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: Colors.white54,
               height: 1.4,
@@ -900,7 +900,7 @@ class _SubscriptionPageState extends State<SubscriptionPage>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       blurRadius: 4,
                       spreadRadius: 1,
                     ),
@@ -918,48 +918,48 @@ class _SubscriptionPageState extends State<SubscriptionPage>
   List<Map<String, dynamic>> get _benefits => [
         {
           'icon': Icons.calendar_today,
-          'title': 'Импорт календаря',
-          'description': 'Импортируйте события из вашего календаря',
+          'title': tr('Импорт календаря'),
+          'description': tr('Импортируйте события из вашего календаря'),
         },
         {
           'icon': Icons.auto_awesome,
-          'title': 'ИИ в Spotlight',
-          'description': 'Используйте искусственный интеллект прямо в поиске',
+          'title': tr('ИИ в Spotlight'),
+          'description': tr('Используйте искусственный интеллект прямо в поиске'),
         },
         {
           'icon': Icons.chat_bubble_outline,
-          'title': 'Доступ к Чату AI',
-          'description': 'Неограниченное общение с AI-ассистентом',
+          'title': tr('Доступ к Чату AI'),
+          'description': tr('Неограниченное общение с AI-ассистентом'),
         },
         {
           'icon': Icons.flag_outlined,
-          'title': 'Бесконечное создание целей',
-          'description': 'Создавайте неограниченное количество целей через AI',
+          'title': tr('Бесконечное создание целей'),
+          'description': tr('Создавайте неограниченное количество целей через AI'),
         },
         {
           'icon': Icons.cloud_sync,
-          'title': 'Синхронизация в облаке',
-          'description': 'Доступ к данным на всех ваших устройствах',
+          'title': tr('Синхронизация в облаке'),
+          'description': tr('Доступ к данным на всех ваших устройствах'),
         },
         {
           'icon': Icons.backup,
-          'title': 'Автоматическое резервное копирование',
-          'description': 'Ваши данные всегда в безопасности',
+          'title': tr('Автоматическое резервное копирование'),
+          'description': tr('Ваши данные всегда в безопасности'),
         },
         {
           'icon': Icons.analytics_outlined,
-          'title': 'Расширенная аналитика',
-          'description': 'Подробная статистика по задачам и целям',
+          'title': tr('Расширенная аналитика'),
+          'description': tr('Подробная статистика по задачам и целям'),
         },
         {
           'icon': Icons.palette_outlined,
-          'title': 'Кастомные темы',
-          'description': 'Персонализируйте внешний вид приложения',
+          'title': tr('Кастомные темы'),
+          'description': tr('Персонализируйте внешний вид приложения'),
         },
         {
           'icon': Icons.file_download_outlined,
-          'title': 'Экспорт данных',
-          'description': 'Экспортируйте задачи и заметки в PDF и CSV',
+          'title': tr('Экспорт данных'),
+          'description': tr('Экспортируйте задачи и заметки в PDF и CSV'),
         },
       ];
 }

@@ -1,11 +1,21 @@
+import 'dart:math' as math;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../models/habit.dart';
+import '../models/event.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class AppleCalendar extends StatefulWidget {
   final DateTime initialDate;
   final Function(DateTime) onDateSelected;
   final VoidCallback onClose;
   final List<Task> tasks;
+  // Привычки и события для меток под днями (квадрат — задача, круг — привычка,
+  // звёздочка — событие).
+  final List<HabitWithStats> habits;
+  final List<Event> events;
 
   const AppleCalendar({
     super.key,
@@ -13,6 +23,8 @@ class AppleCalendar extends StatefulWidget {
     required this.onDateSelected,
     required this.onClose,
     this.tasks = const [],
+    this.habits = const [],
+    this.events = const [],
   });
 
   @override
@@ -100,82 +112,111 @@ class _AppleCalendarState extends State<AppleCalendar> {
     return priorities;
   }
 
-  // Виджет для отображения кружочков приоритетов
-  Widget _buildPriorityIndicators(Set<int> priorities) {
-    if (priorities.isEmpty) {
+  Color _priorityColor(int priority) {
+    switch (priority) {
+      case 1:
+        return Colors.red;
+      case 2:
+        return Colors.yellow;
+      case 3:
+        return const Color(0xFF0066FF); // Синий цвет (не голубой)
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // Есть ли на дату активная привычка (по расписанию и периоду).
+  bool _hasHabitOn(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    for (final h in widget.habits) {
+      if (h.habit.isActiveOn(d)) return true;
+    }
+    return false;
+  }
+
+  // Есть ли на дату событие.
+  bool _hasEventOn(DateTime date) {
+    for (final e in widget.events) {
+      if (e.occursOn(date)) return true;
+    }
+    return false;
+  }
+
+  // Метки под днём: задачи — квадраты со скруглёнными краями (по приоритетам),
+  // привычки — зелёный круг, события — звёздочка.
+  Widget _buildDayMarkers(DateTime date) {
+    const size = 5.0;
+    final markers = <Widget>[];
+
+    // Задачи — скруглённые квадратики (по приоритетам).
+    final priorities = _getPrioritiesForDate(date).toList()..sort();
+    for (final p in priorities) {
+      markers.add(Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: _priorityColor(p),
+          borderRadius: BorderRadius.circular(1.5),
+        ),
+      ));
+    }
+
+    // Привычка — зелёный круг.
+    if (_hasHabitOn(date)) {
+      markers.add(Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          color: Color(0xFF34C759),
+          shape: BoxShape.circle,
+        ),
+      ));
+    }
+
+    // Событие — звёздочка (рисуем сами для точного центрирования).
+    if (_hasEventOn(date)) {
+      markers.add(SizedBox(
+        width: size + 2,
+        height: size + 2,
+        child: CustomPaint(
+          painter: _StarPainter(const Color(0xFFFF2D55)),
+        ),
+      ));
+    }
+
+    if (markers.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // Сортируем приоритеты: 1 (красный), 2 (желтый), 3 (синий)
-    final sortedPriorities = priorities.toList()..sort();
-    
-    // Определяем количество кружочков
-    final count = sortedPriorities.length;
-    
-    // Определяем смещение для наезжания (примерно 1px)
-    const overlap = 1.0;
-    const circleSize = 5.0;
-    
-    // Вычисляем общую ширину всех кружочков с учетом наезжания
-    final totalWidth = circleSize + (count - 1) * (circleSize - overlap);
-    
-    return Center(
-      child: SizedBox(
-        width: totalWidth,
-        height: circleSize,
-        child: Stack(
-          children: List.generate(count, (index) {
-            final priority = sortedPriorities[index];
-            Color color;
-            switch (priority) {
-              case 1:
-                color = Colors.red;
-                break;
-              case 2:
-                color = Colors.yellow;
-                break;
-              case 3:
-                color = const Color(0xFF0066FF); // Синий цвет (не голубой)
-                break;
-              default:
-                color = Colors.grey;
-            }
-            
-            // Позиционируем кружочки так, чтобы они наезжали друг на друга
-            // и вся группа была по центру
-            final leftOffset = index * (circleSize - overlap);
-            
-            return Positioned(
-              left: leftOffset,
-              child: Container(
-                width: circleSize,
-                height: circleSize,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            );
-          }),
-        ),
+    return SizedBox(
+      height: size + 2,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (int i = 0; i < markers.length; i++) ...[
+            if (i > 0) const SizedBox(width: 1.5),
+            markers[i],
+          ],
+        ],
       ),
     );
   }
 
   String _getMonthName(DateTime date) {
-    const months = [
-      'Январь',
-      'Февраль',
-      'Март',
-      'Апрель',
-      'Май',
-      'Июнь',
-      'Июль',
-      'Август',
-      'Сентябрь',
-      'Октябрь',
-      'Ноябрь',
-      'Декабрь',
+    final months = [
+      tr('Январь'),
+      tr('Февраль'),
+      tr('Март'),
+      tr('Апрель'),
+      tr('Май'),
+      tr('Июнь'),
+      tr('Июль'),
+      tr('Август'),
+      tr('Сентябрь'),
+      tr('Октябрь'),
+      tr('Ноябрь'),
+      tr('Декабрь'),
     ];
     return months[date.month - 1];
   }
@@ -196,10 +237,11 @@ class _AppleCalendarState extends State<AppleCalendar> {
   Widget build(BuildContext context) {
     final days = _getDaysInMonth(_displayedMonth);
     final now = DateTime.now();
+    final colors = AppColors.of(context);
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -213,21 +255,21 @@ class _AppleCalendarState extends State<AppleCalendar> {
             children: [
               IconButton(
                 onPressed: _previousMonth,
-                icon: const Icon(Icons.chevron_left, color: Colors.black),
+                icon: Icon(CupertinoIcons.chevron_back, color: colors.icon),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
               Text(
                 '${_getMonthName(_displayedMonth)} ${_displayedMonth.year}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black,
+                  color: colors.textPrimary,
                 ),
               ),
               IconButton(
                 onPressed: _nextMonth,
-                icon: const Icon(Icons.chevron_right, color: Colors.black),
+                icon: Icon(CupertinoIcons.chevron_forward, color: colors.icon),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
@@ -237,16 +279,16 @@ class _AppleCalendarState extends State<AppleCalendar> {
           // Дни недели
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+            children: [tr('Пн'), tr('Вт'), tr('Ср'), tr('Чт'), tr('Пт'), tr('Сб'), tr('Вс')]
                 .map((day) => SizedBox(
                       width: 36,
                       child: Center(
                         child: Text(
                           day,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF666666),
+                            color: colors.textSecondary,
                           ),
                         ),
                       ),
@@ -300,15 +342,15 @@ class _AppleCalendarState extends State<AppleCalendar> {
                             color: isSelected
                                 ? Colors.white
                                 : isCurrentMonth
-                                    ? Colors.black
-                                    : const Color(0xFFCCCCCC),
+                                    ? colors.textPrimary
+                                    : colors.textTertiary,
                           ),
                         ),
                       ),
                     ),
                     if (isCurrentMonth) ...[
                       const SizedBox(height: 2),
-                      _buildPriorityIndicators(_getPrioritiesForDate(date)),
+                      _buildDayMarkers(date),
                     ],
                   ],
                 ),
@@ -320,5 +362,41 @@ class _AppleCalendarState extends State<AppleCalendar> {
       ),
     );
   }
+}
+
+// Залитая 5-конечная звезда, точно вписанная в центр бокса.
+class _StarPainter extends CustomPainter {
+  final Color color;
+  _StarPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final outer = math.min(size.width, size.height) / 2;
+    final inner = outer * 0.46;
+    final path = Path();
+    for (int i = 0; i < 10; i++) {
+      final r = i.isEven ? outer : inner;
+      final angle = -math.pi / 2 + i * math.pi / 5;
+      final x = cx + r * math.cos(angle);
+      final y = cy + r * math.sin(angle);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StarPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 

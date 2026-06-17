@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' as dr;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:uuid/uuid.dart';
 import '../app_database.dart' as db;
 import '../../models/attached_file.dart';
 
@@ -22,6 +23,7 @@ class NoteFileRepository {
       
       await database.into(database.noteFiles).insert(
         db.NoteFilesCompanion.insert(
+          uuid: dr.Value(const Uuid().v4()),
           noteId: noteId,
           fileName: file.fileName,
           filePath: permanentPath,
@@ -81,8 +83,6 @@ class NoteFileRepository {
     
     final sourceFile = File(sourcePath);
     final targetPath = path.join(filesDir.path, '${DateTime.now().millisecondsSinceEpoch}_$fileName');
-    final targetFile = File(targetPath);
-    
     await sourceFile.copy(targetPath);
     
     return targetPath;

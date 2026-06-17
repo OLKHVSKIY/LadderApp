@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import '../models/note_model.dart';
 import '../models/task.dart';
 import '../models/goal_model.dart';
@@ -7,11 +8,15 @@ import '../data/repositories/task_repository.dart';
 import '../data/repositories/plan_repository.dart';
 import '../data/repositories/note_repository.dart';
 import '../data/user_session.dart';
+import '../theme/app_colors.dart';
+import 'glass.dart';
+import 'swipe_down_sheet.dart';
+import '../l10n/app_translations.dart';
 
 class NoteCreateModal extends StatefulWidget {
   final VoidCallback onClose;
   final Function(NoteModel) onSave;
-  final Function(String title, String color, String? icon, String? linkedElementType, String? linkedElementId) onAttach; // Колбэк для прикрепления заметки к списку
+  final Function(String title, String color, String? icon, String? linkedElementType, String? linkedElementId, bool notify) onAttach; // Колбэк для прикрепления заметки к списку
 
   const NoteCreateModal({
     super.key,
@@ -36,6 +41,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
   String? _linkedElementType; // 'task', 'goal', 'note'
   bool _isLinkDropdownOpen = false;
   bool _isIconPickerOpen = false;
+  bool _notifyEnabled = true; // Уведомлять о начале события
   
   // Данные для списка связей
   List<Task> _tasks = [];
@@ -133,6 +139,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Positioned.fill(
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 300),
@@ -150,38 +157,47 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
               position: _slideAnimation,
               child: Align(
                 alignment: Alignment.bottomCenter,
-                child: Container(
+                child: SwipeDownSheet(
+                  onDismiss: _handleClose,
+                  child: Container(
                   height: MediaQuery.of(context).size.height * 0.9,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(24),
-                      topRight: Radius.circular(24),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
                     ),
                   ),
                   child: Column(
                     children: [
+                      // Ручка для перетаскивания
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 12, bottom: 4),
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colors.divider,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
                       // Заголовок
                       Padding(
                         padding: const EdgeInsets.all(20),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Новая заметка',
+                            Text(
+                              tr('Новая заметка'),
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.black,
+                                color: colors.textPrimary,
                               ),
                             ),
-                            GestureDetector(
+                            GlassCircleButton(
                               onTap: _handleClose,
-                              child: const Icon(
-                                Icons.close,
-                                size: 24,
-                                color: Color(0xFF999999),
-                              ),
                             ),
                           ],
                         ),
@@ -204,6 +220,9 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                               const SizedBox(height: 32),
                               // Инструменты
                               _buildToolsBlock(),
+                              const SizedBox(height: 32),
+                              // Переключатель уведомления о начале события
+                              _buildNotifyToggle(),
                               SizedBox(height: _isLinkDropdownOpen ? 40 : 32),
                               // Кнопка "Прикрепить"
                               SizedBox(
@@ -216,22 +235,23 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                                       _selectedIcon,
                                       _linkedElementType,
                                       _linkedElementId,
+                                      _notifyEnabled,
                                     );
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
+                                    backgroundColor: colors.inverseSurface,
                                     padding: const EdgeInsets.symmetric(vertical: 16),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(14),
                                     ),
                                     elevation: 0,
                                   ),
-                                  child: const Text(
-                                    'Прикрепить',
+                                  child: Text(
+                                    tr('Прикрепить'),
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.white,
+                                      color: colors.onInverseSurface,
                                     ),
                                   ),
                                 ),
@@ -244,6 +264,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                     ],
                   ),
                 ),
+                ),
               ),
             ),
           ],
@@ -253,6 +274,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
   }
 
   Widget _buildLinkElementBlock() {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -265,9 +287,9 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFE5E5E5)),
+              border: Border.all(color: colors.border),
               borderRadius: BorderRadius.circular(14),
-              color: Colors.white,
+              color: colors.elevatedSurface,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -275,13 +297,13 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                 Expanded(
                   child: Text(
                     _linkedElementType == null
-                        ? 'Связать с элементом'
+                        ? tr('Связать с элементом')
                         : _getLinkedElementTitle(),
                     style: TextStyle(
                       fontSize: 16,
                       color: _linkedElementType == null
-                          ? const Color(0xFF999999)
-                          : Colors.black,
+                          ? colors.textTertiary
+                          : colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -289,7 +311,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                 ),
                 Icon(
                   _isLinkDropdownOpen ? Icons.expand_less : Icons.expand_more,
-                  color: const Color(0xFF999999),
+                  color: colors.textTertiary,
                   size: 20,
                 ),
               ],
@@ -306,9 +328,9 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                     Container(
                       constraints: const BoxConstraints(maxHeight: 300),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: colors.elevatedSurface,
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFE5E5E5)),
+                        border: Border.all(color: colors.border),
                       ),
                       child: _isLoadingLinks
                           ? const Padding(
@@ -316,14 +338,14 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                               child: Center(child: CircularProgressIndicator()),
                             )
                           : _tasks.isEmpty && _goals.isEmpty && _notes.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.all(20),
+                              ? Padding(
+                                  padding: const EdgeInsets.all(20),
                                   child: Center(
                                     child: Text(
-                                      'Нет элементов для связи',
+                                      tr('Нет элементов для связи'),
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Color(0xFF999999),
+                                        color: colors.textTertiary,
                                       ),
                                     ),
                                   ),
@@ -334,7 +356,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                                   children: [
                                     // Задачи
                                     if (_tasks.isNotEmpty) ...[
-                                      _buildLinkSectionHeader('Задачи'),
+                                      _buildLinkSectionHeader(tr('Задачи')),
                                       ..._tasks.map((task) => _buildLinkItem(
                                             title: task.title,
                                             type: 'task',
@@ -343,7 +365,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                                     ],
                                     // Цели
                                     if (_goals.isNotEmpty) ...[
-                                      _buildLinkSectionHeader('Цели'),
+                                      _buildLinkSectionHeader(tr('Цели')),
                                       ..._goals.map((goal) => _buildLinkItem(
                                             title: goal.title,
                                             type: 'goal',
@@ -352,7 +374,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                                     ],
                                     // Заметки
                                     if (_notes.isNotEmpty) ...[
-                                      _buildLinkSectionHeader('Заметки'),
+                                      _buildLinkSectionHeader(tr('Заметки')),
                                       ..._notes.map((note) => _buildLinkItem(
                                             title: note.title,
                                             type: 'note',
@@ -375,10 +397,10 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF666666),
+          color: AppColors.of(context).textSecondary,
           letterSpacing: -0.2,
         ),
       ),
@@ -386,6 +408,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
   }
 
   Widget _buildLinkItem({required String title, required String type, String? id}) {
+    final colors = AppColors.of(context);
     final isSelected = _linkedElementType == type && _linkedElementId == id;
     return InkWell(
       onTap: () {
@@ -397,15 +420,15 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        color: isSelected ? const Color(0xFFF5F5F5) : Colors.transparent,
+        color: isSelected ? colors.surfaceVariant : Colors.transparent,
         child: Row(
           children: [
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
-                  color: Colors.black,
+                  color: colors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -448,12 +471,12 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Цвет',
+        Text(
+          tr('Цвет'),
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF666666),
+            color: AppColors.of(context).textSecondary,
             letterSpacing: -0.2,
           ),
         ),
@@ -476,7 +499,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                   color: _getColorFromHex(color),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isSelected ? Colors.black : Colors.transparent,
+                    color: isSelected ? AppColors.of(context).textPrimary : Colors.transparent,
                     width: 2.5,
                   ),
                 ),
@@ -489,6 +512,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
   }
 
   Widget _buildIconAndTitleBlock() {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -506,17 +530,17 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFE5E5E5)),
+                  border: Border.all(color: colors.border),
                   borderRadius: BorderRadius.circular(14),
-                  color: Colors.white,
+                  color: colors.elevatedSurface,
                 ),
                 child: _selectedIcon != null
                     ? Icon(
                         _getIconData(_selectedIcon!),
                         size: 28,
-                        color: Colors.black,
+                        color: colors.icon,
                       )
-                    : const Icon(Icons.add, color: Color(0xFF999999), size: 24),
+                    : Icon(Icons.add, color: colors.textTertiary, size: 24),
               ),
             ),
             const SizedBox(width: 12),
@@ -577,11 +601,12 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
       ],
     };
 
+    final colors = AppColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.elevatedSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E5E5)),
+        border: Border.all(color: colors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,11 +617,11 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: Text(
-                  entry.key,
-                  style: const TextStyle(
+                  tr(entry.key),
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF666666),
+                    color: colors.textSecondary,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -621,20 +646,20 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                         height: 44,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFFF5F5F5)
+                              ? colors.surfaceVariant
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: isSelected
-                                ? Colors.black
-                                : const Color(0xFFE5E5E5),
+                                ? colors.textPrimary
+                                : colors.border,
                             width: isSelected ? 1.5 : 1,
                           ),
                         ),
                         child: Icon(
                           icon,
                           size: 22,
-                          color: Colors.black,
+                          color: colors.icon,
                         ),
                       ),
                     );
@@ -642,7 +667,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                 ),
               ),
               if (entry.key != iconCategories.keys.last)
-                const Divider(height: 1, color: Color(0xFFE5E5E5)),
+                Divider(height: 1, color: colors.divider),
             ],
           );
         }).toList(),
@@ -660,7 +685,8 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
   }
 
   Widget _buildTitleField() {
-    const borderColor = Colors.black;
+    final colors = AppColors.of(context);
+    final borderColor = colors.textPrimary;
     return Padding(
       padding: const EdgeInsets.only(top: 2, bottom: 10),
       child: Stack(
@@ -670,19 +696,19 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(17),
               border: Border.all(color: borderColor, width: 1),
-              color: Colors.white,
+              color: colors.surface,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               child: TextField(
                 controller: _titleController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isCollapsed: true,
-                  hintText: 'Название заметки',
-                  hintStyle: TextStyle(color: Color(0xFF999999), fontSize: 16),
+                  hintText: tr('Название заметки'),
+                  hintStyle: TextStyle(color: colors.textTertiary, fontSize: 16),
                   border: InputBorder.none,
                 ),
-                style: const TextStyle(fontSize: 18, color: Colors.black),
+                style: TextStyle(fontSize: 18, color: colors.textPrimary),
                 cursorColor: borderColor,
               ),
             ),
@@ -691,12 +717,12 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
             left: 16,
             top: -11,
             child: Container(
-              color: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 8),
+              color: colors.surface,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                'Название',
+                tr('Название'),
                 style: TextStyle(
-                  color: Colors.black,
+                  color: colors.textPrimary,
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
                 ),
@@ -708,16 +734,51 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
     );
   }
 
+  Widget _buildNotifyToggle() {
+    final colors = AppColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.border),
+        borderRadius: BorderRadius.circular(14),
+        color: colors.elevatedSurface,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              tr('Уведомлять о начале события'),
+              style: TextStyle(
+                fontSize: 16,
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          AdaptiveSwitch(
+            value: _notifyEnabled,
+            onChanged: (v) {
+              setState(() {
+                _notifyEnabled = v;
+              });
+            },
+            activeColor: const Color(0xFF34C759),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildToolsBlock() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Инструменты',
+        Text(
+          tr('Инструменты'),
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF666666),
+            color: AppColors.of(context).textSecondary,
             letterSpacing: -0.2,
           ),
         ),
@@ -726,11 +787,11 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
           spacing: 10,
           runSpacing: 10,
           children: [
-            _buildToolChip('Текст', Icons.text_fields),
-            _buildToolChip('Задачи', Icons.checklist),
-            _buildToolChip('Картинка', Icons.image),
-            _buildToolChip('Тег', Icons.tag),
-            _buildToolChip('Место', Icons.location_on),
+            _buildToolChip(tr('Текст'), Icons.text_fields),
+            _buildToolChip(tr('Задачи'), Icons.checklist),
+            _buildToolChip(tr('Картинка'), Icons.image),
+            _buildToolChip(tr('Тег'), Icons.tag),
+            _buildToolChip(tr('Место'), Icons.location_on),
           ],
         ),
       ],
@@ -738,6 +799,7 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
   }
 
   Widget _buildToolChip(String label, IconData icon) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: () {
         // TODO: Реализовать функциональность инструментов
@@ -745,19 +807,19 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
+          color: colors.surfaceVariant,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: const Color(0xFF666666)),
+            Icon(icon, size: 16, color: colors.textSecondary),
             const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: Color(0xFF666666),
+                color: colors.textSecondary,
                 fontWeight: FontWeight.w500,
               ),
             ),

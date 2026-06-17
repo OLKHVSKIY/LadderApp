@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' as dr;
@@ -8,6 +9,9 @@ import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
 import '../data/user_session.dart';
 import '../pages/custom_tasks_page.dart';
+import '../pages/analytics_page.dart';
+import '../l10n/app_translations.dart';
+import 'streak_badge.dart';
 
 class GreetingPanel extends StatefulWidget {
   final bool isOpen;
@@ -69,29 +73,16 @@ class _GreetingPanelState extends State<GreetingPanel>
     final hour = DateTime.now().hour;
     String base;
     if (hour >= 5 && hour < 12) {
-      base = 'Доброе утро';
+      base = tr('Доброе утро');
     } else if (hour >= 12 && hour < 17) {
-      base = 'Добрый день';
+      base = tr('Добрый день');
     } else if (hour >= 17 && hour < 22) {
-      base = 'Добрый вечер';
+      base = tr('Добрый вечер');
     } else {
-      base = 'Доброй ночи';
+      base = tr('Доброй ночи');
     }
     if (name == null || name.isEmpty) return base;
-    return '$base, $name';
-  }
-
-  String _pluralizeTasks(int count) {
-    final rem100 = count % 100;
-    final rem10 = count % 10;
-    final word = (rem100 >= 11 && rem100 <= 14)
-        ? 'задач'
-        : rem10 == 1
-            ? 'задача'
-            : (rem10 >= 2 && rem10 <= 4)
-                ? 'задачи'
-                : 'задач';
-    return '$count $word';
+    return tr('{0}, {1}', [base, name]);
   }
 
   String _getBackgroundImage() {
@@ -108,27 +99,27 @@ class _GreetingPanelState extends State<GreetingPanel>
   }
 
   String _getDayOfWeek() {
-    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    final days = [tr('Пн'), tr('Вт'), tr('Ср'), tr('Чт'), tr('Пт'), tr('Сб'), tr('Вс')];
     return days[DateTime.now().weekday - 1];
   }
 
   String _getFormattedDate() {
     final now = DateTime.now();
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря',
+    final months = [
+      tr('января'),
+      tr('февраля'),
+      tr('марта'),
+      tr('апреля'),
+      tr('мая'),
+      tr('июня'),
+      tr('июля'),
+      tr('августа'),
+      tr('сентября'),
+      tr('октября'),
+      tr('ноября'),
+      tr('декабря'),
     ];
-    return '${now.day} ${months[now.month - 1]} ${now.year}';
+    return tr('{0} {1} {2}', [now.day, months[now.month - 1], now.year]);
   }
 
   @override
@@ -404,6 +395,26 @@ class _GreetingPanelState extends State<GreetingPanel>
                   },
                 ),
               ),
+                // Лёгкое затенение сверху — чтобы день недели и дата читались
+                // даже на ярких участках фона (например, на фоне луны).
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.5),
+                            Colors.black.withValues(alpha: 0.22),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.3, 0.6],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 // Звезды и падающая звезда только для ночной темы
                 if (isNight) ...[
                   ..._buildTwinklingStars(),
@@ -461,13 +472,16 @@ class _GreetingPanelState extends State<GreetingPanel>
                           ),
                         ),
                         const SizedBox(height: 30),
-                        // Статистика
-                        Text(
-                          'Сегодня у вас: ${_pluralizeTasks(widget.totalTasksToday)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            color: Colors.white,
-                          ),
+                        // Блок «серии» (стрик), как в Duolingo
+                        StreakBadge(
+                          reloadToken: widget.completedTasksToday,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              CupertinoPageRoute(
+                                builder: (_) => const AnalyticsPage(),
+                              ),
+                            );
+                          },
                         ),
                         // Область выше блока овалов - для обработки нажатий
                         Expanded(
@@ -570,11 +584,10 @@ class _TwinkleDot extends StatelessWidget {
 
 class _CustomScreensSection extends StatefulWidget {
   final bool? isPanelOpen;
-  final VoidCallback? onHideDeleteButtons;
 
   const _CustomScreensSection({
+    super.key,
     this.isPanelOpen,
-    this.onHideDeleteButtons,
   });
 
   @override
@@ -726,15 +739,13 @@ class _CustomScreensSectionState extends State<_CustomScreensSection>
     if (_showDeleteButtons) {
       return;
     }
+    // CupertinoPageRoute даёт нативный iOS-переход и свайп слева направо
+    // для возврата назад.
     Navigator.of(context).push(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, __) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: CustomTasksPage(
-            screenId: screen.id,
-            screenName: screen.name,
-          ),
+      CupertinoPageRoute(
+        builder: (_) => CustomTasksPage(
+          screenId: screen.id,
+          screenName: screen.name,
         ),
       ),
     );
@@ -972,9 +983,9 @@ class _CustomScreensSectionState extends State<_CustomScreensSection>
                                                   fontSize: 14,
                                                   height: 1.0,
                                                 ),
-                                                decoration: const InputDecoration(
-                                                  hintText: 'Название экрана',
-                                                  hintStyle: TextStyle(
+                                                decoration: InputDecoration(
+                                                  hintText: tr('Название экрана'),
+                                                  hintStyle: const TextStyle(
                                                     color: Colors.white70,
                                                     fontSize: 14,
                                                     height: 1.0,
@@ -1012,16 +1023,16 @@ class _CustomScreensSectionState extends State<_CustomScreensSection>
                                     ],
                                   )
                                 : RichText(
-                                    text: const TextSpan(
-                                      style: TextStyle(
+                                    text: TextSpan(
+                                      style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
                                         height: 1.0,
                                       ),
                                       children: [
-                                        TextSpan(text: 'Новый экран '),
-                                        TextSpan(
+                                        TextSpan(text: tr('Новый экран ')),
+                                        const TextSpan(
                                           text: '+',
                                           style: TextStyle(
                                             fontSize: 16,
@@ -1077,7 +1088,7 @@ class _CustomScreensSectionState extends State<_CustomScreensSection>
                           },
                         ),
                       );
-                    }).toList(),
+                    }),
                                   ],
                                 ),
                               ),

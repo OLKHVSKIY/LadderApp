@@ -49,5 +49,30 @@
 	<string>Приложению нужен доступ к микрофону для диктовки текста</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Приложению нужен доступ к распознаванию речи для диктовки текста</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Приложению нужен доступ к календарю, чтобы импортировать события в задачи</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Приложению нужен доступ к календарю, чтобы импортировать события в задачи</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ladder</string>
+			</array>
+		</dict>
+		<!-- Google Sign-In: замените на REVERSED_CLIENT_ID из OAuth iOS-клиента
+		     (вид com.googleusercontent.apps.XXXXXXXX-XXXXXXXX). См. .env. -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.YOUR_REVERSED_CLIENT_ID</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

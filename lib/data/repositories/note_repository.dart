@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:drift/drift.dart' as dr;
+import 'package:uuid/uuid.dart';
 import '../app_database.dart';
 import '../../models/note_model.dart';
-import '../user_session.dart';
 import 'note_file_repository.dart';
 
 class NoteRepository {
@@ -32,6 +32,7 @@ class NoteRepository {
     } else {
       noteId = await db.into(db.notes).insert(
             NotesCompanion.insert(
+              uuid: dr.Value(const Uuid().v4()),
               userId: userId,
               title: note.title,
               content: jsonStr,
@@ -52,6 +53,7 @@ class NoteRepository {
   /// Загрузить все заметки пользователя
   Future<List<NoteModel>> loadNotes(int userId) async {
     final rows = await (db.select(db.notes)
+          ..where((n) => n.isDeleted.equals(false))
           ..where((n) => n.userId.equals(userId))
           ..orderBy([(n) => dr.OrderingTerm.desc(n.updatedAt)]))
         .get();
@@ -75,11 +77,16 @@ class NoteRepository {
     return result;
   }
 
-  /// Удалить заметку
+  /// Удалить заметку (soft-delete: помечаем удалённой для будущей синхронизации)
   Future<void> deleteNote(int id) async {
-    // Удаляем файлы перед удалением заметки
+    // Файлы с диска чистим сразу.
     await _fileRepo.deleteNoteFiles(id);
-    await (db.delete(db.notes)..where((n) => n.id.equals(id))).go();
+    await (db.update(db.notes)..where((n) => n.id.equals(id))).write(
+      NotesCompanion(
+        isDeleted: dr.Value(true),
+        updatedAt: dr.Value(DateTime.now()),
+      ),
+    );
   }
 }
 

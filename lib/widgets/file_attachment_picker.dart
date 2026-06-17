@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -5,6 +6,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import '../models/attached_file.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class FileAttachmentPicker extends StatefulWidget {
   final List<AttachedFile> initialFiles;
@@ -126,7 +129,7 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка при выборе файла: $e')),
+          SnackBar(content: Text(tr('Ошибка при выборе файла: {0}', [e]))),
         );
       }
     }
@@ -161,6 +164,7 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -169,10 +173,10 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFF5F5F5),
+              color: colors.surfaceVariant,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: const Color(0xFFE5E5E5),
+                color: colors.border,
                 width: 1,
               ),
             ),
@@ -182,13 +186,13 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: colors.surface,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.attach_file,
                     size: 20,
-                    color: Color(0xFF666666),
+                    color: colors.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -196,29 +200,29 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Прикрепить файл',
+                      Text(
+                        tr('Прикрепить файл'),
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
-                          color: Colors.black,
+                          color: colors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'PDF, Word, Excel, фото и другие',
+                        tr('PDF, Word, Excel, фото и другие'),
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey[600],
+                          color: colors.textTertiary,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.chevron_right,
                   size: 20,
-                  color: Color(0xFF999999),
+                  color: colors.textTertiary,
                 ),
               ],
             ),
@@ -244,14 +248,15 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
   }
 
   Widget _buildFileChip(AttachedFile file, int index) {
+    final colors = AppColors.of(context);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFFE5E5E5),
+          color: colors.border,
           width: 1,
         ),
       ),
@@ -263,9 +268,9 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
           Flexible(
             child: Text(
               file.displayName,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: Colors.black,
+                color: colors.textPrimary,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -274,12 +279,13 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
           const SizedBox(width: 6),
           GestureDetector(
             onTap: () => _removeFile(index),
-            child: Container(
+            child: Padding(
               padding: const EdgeInsets.all(2),
-              child: const Icon(
-                Icons.close,
+              // Стандартная иконка удаления "токена" по Apple HIG.
+              child: Icon(
+                CupertinoIcons.xmark_circle_fill,
                 size: 16,
-                color: Color(0xFF999999),
+                color: colors.textTertiary,
               ),
             ),
           ),
@@ -326,7 +332,7 @@ class _FileAttachmentPickerState extends State<FileAttachmentPicker>
       width: 24,
       height: 24,
       decoration: BoxDecoration(
-        color: iconColor.withOpacity(0.1),
+        color: iconColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Icon(

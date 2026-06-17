@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../data/repositories/delegated_task_repository.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class DelegatedTaskAcceptModal extends StatefulWidget {
   final List<DelegatedTaskInfo> tasks;
@@ -70,10 +72,11 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
           minChildSize: 0.4,
           maxChildSize: 0.7,
           builder: (context, scrollController) {
+                  final colors = AppColors.of(context);
                   return Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                     ),
                     child: Column(
                       children: [
@@ -83,7 +86,7 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                           width: 40,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.grey[300],
+                            color: colors.divider,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -94,23 +97,23 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                widget.tasks.length == 1 
-                                  ? 'С вами поделились задачей!'
-                                  : 'С вами поделились задачами!',
-                                style: const TextStyle(
+                                widget.tasks.length == 1
+                                  ? tr('С вами поделились задачей!')
+                                  : tr('С вами поделились задачами!'),
+                                style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.black,
+                                  color: colors.textPrimary,
                                 ),
                               ),
                               if (widget.tasks.length > 1)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    '${widget.tasks.length} задач',
+                                    tr('{0} задач', [widget.tasks.length]),
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: Colors.grey[600],
+                                      color: colors.textTertiary,
                                     ),
                                   ),
                                 ),
@@ -136,10 +139,10 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                           padding: const EdgeInsets.only(left: 4, bottom: 8),
                                           child: Text(
                                             _getSenderName(taskInfo),
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,
-                                              color: Colors.black,
+                                              color: colors.textPrimary,
                                             ),
                                           ),
                                         ),
@@ -148,7 +151,7 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                           width: double.infinity,
                                           padding: const EdgeInsets.all(16),
                                           decoration: BoxDecoration(
-                                            color: Colors.grey[100],
+                                            color: colors.surfaceVariant,
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Column(
@@ -157,10 +160,10 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                               Text(
                                                 taskInfo.taskTitle,
                                                 textAlign: TextAlign.left,
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w600,
-                                                  color: Colors.black,
+                                                  color: colors.textPrimary,
                                                 ),
                                               ),
                                               if (taskInfo.taskDescription != null && taskInfo.taskDescription!.isNotEmpty) ...[
@@ -168,19 +171,19 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                                 Text(
                                                   taskInfo.taskDescription!,
                                                   textAlign: TextAlign.left,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontSize: 14,
-                                                    color: Colors.black87,
+                                                    color: colors.textSecondary,
                                                   ),
                                                 ),
                                               ],
                                               const SizedBox(height: 8),
                                               Text(
-                                                'Дата: ${taskInfo.taskDate.day.toString().padLeft(2, '0')}.${taskInfo.taskDate.month.toString().padLeft(2, '0')}.${taskInfo.taskDate.year}',
+                                                tr('Дата: {0}', ['${taskInfo.taskDate.day.toString().padLeft(2, '0')}.${taskInfo.taskDate.month.toString().padLeft(2, '0')}.${taskInfo.taskDate.year}']),
                                                 textAlign: TextAlign.left,
                                                 style: TextStyle(
                                                   fontSize: 12,
-                                                  color: Colors.grey[600],
+                                                  color: colors.textTertiary,
                                                 ),
                                               ),
                                               if (taskInfo.taskTags.isNotEmpty) ...[
@@ -192,15 +195,15 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                                     return Container(
                                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                       decoration: BoxDecoration(
-                                                        color: const Color(0xFFF5F5F5),
+                                                        color: colors.surfaceVariant,
                                                         borderRadius: BorderRadius.circular(8),
                                                       ),
                                                       child: Text(
                                                         tag,
                                                         textAlign: TextAlign.left,
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontSize: 12,
-                                                          color: Color(0xFF666666),
+                                                          color: colors.textSecondary,
                                                         ),
                                                       ),
                                                     );
@@ -226,14 +229,14 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                                     shape: RoundedRectangleBorder(
                                                       borderRadius: BorderRadius.circular(12),
                                                     ),
-                                                    side: BorderSide(color: Colors.grey[300]!),
+                                                    side: BorderSide(color: colors.border),
                                                   ),
-                                                  child: const Text(
-                                                    'Отменить',
+                                                  child: Text(
+                                                    tr('Отменить'),
                                                     style: TextStyle(
                                                       fontSize: 14,
                                                       fontWeight: FontWeight.w600,
-                                                      color: Colors.black87,
+                                                      color: colors.textSecondary,
                                                     ),
                                                   ),
                                                 ),
@@ -246,16 +249,16 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                                     widget.onAccept(taskInfo.id);
                                                   },
                                                   style: ElevatedButton.styleFrom(
-                                                    backgroundColor: Colors.black,
-                                                    foregroundColor: Colors.white,
+                                                    backgroundColor: colors.inverseSurface,
+                                                    foregroundColor: colors.onInverseSurface,
                                                     padding: const EdgeInsets.symmetric(vertical: 12),
                                                     shape: RoundedRectangleBorder(
                                                       borderRadius: BorderRadius.circular(12),
                                                     ),
                                                   ),
-                                                  child: const Text(
-                                                    'Принять',
-                                                    style: TextStyle(
+                                                  child: Text(
+                                                    tr('Принять'),
+                                                    style: const TextStyle(
                                                       fontSize: 14,
                                                       fontWeight: FontWeight.w600,
                                                     ),
@@ -268,7 +271,7 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                                       ],
                                     ),
                                   );
-                                }).toList(),
+                                }),
                                 const SizedBox(height: 20),
                               ],
                             ),

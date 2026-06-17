@@ -1,4 +1,7 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 class BottomNavigation extends StatefulWidget {
   final int currentIndex;
@@ -6,7 +9,7 @@ class BottomNavigation extends StatefulWidget {
   final VoidCallback? onTasksTap;
   final VoidCallback? onPlanTap;
   final VoidCallback? onGptTap;
-  final VoidCallback? onNotesTap;
+  final VoidCallback? onAiTap;
   final Function(int)? onIndexChanged;
   final double activeIndicatorWidth;
   final double activeIndicatorHeight;
@@ -20,7 +23,7 @@ class BottomNavigation extends StatefulWidget {
     this.onTasksTap,
     this.onPlanTap,
     this.onGptTap,
-    this.onNotesTap,
+    this.onAiTap,
     this.onIndexChanged,
     this.activeIndicatorWidth = 77, // Ширина овала по умолчанию
     this.activeIndicatorHeight = 59, // Высота овала по умолчанию
@@ -33,6 +36,10 @@ class BottomNavigation extends StatefulWidget {
 }
 
 class _BottomNavigationState extends State<BottomNavigation> {
+  // Последний активный индекс между экземплярами навбара: страницы
+  // пересоздают его при переходе, и без этого овал не анимировался бы.
+  static int _lastIndex = 0;
+
   final GlobalKey _stackKey = GlobalKey();
   double? _dragOffset;
   double? _initialDragX;
@@ -40,7 +47,31 @@ class _BottomNavigationState extends State<BottomNavigation> {
   bool _isDragging = false;
   bool _previousShouldHide = false;
   bool _isInitialBuild = true;
-  
+  // Индекс, по которому позиционируется овал (может отставать на один кадр,
+  // чтобы AnimatedPositioned успел проиграть переезд со старой страницы).
+  int _displayIndex = _lastIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    // Если у страницы нет активной вкладки — овал не показываем.
+    _displayIndex = _isValidIndex(widget.currentIndex) ? _lastIndex : widget.currentIndex;
+    if (_isValidIndex(widget.currentIndex)) {
+      if (_displayIndex != widget.currentIndex) {
+        // Первый кадр рисуем овал на месте прошлой вкладки,
+        // затем плавно переезжаем к текущей.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _displayIndex = widget.currentIndex);
+          }
+        });
+      }
+      _lastIndex = widget.currentIndex;
+    }
+  }
+
+  bool _isValidIndex(int index) => index >= 0 && index <= 3;
+
   @override
   void didUpdateWidget(BottomNavigation oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -60,37 +91,19 @@ class _BottomNavigationState extends State<BottomNavigation> {
         _initialDragX = null;
         _initialLeftPosition = null;
         _isDragging = false;
+        if (_isValidIndex(widget.currentIndex)) {
+          _displayIndex = widget.currentIndex;
+          _lastIndex = widget.currentIndex;
+        }
       });
     }
   }
 
-  int? _calculateButtonIndex(double centerX, BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final containerLeft = 22.0;
-    final paddingHorizontal = 20.0;
-    final buttonSpacing = 85.0;
-    final buttonGap = 5.0;
-    final containerWidth = screenWidth - containerLeft * 2;
-    final contentWidth = containerWidth - paddingHorizontal * 2;
-    final buttonWidth = (contentWidth - buttonSpacing - buttonGap * 2) / 4;
-    
-    // Вычисляем позицию центра овала относительно начала контента (после padding)
-    final relativeX = centerX - containerLeft - paddingHorizontal;
-    
-    // Границы центров кнопок
-    if (relativeX < buttonWidth / 2 + buttonWidth / 2) return 0; // Задачи
-    if (relativeX < buttonWidth + buttonGap + buttonWidth / 2 + buttonWidth / 2) return 1; // GPT
-    if (relativeX < buttonWidth * 2 + buttonGap + buttonSpacing + buttonWidth / 2 + buttonWidth / 2) return 2; // План
-    if (relativeX < buttonWidth * 3 + buttonGap * 2 + buttonSpacing + buttonWidth / 2 + buttonWidth / 2) return 3; // Заметки
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final navHeight = 60.0;
-    final navBottom = 15.0;
+    final navBottom = 20.0; // Подняли панель на 5px выше
     
     final shouldHide = widget.isSidebarOpen || widget.isEditorOpen;
     final targetBottom = shouldHide
@@ -129,29 +142,58 @@ class _BottomNavigationState extends State<BottomNavigation> {
   }
   
   Widget _buildNavigationContent() {
+    // Панель навигации в стиле Apple Liquid Glass (iOS 26).
+    // Мягкая тень под панелью отделяет её от белого фона.
     return Container(
-      height: 62, // Фиксированная высота панели
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(40),
-          border: Border.all(
-            color: const Color(0xFF878585).withOpacity(0.22),
-            width: 1,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(31),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
+        ],
+      ),
+      child: _buildGlassPanel(),
+    );
+  }
+
+  Widget _buildGlassPanel() {
+    final isDark = AppColors.of(context).isDark;
+    return SizedBox(
+      height: 62, // Фиксированная высота панели
+      child: Stack(
+        key: _stackKey,
+        clipBehavior: Clip.none,
+        children: [
+          // Стекло — отдельным фоновым слоем в стиле iOS 26 Liquid Glass:
+          // полупрозрачная панель + размытие фона + тонкая граница. Контент и
+          // овал рендерим соседними слоями, чтобы овал мог выходить за края.
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(31),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF1C1C1E).withValues(alpha: 0.7)
+                        : Colors.white.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(31),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : Colors.black.withValues(alpha: 0.08),
+                      width: 0.5,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ],
-        ),
-        child: Stack(
-          key: _stackKey,
-          clipBehavior: Clip.none,
-          children: [
-            // Активные индикаторы (ПОД контентом)
-            ..._buildActiveIndicators(context),
+          ),
+          // Активные индикаторы (ПОД контентом)
+          ..._buildActiveIndicators(context),
             
             // Содержимое панели навигации
             Padding(
@@ -163,7 +205,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
                   Expanded(
                     child: _buildNavItemContent(
                       iconPath: 'assets/icon/checklist.png',
-                      label: 'Задачи',
+                      label: tr('Задачи'),
                       isActive: widget.currentIndex == 0,
                       onTap: widget.onTasksTap,
                       iconSize: 23, // Увеличиваем на 1px
@@ -175,7 +217,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
                   Expanded(
                     child: _buildNavItemContent(
                       iconPath: 'assets/icon/notes.png',
-                      label: 'Список',
+                      label: tr('Список'),
                     isActive: widget.currentIndex == 1,
                     onTap: widget.onGptTap,
                     ),
@@ -186,7 +228,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
                   Expanded(
                     child: _buildNavItemContent(
                       iconPath: 'assets/icon/draft.png',
-                      label: 'Цели',
+                      label: tr('Цели'),
                       isActive: widget.currentIndex == 2,
                       onTap: widget.onPlanTap,
                       iconSize: 23, // Увеличиваем на 1px
@@ -194,17 +236,17 @@ class _BottomNavigationState extends State<BottomNavigation> {
                     ),
                   ),
                   const SizedBox(width: 5),
-                  // Заметки
+                  // ИИ (чат с ассистентом)
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(left: 4),
                       child: _buildNavItemContent(
-                        iconPath: 'assets/icon/notes-icon.png',
-                        label: 'Заметки',
+                        iconPath: 'assets/icon/gpt.png',
+                        label: tr('ИИ'),
                         isActive: widget.currentIndex == 3,
-                        onTap: widget.onNotesTap,
-                        iconSize: 26, // Увеличиваем размер иконки Заметок
-                        spacing: 2, // Уменьшаем отступ между иконкой и текстом на 2px
+                        onTap: widget.onAiTap,
+                        iconSize: 24,
+                        spacing: 3,
                       ),
                     ),
                   ),
@@ -221,20 +263,13 @@ class _BottomNavigationState extends State<BottomNavigation> {
                   child: Container(
                     width: 63,
                     height: 63,
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
+                    decoration: BoxDecoration(
+                      color: AppColors.of(context).inverseSurface,
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 12,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.add,
-                      color: Colors.white,
+                      color: AppColors.of(context).onInverseSurface,
                       size: 28,
                     ),
                   ),
@@ -243,8 +278,8 @@ class _BottomNavigationState extends State<BottomNavigation> {
             ),
             // Невидимый слой для перехвата событий перетаскивания
             ..._buildDragHandler(context),
-          ],
-        ),
+        ],
+      ),
     );
   }
 
@@ -268,7 +303,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
 
   // Метод для построения невидимого обработчика перетаскивания
   List<Widget> _buildDragHandler(BuildContext context) {
-    if (widget.currentIndex < 0 || widget.currentIndex > 3) {
+    if (!_isValidIndex(_displayIndex)) {
       return [];
     }
     
@@ -282,9 +317,9 @@ class _BottomNavigationState extends State<BottomNavigation> {
     final buttonWidth = (contentWidth - buttonSpacing - buttonGap * 2) / 4;
     
     double leftPosition = 0;
-    
+
     // Вычисляем позицию центра каждой кнопки
-    switch (widget.currentIndex) {
+    switch (_displayIndex) {
       case 0: // Задачи - первая кнопка
         leftPosition = paddingHorizontal + buttonWidth / 2 - widget.activeIndicatorWidth / 2;
         break;
@@ -298,13 +333,13 @@ class _BottomNavigationState extends State<BottomNavigation> {
         leftPosition = paddingHorizontal + buttonWidth * 3 + buttonGap * 2 + buttonSpacing + buttonWidth / 2 - widget.activeIndicatorWidth / 2;
         break;
     }
-    
+
     // Вычисляем текущую позицию с учетом перетаскивания
     double currentLeft = leftPosition;
     if (_dragOffset != null && _initialLeftPosition != null) {
       currentLeft = _initialLeftPosition! + _dragOffset!;
     }
-    
+
     return [
       Positioned(
         left: currentLeft,
@@ -355,14 +390,21 @@ class _BottomNavigationState extends State<BottomNavigation> {
             // Если овал перекрывает кнопку на 40% или более, переключаемся на неё
             if (maxOverlap >= 0.4) {
               if (maxIndex != widget.currentIndex && widget.onIndexChanged != null) {
-                // Сначала сбрасываем перетаскивание, чтобы овал плавно уменьшился
+                // Сразу «прицеливаем» овал на новую кнопку: сбрасываем смещение
+                // перетаскивания, но переносим _displayIndex на новую кнопку.
+                // Тогда овал плавно доезжает с места отпускания пальца на новую
+                // кнопку (лёгкая доводка), а не отскакивает обратно к старой.
+                // _lastIndex обновляем заранее, чтобы навбар следующей страницы
+                // сразу нарисовал овал на новой кнопке без повторной анимации.
                 setState(() {
+                  _displayIndex = maxIndex;
+                  _lastIndex = maxIndex;
                   _dragOffset = null;
                   _initialDragX = null;
                   _initialLeftPosition = null;
                   _isDragging = false;
                 });
-                // Затем переключаемся на новую кнопку (овал плавно переместится)
+                // Затем переключаем страницу.
                 Future.delayed(const Duration(milliseconds: 50), () {
                   if (mounted) {
                     widget.onIndexChanged!(maxIndex);
@@ -399,7 +441,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
 
   // Метод для построения активных индикаторов
   List<Widget> _buildActiveIndicators(BuildContext context) {
-    if (widget.currentIndex < 0 || widget.currentIndex > 3) {
+    if (!_isValidIndex(_displayIndex)) {
       return [];
     }
     
@@ -413,9 +455,9 @@ class _BottomNavigationState extends State<BottomNavigation> {
     final buttonWidth = (contentWidth - buttonSpacing - buttonGap * 2) / 4;
     
     double leftPosition = 0;
-    
+
     // Вычисляем позицию центра каждой кнопки
-    switch (widget.currentIndex) {
+    switch (_displayIndex) {
       case 0: // Задачи - первая кнопка
         leftPosition = paddingHorizontal + buttonWidth / 2 - widget.activeIndicatorWidth / 2;
         break;
@@ -447,23 +489,45 @@ class _BottomNavigationState extends State<BottomNavigation> {
     final scale = _isDragging ? 1.15 : 1.0;
     final currentWidth = baseWidth * scale;
     final currentHeight = baseHeight * scale;
-    
+    final isDark = AppColors.of(context).isDark;
+
     return [
       AnimatedPositioned(
-        duration: _dragOffset != null ? Duration.zero : const Duration(milliseconds: 450),
-        curve: Curves.easeInOutCubic,
+        // Плавное перемещение линзы без перелёта (easeOutBack делал «отскок»,
+        // из-за чего на крайних кнопках овал вылетал за края меню).
+        duration: _dragOffset != null ? Duration.zero : const Duration(milliseconds: 550),
+        curve: Curves.easeOutCubic,
         left: currentLeft - (currentWidth - baseWidth) / 2, // Компенсируем увеличение размера
         top: (62 - currentHeight) / 2, // Центрируем вертикально
         child: IgnorePointer(
           ignoring: true, // Игнорируем события касания, чтобы они проходили к кнопкам
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
+            // Растяжение линзы при удержании — упругое, "жидкое".
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutBack,
             width: currentWidth,
             height: currentHeight,
             decoration: BoxDecoration(
-              color: const Color(0xFFEFEEF2).withOpacity(0.77),
+              // Полупрозрачная "линза" поверх стекла — как активный
+              // элемент таб-бара в iOS 26. Лёгкая тень нужна, чтобы
+              // овал читался на фоне.
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.18)
+                  : Colors.white.withValues(alpha: 0.72),
               borderRadius: BorderRadius.circular(40),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.28)
+                    : Colors.white.withValues(alpha: 0.9),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.10),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
           ),
         ),
@@ -480,6 +544,9 @@ class _BottomNavigationState extends State<BottomNavigation> {
     double iconSize = 22, // Размер иконки по умолчанию
     double spacing = 4, // Отступ между иконкой и текстом по умолчанию
   }) {
+    final colors = AppColors.of(context);
+    final activeColor = colors.textPrimary;
+    final inactiveColor = colors.textSecondary;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -494,7 +561,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
           children: [
             ColorFiltered(
               colorFilter: ColorFilter.mode(
-                isActive ? Colors.black : const Color(0xFF999999),
+                isActive ? activeColor : inactiveColor,
                 BlendMode.srcIn,
               ),
               child: Image.asset(
@@ -510,7 +577,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isActive ? FontWeight.w500 : FontWeight.w400,
-                color: isActive ? Colors.black : const Color(0xFF999999),
+                color: isActive ? activeColor : inactiveColor,
               ),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,

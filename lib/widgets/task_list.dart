@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/task.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 import 'task_card.dart';
 
 class TaskList extends StatelessWidget {
@@ -8,6 +10,7 @@ class TaskList extends StatelessWidget {
   final Function(String, bool) onTaskToggle;
   final String? openMenuTaskId;
   final Function(String?, GlobalKey?)? onMenuToggle;
+  final Function(String)? onTaskDelete;
   final bool isLoading;
 
   const TaskList({
@@ -17,6 +20,7 @@ class TaskList extends StatelessWidget {
     required this.onTaskToggle,
     this.openMenuTaskId,
     this.onMenuToggle,
+    this.onTaskDelete,
     this.isLoading = false,
   });
 
@@ -61,7 +65,7 @@ class TaskList extends StatelessWidget {
   }
 
   String _getPriorityText(int priority) {
-    return 'Приоритет $priority';
+    return tr('Приоритет {0}', [priority]);
   }
 
   @override
@@ -70,14 +74,14 @@ class TaskList extends StatelessWidget {
 
     // Не показываем "Нет задач" во время загрузки, чтобы избежать мерцания
     if (filteredTasks.isEmpty && !isLoading) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(40),
+          padding: const EdgeInsets.all(40),
           child: Text(
-            'Нет задач на выбранную дату',
+            tr('Нет задач на выбранную дату'),
             style: TextStyle(
               fontSize: 16,
-              color: Color(0xFF999999),
+              color: AppColors.of(context).textTertiary,
             ),
           ),
         ),
@@ -96,7 +100,6 @@ class TaskList extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: sortedPriorities.map((priority) {
-        final priorityIndex = sortedPriorities.indexOf(priority);
         final priorityTasks = groupedTasks[priority]!;
 
         return Column(
@@ -105,10 +108,11 @@ class TaskList extends StatelessWidget {
           children: [
             // Заголовок приоритета
             Padding(
-              padding: EdgeInsets.only(
+              padding: const EdgeInsets.only(
                 left: 4,
                 bottom: 5,
-                top: priorityIndex == 0 ? 20 : 0,
+                // Отступ над каждым заголовком приоритета (рабочая зона).
+                top: 10,
               ),
               child: Row(
                 children: [
@@ -122,10 +126,10 @@ class TaskList extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     _getPriorityText(priority),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black,
+                      color: AppColors.of(context).textPrimary,
                     ),
                   ),
                 ],
@@ -144,6 +148,7 @@ class TaskList extends StatelessWidget {
                             onTaskToggle(task.id, isCompleted),
                         openMenuTaskId: openMenuTaskId,
                         onMenuToggle: onMenuToggle,
+                        onDelete: onTaskDelete,
                       ),
                     ),
                     // Имя создателя задачи справа под блоком задачи
@@ -154,9 +159,9 @@ class TaskList extends StatelessWidget {
                           padding: const EdgeInsets.only(right: 4, bottom: 8),
                           child: Text(
                             task.creatorName!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF999999),
+                              color: AppColors.of(context).textTertiary,
                               fontWeight: FontWeight.w400,
                             ),
                           ),
@@ -170,17 +175,5 @@ class TaskList extends StatelessWidget {
     );
   }
 
-  Color _getPriorityColor(int priority) {
-    switch (priority) {
-      case 1:
-        return Colors.red;
-      case 2:
-        return Colors.orange;
-      case 3:
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
 }
 

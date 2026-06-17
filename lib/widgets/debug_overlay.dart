@@ -68,7 +68,7 @@ class _DebugWrapperState extends State<_DebugWrapper> {
                       width: 2,
                     ),
                     color: (_isPressed ? Colors.red : Colors.blue)
-                        .withOpacity(0.1),
+                        .withValues(alpha: 0.1),
                   ),
                   child: Align(
                     alignment: Alignment.topLeft,

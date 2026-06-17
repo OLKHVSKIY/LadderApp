@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:convert';
 import '../models/note_model.dart';
+import '../theme/app_colors.dart';
 import 'file_attachment_display.dart';
 
 class NoteSticker extends StatefulWidget {
@@ -57,7 +56,7 @@ class _NoteStickerState extends State<NoteSticker> {
   // Определяет, является ли цвет темным
   bool _isDarkColor(Color color) {
     // Вычисляем яркость цвета по формуле: 0.299*R + 0.587*G + 0.114*B
-    final luminance = (0.299 * color.red + 0.587 * color.green + 0.114 * color.blue) / 255;
+    final luminance = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
     return luminance < 0.5; // Если яркость меньше 0.5, цвет считается темным
   }
 
@@ -101,7 +100,7 @@ class _NoteStickerState extends State<NoteSticker> {
         }
       } catch (e) {
         // Если ошибка парсинга, показываем текст
-        print('Error parsing drawing: $e');
+        debugPrint('Error parsing drawing: $e');
       }
     }
     
@@ -311,7 +310,7 @@ class _NoteStickerState extends State<NoteSticker> {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.of(context).surface,
             borderRadius: BorderRadius.circular(12),
           ),
           child: GridView.builder(
@@ -335,7 +334,7 @@ class _NoteStickerState extends State<NoteSticker> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: widget.note.color == colors[index]
-                          ? Colors.black
+                          ? AppColors.of(context).textPrimary
                           : Colors.transparent,
                       width: 2,
                     ),
@@ -385,13 +384,13 @@ class _NoteStickerState extends State<NoteSticker> {
             color: color,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               width: 1,
             ),
             boxShadow: _isDragging
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.25),
+                      color: Colors.black.withValues(alpha: 0.25),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -427,7 +426,7 @@ class _NoteStickerState extends State<NoteSticker> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(12),
                       topRight: Radius.circular(12),
@@ -445,7 +444,7 @@ class _NoteStickerState extends State<NoteSticker> {
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Icon(
@@ -465,7 +464,7 @@ class _NoteStickerState extends State<NoteSticker> {
                           width: 28,
                           height: 28,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: FittedBox(
@@ -498,7 +497,7 @@ class _NoteStickerState extends State<NoteSticker> {
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: FittedBox(
@@ -529,7 +528,7 @@ class _NoteStickerState extends State<NoteSticker> {
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: FittedBox(
@@ -560,7 +559,7 @@ class _NoteStickerState extends State<NoteSticker> {
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: FittedBox(
@@ -611,14 +610,13 @@ class _NoteStickerState extends State<NoteSticker> {
                 ),
               ),
               // Дата создания
-              if (widget.note.createdAt != null)
-                Container(
+              Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: Text(
-                    _formatDate(widget.note.createdAt!),
+                    _formatDate(widget.note.createdAt),
                     style: TextStyle(
                       fontSize: 11,
-                      color: textColor.withOpacity(0.6),
+                      color: textColor.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -652,7 +650,7 @@ class _NoteStickerState extends State<NoteSticker> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withOpacity(0.1),
+                          Colors.black.withValues(alpha: 0.1),
                         ],
                       ),
                       borderRadius: const BorderRadius.only(
@@ -665,7 +663,7 @@ class _NoteStickerState extends State<NoteSticker> {
                         width: 30,
                         height: 3,
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),

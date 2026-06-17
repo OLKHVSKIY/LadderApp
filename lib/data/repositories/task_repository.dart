@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' as dr;
+import 'package:uuid/uuid.dart';
 import '../app_database.dart' as db;
 import '../user_session.dart';
 import '../../models/task.dart' as model;
@@ -35,6 +36,7 @@ class TaskRepository {
     await _ensureTaskColumns();
     final taskId = await database.into(database.tasks).insert(
           db.TasksCompanion.insert(
+            uuid: dr.Value(const Uuid().v4()),
             userId: userId,
             title: task.title,
             description: dr.Value(task.description),
@@ -80,6 +82,7 @@ class TaskRepository {
     final dayEnd = dayStart.add(const Duration(days: 1));
 
     final rows = await (database.select(database.tasks)
+          ..where((t) => t.isDeleted.equals(false))
           ..where((t) =>
               t.userId.equals(userId) &
               ((t.date.isBiggerOrEqualValue(dayStart) & t.date.isSmallerThanValue(dayEnd)) |
@@ -117,6 +120,7 @@ class TaskRepository {
     final end = DateTime(endDate.year, endDate.month, endDate.day).add(const Duration(days: 1));
 
     final rows = await (database.select(database.tasks)
+          ..where((t) => t.isDeleted.equals(false))
           ..where((t) =>
               t.userId.equals(userId) &
               ((t.date.isBiggerOrEqualValue(start) & t.date.isSmallerThanValue(end)) |
@@ -161,7 +165,8 @@ class TaskRepository {
           ..where((t) => t.name.equals(normalized)))
         .getSingleOrNull();
     if (existing != null) return existing.id;
-    return database.into(database.tags).insert(db.TagsCompanion.insert(name: normalized));
+    return database.into(database.tags).insert(
+        db.TagsCompanion.insert(name: normalized, uuid: dr.Value(const Uuid().v4())));
   }
 
   Future<void> updateTask(int id, model.Task task, {bool? isCompleted}) async {
@@ -198,9 +203,16 @@ class TaskRepository {
 
   Future<void> deleteTask(int id) async {
     await _ensureTaskColumns();
-    // Удаляем файлы перед удалением задачи
+    // Файлы с диска чистим сразу (в приложении нет «восстановления»).
     await _fileRepo.deleteTaskFiles(id);
-    await (database.delete(database.tasks)..where((t) => t.id.equals(id))).go();
+    // Soft-delete: помечаем удалённой + бьём updatedAt, чтобы бэкенд позже
+    // получил тумбстоун при синхронизации.
+    await (database.update(database.tasks)..where((t) => t.id.equals(id))).write(
+      db.TasksCompanion(
+        isDeleted: dr.Value(true),
+        updatedAt: dr.Value(DateTime.now()),
+      ),
+    );
   }
 
   /// Поиск всех задач пользователя
@@ -210,6 +222,7 @@ class TaskRepository {
     await _ensureTaskColumns();
 
     final rows = await (database.select(database.tasks)
+          ..where((t) => t.isDeleted.equals(false))
           ..where((t) => t.userId.equals(userId))
           ..orderBy([(t) => dr.OrderingTerm.desc(t.updatedAt)]))
         .get();

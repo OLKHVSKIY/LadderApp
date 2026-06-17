@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
-import 'package:flutter/cupertino.dart';
+import '../theme/app_colors.dart';
 
 /// Обертка для добавления iOS-стиля жеста "назад" свайпом слева направо
 class SwipeBackWrapper extends StatefulWidget {
@@ -52,6 +51,7 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     // Используем анимацию, если не тянем, иначе используем реальное значение
     final currentOffset = _isDragging 
@@ -172,7 +172,7 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
           if (progress > 0)
             Positioned.fill(
               child: Container(
-                color: Colors.white,
+                color: colors.background,
                 child: widget.previousScreen != null
                     ? Opacity(
                         opacity: 1.0 - (0.3 * progress), // Легкое затемнение при свайпе
@@ -180,7 +180,7 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
                       )
                     : Container(
                         // Если предыдущий экран не передан, показываем затемненный фон
-                        color: Colors.grey[100]?.withOpacity(1.0 - (0.3 * progress)),
+                        color: colors.surfaceVariant.withValues(alpha: 1.0 - (0.3 * progress)),
                       ),
               ),
             ),
@@ -192,11 +192,11 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
             right: -currentOffset,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: colors.background,
                 boxShadow: progress > 0
                     ? [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1 * progress),
+                          color: Colors.black.withValues(alpha: 0.1 * progress),
                           blurRadius: 10 * progress,
                           offset: Offset(0, 0),
                         ),

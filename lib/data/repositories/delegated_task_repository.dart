@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart' as dr;
 import 'package:drift/drift.dart' show OrderingTerm;
+import 'package:uuid/uuid.dart';
 import '../app_database.dart' as db;
 import '../user_session.dart';
-import '../../models/task.dart' as model;
 import 'task_file_repository.dart';
 
 class DelegatedTaskRepository {
@@ -33,6 +33,7 @@ class DelegatedTaskRepository {
     // Создаем запись о делегированной задаче
     await database.into(database.delegatedTasks).insert(
       db.DelegatedTasksCompanion.insert(
+        uuid: dr.Value(const Uuid().v4()),
         originalTaskId: taskId,
         fromUserId: userId,
         fromUserEmail: userRow.email,
@@ -47,9 +48,15 @@ class DelegatedTaskRepository {
       ),
     );
 
-    // Если нужно удалить у отправителя
+    // Если нужно удалить у отправителя — soft-delete.
     if (deleteFromMe) {
-      await (database.delete(database.tasks)..where((t) => t.id.equals(taskId))).go();
+      await (database.update(database.tasks)..where((t) => t.id.equals(taskId)))
+          .write(
+        db.TasksCompanion(
+          isDeleted: dr.Value(true),
+          updatedAt: dr.Value(DateTime.now()),
+        ),
+      );
     }
   }
 
@@ -59,6 +66,7 @@ class DelegatedTaskRepository {
     if (userEmail == null) return [];
 
     final rows = await (database.select(database.delegatedTasks)
+          ..where((dt) => dt.isDeleted.equals(false))
           ..where((dt) => dt.toUserEmail.equals(userEmail))
           ..where((dt) => dt.isAccepted.equals(false))
           ..where((dt) => dt.isDeclined.equals(false))
@@ -97,6 +105,7 @@ class DelegatedTaskRepository {
     // Создаем задачу для получателя
     final taskId = await database.into(database.tasks).insert(
       db.TasksCompanion.insert(
+        uuid: dr.Value(const Uuid().v4()),
         userId: userId,
         title: delegatedRow.taskTitle,
         description: dr.Value(delegatedRow.taskDescription),
@@ -124,17 +133,16 @@ class DelegatedTaskRepository {
     }
 
     // Копируем файлы, если есть
-    if (delegatedRow.originalTaskId != null) {
-      final originalFiles = await _fileRepository.loadTaskFiles(delegatedRow.originalTaskId);
-      if (originalFiles.isNotEmpty) {
-        await _fileRepository.saveTaskFiles(taskId, originalFiles);
-      }
+    final originalFiles = await _fileRepository.loadTaskFiles(delegatedRow.originalTaskId);
+    if (originalFiles.isNotEmpty) {
+      await _fileRepository.saveTaskFiles(taskId, originalFiles);
     }
 
     // Помечаем как принятую
     await (database.update(database.delegatedTasks)..where((dt) => dt.id.equals(delegatedTaskId))).write(
       db.DelegatedTasksCompanion(
         isAccepted: dr.Value(true),
+        updatedAt: dr.Value(DateTime.now()),
       ),
     );
   }
@@ -144,6 +152,7 @@ class DelegatedTaskRepository {
     await (database.update(database.delegatedTasks)..where((dt) => dt.id.equals(delegatedTaskId))).write(
       db.DelegatedTasksCompanion(
         isDeclined: dr.Value(true),
+        updatedAt: dr.Value(DateTime.now()),
       ),
     );
   }
@@ -168,7 +177,7 @@ class DelegatedTaskRepository {
     if (existing != null) return existing.id;
 
     return await database.into(database.tags).insert(
-      db.TagsCompanion.insert(name: tagName),
+      db.TagsCompanion.insert(name: tagName, uuid: dr.Value(const Uuid().v4())),
     );
   }
 }

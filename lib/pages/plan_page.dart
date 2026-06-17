@@ -11,14 +11,13 @@ import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ai_menu_modal.dart';
 import '../widgets/swipe_back_wrapper.dart';
-import '../widgets/ios_page_route.dart';
 import '../widgets/spotlight_search.dart';
 import 'tasks_page.dart';
 import 'gpt_plan_page.dart';
 import 'list_page.dart';
 import 'chat_page.dart';
 import 'settings_page.dart';
-import 'notes_page.dart';
+import 'notifications_page.dart';
 import '../data/repositories/plan_repository.dart';
 import '../data/user_session.dart';
 import '../data/database_instance.dart';
@@ -26,6 +25,8 @@ import '../widgets/apple_calendar.dart';
 import '../widgets/custom_snackbar.dart';
 import '../models/goal_model.dart';
 import '../widgets/task_sound_player.dart';
+import '../theme/app_colors.dart';
+import '../l10n/app_translations.dart';
 
 // Функция для правильного склонения слова "дата"
 String _getDateWord(int count) {
@@ -33,13 +34,13 @@ String _getDateWord(int count) {
   final mod100 = count % 100;
   
   if (mod100 >= 11 && mod100 <= 14) {
-    return 'дат';
+    return tr('дат');
   } else if (mod10 == 1) {
-    return 'дата';
+    return tr('дата');
   } else if (mod10 >= 2 && mod10 <= 4) {
-    return 'даты';
+    return tr('даты');
   } else {
-    return 'дат';
+    return tr('дат');
   }
 }
 
@@ -49,13 +50,13 @@ String _getTaskWord(int count) {
   final mod100 = count % 100;
   
   if (mod100 >= 11 && mod100 <= 14) {
-    return 'задач';
+    return tr('задач');
   } else if (mod10 == 1) {
-    return 'задача';
+    return tr('задача');
   } else if (mod10 >= 2 && mod10 <= 4) {
-    return 'задачи';
+    return tr('задачи');
   } else {
-    return 'задач';
+    return tr('задач');
   }
 }
 
@@ -182,7 +183,6 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     FocusScope.of(context).unfocus();
     setState(() => _isSidebarOpen = !_isSidebarOpen);
   }
-  void _openAiMenu() => setState(() => _isAiMenuOpen = true);
   void _closeAiMenu() => setState(() => _isAiMenuOpen = false);
 
   void _openAiChat() {
@@ -196,8 +196,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   }
 
   void _navigateTo(Widget page, {bool slideFromRight = false}) {
-    if (page is SettingsPage) {
-      // Для настроек используем push с CupertinoPageRoute для iOS swipe back
+    if (page is SettingsPage || page is ChatPage) {
+      // Для настроек и чата — push с CupertinoPageRoute (нативный iOS swipe back)
       Navigator.of(context).push(
         CupertinoPageRoute(
           builder: (_) => page,
@@ -207,7 +207,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           transitionDuration: const Duration(milliseconds: 260),
-          pageBuilder: (_, animation, __) {
+          pageBuilder: (_, animation, _) {
             final curve = Curves.easeInOut;
             return FadeTransition(
               opacity: CurvedAnimation(parent: animation, curve: curve),
@@ -226,7 +226,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     if (title.isNotEmpty) {
       final userId = UserSession.currentUserId;
       if (userId == null) {
-        _showMessage('Нет авторизованного пользователя');
+        _showMessage(tr('Нет авторизованного пользователя'));
         return;
       }
       final goal = GoalModel(
@@ -249,7 +249,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       // Если вызывается из панели навигации (+), создаем пустой план для редактирования
       final userId = UserSession.currentUserId;
       if (userId == null) {
-        _showMessage('Нет авторизованного пользователя');
+        _showMessage(tr('Нет авторизованного пользователя'));
         return;
       }
       final goal = GoalModel(
@@ -276,16 +276,16 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     if (goal == null) return;
     final userId = UserSession.currentUserId;
     if (userId == null) {
-      _showMessage('Нет авторизованного пользователя');
+      _showMessage(tr('Нет авторизованного пользователя'));
       return;
     }
     if (goal.dates.isEmpty) {
-      _showMessage('Добавьте хотя бы одну дату и задачу');
+      _showMessage(tr('Добавьте хотя бы одну дату и задачу'));
       return;
     }
     final hasTasks = goal.dates.any((d) => d.tasks.isNotEmpty);
     if (!hasTasks) {
-      _showMessage('Добавьте хотя бы одну задачу');
+      _showMessage(tr('Добавьте хотя бы одну задачу'));
       return;
     }
     // Сохраняем текущее название из контроллера
@@ -294,24 +294,21 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
         ? goal.copyWith(title: currentTitle, isSaved: true, isActive: false, savedAt: DateTime.now())
         : goal.copyWith(isSaved: true, isActive: false, savedAt: DateTime.now());
     
-    await _persistGoal(goalToSave, userId);
+    // ВАЖНО: используем результат _persistGoal (с проставленным dbId).
+    // Иначе in-memory цель остаётся с dbId == null, и следующее сохранение
+    // снова уходит в ветку INSERT — появляется дубликат.
+    final savedGoal = await _persistGoal(goalToSave, userId);
     setState(() {
-      final idx = _goals.indexWhere((g) => g.id == goalToSave.id);
-      if (idx >= 0) {
-        _goals[idx] = goalToSave;
-      } else {
-        _goals.add(goalToSave);
-      }
       // Обновляем контроллер с сохраненным названием
-      _goalTitleController.text = goalToSave.title;
+      _goalTitleController.text = savedGoal.title;
       // Не закрываем план - он должен остаться открытым для просмотра
       // _activeGoalId остается установленным
       _isEditMode = false; // Выключаем режим редактирования после сохранения
     });
-    _showMessage('План сохранен 🌿');
+    _showMessage(tr('План сохранен 🌿'));
   }
 
-  Future<void> _persistGoal(GoalModel goal, int userId) async {
+  Future<GoalModel> _persistGoal(GoalModel goal, int userId) async {
     final id = await _planRepo.saveGoal(goal, userId);
     final updated = goal.copyWith(dbId: id);
     setState(() {
@@ -322,6 +319,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
         _goals.add(updated);
       }
     });
+    return updated;
   }
 
   void _openGoal(GoalModel goal) {
@@ -366,11 +364,12 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
+        final colors = AppColors.of(ctx);
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(ctx).viewInsets.bottom + 40,
@@ -381,21 +380,21 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Удалить план?',
+              Text(
+                tr('Удалить план?'),
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  color: colors.textPrimary,
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'В случае удаления цели она исчезнет безвозвратно. Вы точно хотите удалить цель?',
+              Text(
+                tr('В случае удаления цели она исчезнет безвозвратно. Вы точно хотите удалить цель?'),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
-                  color: Color(0xFF666666),
+                  color: colors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -407,19 +406,19 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                       onPressed: () => Navigator.of(ctx).pop(),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: const BorderSide(
-                          color: Color(0xFF6D6D6D),
+                        side: BorderSide(
+                          color: colors.border,
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(19),
                         ),
                       ),
-                      child: const Text(
-                        'Отмена',
+                      child: Text(
+                        tr('Отмена'),
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF666666),
+                          color: colors.textSecondary,
                         ),
                       ),
                     ),
@@ -433,17 +432,17 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                       },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.black,
+                        backgroundColor: colors.inverseSurface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(19),
                         ),
                       ),
-                      child: const Text(
-                        'Удалить',
+                      child: Text(
+                        tr('Удалить'),
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
-                          color: Colors.white,
+                          color: colors.onInverseSurface,
                         ),
                       ),
                     ),
@@ -485,7 +484,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     if (goal == null) return;
     final exists = goal.dates.any((d) => _isSameDay(d.date, date));
     if (exists) {
-      _showMessage('Такая дата уже есть');
+      _showMessage(tr('Такая дата уже есть'));
       return;
     }
     final newDateId = _uuid.v4();
@@ -608,9 +607,9 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
         return Padding(
@@ -623,9 +622,9 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Выберите дату',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Text(
+                tr('Выберите дату'),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.of(ctx).textPrimary),
               ),
               const SizedBox(height: 12),
               AppleCalendar(
@@ -659,11 +658,12 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
+        final colors = AppColors.of(ctx);
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(ctx).viewInsets.bottom,
@@ -674,14 +674,14 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Добавить задачу',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Text(
+                tr('Добавить задачу'),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: colors.textPrimary),
               ),
               const SizedBox(height: 24),
               _buildGoalInputField(
                 controller: titleCtrl,
-                label: 'Название задачи',
+                label: tr('Название задачи'),
                 hint: '',
                 maxLength: 60,
               ),
@@ -689,19 +689,19 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Приоритет',
+                  Text(
+                    tr('Приоритет'),
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF666666),
+                      color: colors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF5F5F5),
+                      color: colors.surfaceVariant,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -716,12 +716,12 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: isSelected ? Colors.white : Colors.transparent,
+                                color: isSelected ? colors.elevatedSurface : Colors.transparent,
                                 borderRadius: BorderRadius.circular(8),
                                 boxShadow: isSelected
                                     ? [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
+                                          color: Colors.black.withValues(alpha: 0.1),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
@@ -747,8 +747,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                       color: isSelected
-                                          ? Colors.black
-                                          : const Color(0xFF666666),
+                                          ? colors.textPrimary
+                                          : colors.textSecondary,
                                     ),
                                   ),
                                 ],
@@ -766,8 +766,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
+                    backgroundColor: colors.inverseSurface,
+                    foregroundColor: colors.onInverseSurface,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(19),
@@ -780,9 +780,9 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                     // Скрываем клавиатуру после добавления задачи
                     FocusScope.of(ctx).unfocus();
                   },
-                  child: const Text(
-                    'Добавить',
-                    style: TextStyle(
+                  child: Text(
+                    tr('Добавить'),
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -794,48 +794,6 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           ),
         );
       },
-    );
-  }
-
-  Widget _priorityChip(int value, String asset, int current, VoidCallback onTap) {
-    final isActive = value == current;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white : const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-          border: Border.all(
-            color: isActive ? Colors.black : Colors.transparent,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Image.asset(asset, width: 18, height: 18, fit: BoxFit.contain),
-            const SizedBox(width: 6),
-            Text(
-              '$value',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isActive ? Colors.black : const Color(0xFF666666),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -853,13 +811,11 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     final activeGoal = _activeGoal;
+    final colors = AppColors.of(context);
     final savedGoals = _goals.where((g) => g.isSaved).toList();
     final showConstructor = activeGoal != null && _activeGoalId != null;
-    // Блок создания показывается только если данные загружены И нет сохраненных планов
-    final showCreation = !_isLoading && savedGoals.isEmpty;
-
     final scaffold = Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.background,
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
@@ -868,7 +824,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             child: Column(
               children: [
                 MainHeader(
-                  title: 'Цели',
+                  title: tr('Цели'),
                   onMenuTap: _toggleSidebar,
                   onSearchTap: () {
                     showDialog(
@@ -878,7 +834,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                     );
                   },
                   onSettingsTap: () {
-                    _navigateTo(const SettingsPage(), slideFromRight: true);
+                    _navigateTo(const NotificationsPage(), slideFromRight: true);
                   },
                   hideSearchAndSettings: false,
                   showBackButton: _activeGoalId != null,
@@ -888,11 +844,13 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                 Expanded(
                   child: SingleChildScrollView(
                     controller: _scrollController,
+                    // Скроллим только когда контент не помещается на экран.
+                    physics: const ClampingScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(10, 10, 10, 120),
                     child: _isLoading
                         ? const SizedBox.shrink() // Показываем пустой виджет во время загрузки
                         : showConstructor
-                            ? _buildConstructor(activeGoal!)
+                            ? _buildConstructor(activeGoal)
                             : savedGoals.isNotEmpty
                                 ? _buildSavedList(savedGoals)
                                 : _buildCreation(),
@@ -905,7 +863,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             isOpen: _isSidebarOpen,
             onClose: _toggleSidebar,
             onTasksTap: () => _navigateTo(const TasksPage()),
-            onChatTap: () => _navigateTo(const ChatPage()),
+            onSettingsTap: () => _navigateTo(const SettingsPage(), slideFromRight: true),
           ),
           // Фиксированная кнопка GPT справа снизу (только для списка целей)
           if (_activeGoalId == null && savedGoals.isNotEmpty && !_isSidebarOpen)
@@ -923,15 +881,15 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: colors.elevatedSurface,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: const Color(0xFFE0E0E0),
+                            color: colors.border,
                             width: 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
+                              color: Colors.black.withValues(alpha: 0.15),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -969,8 +927,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               // Перезагружаем данные из БД
               _loadFromDb();
             },
-            onNotesTap: () {
-              _navigateTo(const NotesPage());
+            onAiTap: () {
+              _navigateTo(const ChatPage(), slideFromRight: true);
             },
             onTasksTap: () => _navigateTo(const TasksPage()),
             onIndexChanged: (index) {
@@ -979,7 +937,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               } else if (index == 1) {
                 _navigateTo(const ListPage(), slideFromRight: true);
               } else if (index == 3) {
-                _navigateTo(const NotesPage());
+                _navigateTo(const ChatPage(), slideFromRight: true);
               }
             },
           ),
@@ -998,7 +956,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     if (_activeGoalId != null) {
       // Создаем виджет списка планов для отображения при свайпе
       final planListWidget = Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: colors.background,
         resizeToAvoidBottomInset: false,
         body: Stack(
           children: [
@@ -1007,7 +965,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               child: Column(
                 children: [
                   MainHeader(
-                    title: 'Цели',
+                    title: tr('Цели'),
                     onMenuTap: _toggleSidebar,
                     onSearchTap: () {
                     showDialog(
@@ -1017,7 +975,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                     );
                   },
                     onSettingsTap: () {
-                      _navigateTo(const SettingsPage(), slideFromRight: true);
+                      _navigateTo(const NotificationsPage(), slideFromRight: true);
                     },
                     hideSearchAndSettings: false,
                     showBackButton: false,
@@ -1027,6 +985,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _scrollController,
+                      // Скроллим только когда контент не помещается на экран.
+                      physics: const ClampingScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(10, 10, 10, 120),
                       child: _isLoading
                           ? const SizedBox.shrink()
@@ -1042,7 +1002,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               isOpen: _isSidebarOpen,
               onClose: _toggleSidebar,
               onTasksTap: () => _navigateTo(const TasksPage()),
-              onChatTap: () => _navigateTo(const ChatPage()),
+              onSettingsTap: () => _navigateTo(const SettingsPage(), slideFromRight: true),
             ),
             // Фиксированная кнопка GPT справа снизу (для списка в SwipeBackWrapper)
             if (savedGoals.isNotEmpty && !_isSidebarOpen)
@@ -1068,7 +1028,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
+                                color: Colors.black.withValues(alpha: 0.15),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -1104,8 +1064,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                 });
                 _loadFromDb();
               },
-              onNotesTap: () {
-                _navigateTo(const NotesPage());
+              onAiTap: () {
+                _navigateTo(const ChatPage(), slideFromRight: true);
               },
               onTasksTap: () => _navigateTo(const TasksPage()),
               onIndexChanged: (index) {
@@ -1133,33 +1093,34 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   }
 
   Widget _buildCreation() {
+    final colors = AppColors.of(context);
     return Column(
       key: const ValueKey('creation'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F6F7),
+            color: colors.surfaceVariant,
             borderRadius: BorderRadius.circular(20),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Создайте новую цель',
+              Text(
+                tr('Создайте новую цель'),
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: Colors.black,
+                  color: colors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Введите название цели, чтобы начать планирование',
+              Text(
+                tr('Введите название цели, чтобы начать планирование'),
                 style: TextStyle(
                   fontSize: 14,
-                  color: Color(0xFF666666),
+                  color: colors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -1171,14 +1132,14 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                   children: [
                     _buildGoalInputField(
                       controller: _goalInputController,
-                      label: 'Название цели',
-                      hint: 'Например: Подготовка к марафону',
+                      label: tr('Название цели'),
+                      hint: tr('Например: Подготовка к марафону'),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black,
-                        foregroundColor: Colors.white,
+                        backgroundColor: colors.inverseSurface,
+                        foregroundColor: colors.onInverseSurface,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
@@ -1189,12 +1150,12 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.add, size: 20),
-                          SizedBox(width: 8),
+                        children: [
+                          const Icon(Icons.add, size: 20),
+                          const SizedBox(width: 8),
                           Text(
-                            'Создать',
-                            style: TextStyle(
+                            tr('Создать'),
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1209,12 +1170,12 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           ),
         ),
         const SizedBox(height: 40),
-        const Center(
+        Center(
           child: Padding(
-            padding: EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.only(top: 12),
             child: Text(
-              'Создайте первую цель для начала планирования',
-              style: TextStyle(fontSize: 16, color: Color(0xFF666666)),
+              tr('Создайте первую цель для начала планирования'),
+              style: TextStyle(fontSize: 16, color: colors.textSecondary),
               textAlign: TextAlign.center,
             ),
           ),
@@ -1225,13 +1186,14 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
 
   Widget _buildConstructor(GoalModel goal) {
     final progress = _progressOf(goal);
+    final colors = AppColors.of(context);
     return Column(
       key: const ValueKey('constructor'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F6F7),
+            color: colors.surfaceVariant,
             borderRadius: BorderRadius.circular(20),
           ),
           padding: const EdgeInsets.all(20),
@@ -1254,29 +1216,29 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                             minLines: 1,
                             maxLength: 40,
                             cursorHeight: 20,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
-                              color: Colors.black,
+                              color: colors.textPrimary,
                               height: 1.0,
                             ),
                             decoration: InputDecoration(
-                              hintText: 'Название цели',
-                              hintStyle: const TextStyle(
-                                color: Color(0xFF999999),
+                              hintText: tr('Название цели'),
+                              hintStyle: TextStyle(
+                                color: colors.textTertiary,
                                 height: 1.0,
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Colors.black, width: 1),
+                                borderSide: BorderSide(color: colors.border, width: 1),
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Colors.black, width: 1),
+                                borderSide: BorderSide(color: colors.border, width: 1),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Colors.black, width: 1),
+                                borderSide: BorderSide(color: colors.textPrimary, width: 1),
                               ),
                               filled: false,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1295,10 +1257,10 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                             alignment: Alignment.centerLeft,
                             child: Text(
                               goal.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w700,
-                                color: Colors.black,
+                                color: colors.textPrimary,
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.visible,
@@ -1334,7 +1296,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                       child: Container(
                         height: 8,
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.1),
+                          color: colors.textPrimary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: LayoutBuilder(
@@ -1358,10 +1320,10 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                     const SizedBox(width: 12),
                     Text(
                       '${(progress * 100).round()}%',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF666666),
+                        color: colors.textSecondary,
                       ),
                     ),
                   ],
@@ -1396,16 +1358,16 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
+                  backgroundColor: colors.inverseSurface,
+                  foregroundColor: colors.onInverseSurface,
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),
                 onPressed: _saveActiveGoal,
-                child: const Text(
-                  'Сохранить',
-                  style: TextStyle(
+                child: Text(
+                  tr('Сохранить'),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1417,11 +1379,11 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
               opacity: goal.dates.any((d) => d.tasks.isNotEmpty) ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              child: const Text(
-                'Добавьте название вашей цели, выберите дни и создайте задачи',
+              child: Text(
+                tr('Добавьте название вашей цели, выберите дни и создайте задачи'),
                 style: TextStyle(
                   fontSize: 14,
-                  color: Color(0xFF666666),
+                  color: colors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -1433,6 +1395,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   }
 
   Widget _addDateButton() {
+    final colors = AppColors.of(context);
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton(
@@ -1442,20 +1405,20 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          side: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.2), width: 2),
+          side: BorderSide(color: colors.border, width: 2),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add, size: 20, color: Colors.black),
-            SizedBox(width: 8),
+            Icon(Icons.add, size: 20, color: colors.icon),
+            const SizedBox(width: 8),
             Text(
-              'Добавить дату',
+              tr('Добавить дату'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                color: colors.textPrimary,
               ),
             ),
           ],
@@ -1475,18 +1438,29 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     double? fontSize,
     FontWeight? fontWeight,
   }) {
-    const borderColor = Color(0xFFB0B0B0);
-    const labelColor = Color(0xFF666666);
+    final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 2, bottom: 10),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Лейбл над полем — без подложки, чтобы не было серого блока.
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 6),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: borderColor, width: 1),
-              color: Colors.white,
+              border: Border.all(color: colors.border, width: 1),
+              color: colors.elevatedSurface,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
@@ -1499,32 +1473,16 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
                 decoration: InputDecoration(
                   isCollapsed: true,
                   hintText: hint.isNotEmpty ? hint : null,
-                  hintStyle: hint.isNotEmpty ? const TextStyle(color: Color(0xFF999999), fontSize: 16) : null,
+                  hintStyle: hint.isNotEmpty ? TextStyle(color: colors.textTertiary, fontSize: 16) : null,
                   border: InputBorder.none,
                   counterText: '',
                 ),
                 style: TextStyle(
                   fontSize: fontSize ?? 18,
                   fontWeight: fontWeight ?? FontWeight.normal,
-                  color: Colors.black,
+                  color: colors.textPrimary,
                 ),
-                cursorColor: Colors.black,
-              ),
-            ),
-          ),
-          Positioned(
-            left: 16,
-            top: -11,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: labelColor,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
+                cursorColor: colors.textPrimary,
               ),
             ),
           ),
@@ -1540,12 +1498,12 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: const Text(
-            'Список целей',
+          child: Text(
+            tr('Список целей'),
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w700,
-              color: Colors.black,
+              color: AppColors.of(context).textPrimary,
             ),
           ),
         ),
@@ -1567,28 +1525,30 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   }
 
   Widget _iconButton(IconData icon, {required VoidCallback onTap, double iconSize = 20}) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
+          color: colors.textPrimary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, size: iconSize, color: Colors.black),
+        child: Icon(icon, size: iconSize, color: colors.icon),
       ),
     );
   }
 
   Widget _pencilButton({required VoidCallback onTap}) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
+          color: colors.textPrimary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
         ),
         child: FittedBox(
@@ -1597,8 +1557,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             width: 18,
             height: 18,
             child: ColorFiltered(
-              colorFilter: const ColorFilter.mode(
-                Colors.black,
+              colorFilter: ColorFilter.mode(
+                colors.icon,
                 BlendMode.srcIn,
               ),
               child: Image.asset(
@@ -1614,13 +1574,14 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
   }
 
   Widget _trashIconButton({required VoidCallback onTap}) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
+          color: colors.textPrimary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
         ),
         child: FittedBox(
@@ -1629,8 +1590,8 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
             width: 19,
             height: 19,
             child: ColorFiltered(
-              colorFilter: const ColorFilter.mode(
-                Colors.black,
+              colorFilter: ColorFilter.mode(
+                colors.icon,
                 BlendMode.srcIn,
               ),
               child: Image.asset(
@@ -1642,122 +1603,6 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
           ),
         ),
       ),
-    );
-  }
-
-  Future<void> _showRenameDialog(GoalModel goal) async {
-    final ctrl = TextEditingController(text: goal.title);
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Переименовать цель',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Название цели',
-                  hintStyle: const TextStyle(color: Color(0xFF999999)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.1), width: 2),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Colors.black, width: 2),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        side: const BorderSide(color: Colors.black, width: 2),
-                      ),
-                      child: const Text(
-                        'Отмена',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        final text = ctrl.text.trim();
-                        if (text.isNotEmpty) {
-                          final updated = goal.copyWith(title: text);
-                          _updateActiveGoal(updated);
-                          _persistIfSaved(updated);
-                        }
-                        Navigator.pop(ctx);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Сохранить',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
     );
   }
 }
@@ -1781,16 +1626,17 @@ class _DateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F6F7),
+        color: colors.surfaceVariant,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1806,16 +1652,16 @@ class _DateCard extends StatelessWidget {
               children: [
                 Text(
                   _formatDate(date.date),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black,
+                    color: colors.textPrimary,
                   ),
                 ),
                 if (isEditMode)
                   Row(
                     children: [
-                      _smallTrashIcon(onTap: onDeleteDate),
+                      _smallTrashIcon(context, onTap: onDeleteDate),
                     ],
                   ),
               ],
@@ -1834,7 +1680,7 @@ class _DateCard extends StatelessWidget {
             ),
             if (isEditMode) ...[
               const SizedBox(height: 8),
-              _addTaskButton(),
+              _addTaskButton(context),
             ],
           ],
         ),
@@ -1842,29 +1688,30 @@ class _DateCard extends StatelessWidget {
     );
   }
 
-  Widget _addTaskButton() {
+  Widget _addTaskButton(BuildContext context) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onAddTask,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF7F6F7),
+          color: colors.surfaceVariant,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.black.withOpacity(0.2), width: 2, style: BorderStyle.solid),
+          border: Border.all(color: colors.border, width: 2, style: BorderStyle.solid),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.add, size: 16, color: Colors.black),
-            SizedBox(width: 8),
+          children: [
+            Icon(Icons.add, size: 16, color: colors.icon),
+            const SizedBox(width: 8),
             Text(
-              'Добавить задачу',
+              tr('Добавить задачу'),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF666666),
+                color: colors.textSecondary,
               ),
             ),
           ],
@@ -1873,29 +1720,15 @@ class _DateCard extends StatelessWidget {
     );
   }
 
-  Widget _smallIcon(IconData icon, {required VoidCallback onTap, double iconSize = 18}) {
+  Widget _smallTrashIcon(BuildContext context, {required VoidCallback onTap}) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, size: iconSize, color: Colors.black),
-      ),
-    );
-  }
-
-  Widget _smallTrashIcon({required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
+          color: colors.textPrimary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
         ),
         child: FittedBox(
@@ -1904,8 +1737,8 @@ class _DateCard extends StatelessWidget {
             width: 17,
             height: 17,
             child: ColorFiltered(
-              colorFilter: const ColorFilter.mode(
-                Colors.black,
+              colorFilter: ColorFilter.mode(
+                colors.icon,
                 BlendMode.srcIn,
               ),
               child: Image.asset(
@@ -1921,19 +1754,19 @@ class _DateCard extends StatelessWidget {
   }
 
   String _formatDate(DateTime d) {
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря'
+    final months = [
+      tr('января'),
+      tr('февраля'),
+      tr('марта'),
+      tr('апреля'),
+      tr('мая'),
+      tr('июня'),
+      tr('июля'),
+      tr('августа'),
+      tr('сентября'),
+      tr('октября'),
+      tr('ноября'),
+      tr('декабря')
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
@@ -1981,6 +1814,7 @@ class _TaskTileState extends State<_TaskTile> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     Color borderColor;
     switch (widget.task.priority) {
       case 1:
@@ -2002,7 +1836,7 @@ class _TaskTileState extends State<_TaskTile> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border(left: BorderSide(color: borderColor, width: 4)),
         ),
@@ -2022,8 +1856,8 @@ class _TaskTileState extends State<_TaskTile> {
                       color: widget.task.isCompleted
                           ? borderColor
                           : _isHovered
-                              ? const Color(0xFFCCCCCC)
-                              : const Color(0xFFE5E5E5),
+                              ? colors.textTertiary
+                              : colors.border,
                       width: 2,
                     ),
                     color: widget.task.isCompleted
@@ -2047,7 +1881,7 @@ class _TaskTileState extends State<_TaskTile> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: widget.task.isCompleted ? const Color(0xFF999999) : Colors.black,
+                  color: widget.task.isCompleted ? colors.textTertiary : colors.textPrimary,
                   decoration: widget.task.isCompleted ? TextDecoration.lineThrough : null,
                 ),
               ),
@@ -2064,8 +1898,8 @@ class _TaskTileState extends State<_TaskTile> {
                     width: 17,
                     height: 17,
                     child: ColorFiltered(
-                      colorFilter: const ColorFilter.mode(
-                        Color(0xFF666666),
+                      colorFilter: ColorFilter.mode(
+                        colors.textSecondary,
                         BlendMode.srcIn,
                       ),
                       child: Image.asset(
@@ -2113,6 +1947,7 @@ class _SavedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onOpen,
       child: AnimatedContainer(
@@ -2120,11 +1955,11 @@ class _SavedCard extends StatelessWidget {
         curve: Curves.easeInOut,
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF7F6F7),
+          color: colors.surfaceVariant,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -2144,20 +1979,20 @@ class _SavedCard extends StatelessWidget {
                       children: [
                         Text(
                           goal.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w600,
-                            color: Colors.black,
+                            color: colors.textPrimary,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.visible,
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${goal.dates.length} ${_getDateWord(goal.dates.length)} • ${goal.totalTasks} ${_getTaskWord(goal.totalTasks)}',
-                          style: const TextStyle(
+                          tr('{0} {1} • {2} {3}', [goal.dates.length, _getDateWord(goal.dates.length), goal.totalTasks, _getTaskWord(goal.totalTasks)]),
+                          style: TextStyle(
                             fontSize: 14,
-                            color: Color(0xFF666666),
+                            color: colors.textSecondary,
                           ),
                         ),
                       ],
@@ -2166,7 +2001,7 @@ class _SavedCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Row(
                     children: [
-                      _smallTrashIcon(onTap: onDelete),
+                      _smallTrashIcon(context, onTap: onDelete),
                     ],
                   ),
                 ],
@@ -2178,7 +2013,7 @@ class _SavedCard extends StatelessWidget {
                     child: Container(
                       height: 6,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.1),
+                        color: colors.textPrimary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(3),
                       ),
                       child: LayoutBuilder(
@@ -2202,10 +2037,10 @@ class _SavedCard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     '${(progress * 100).round()}%',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF666666),
+                      color: colors.textSecondary,
                     ),
                   ),
                 ],
@@ -2217,29 +2052,15 @@ class _SavedCard extends StatelessWidget {
     );
   }
 
-  Widget _smallIcon(IconData icon, {required VoidCallback onTap, double iconSize = 18}) {
+  Widget _smallTrashIcon(BuildContext context, {required VoidCallback onTap}) {
+    final colors = AppColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, size: iconSize, color: Colors.black),
-      ),
-    );
-  }
-
-  Widget _smallTrashIcon({required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
+          color: colors.textPrimary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
         ),
         child: FittedBox(
@@ -2248,8 +2069,8 @@ class _SavedCard extends StatelessWidget {
             width: 17,
             height: 17,
             child: ColorFiltered(
-              colorFilter: const ColorFilter.mode(
-                Colors.black,
+              colorFilter: ColorFilter.mode(
+                colors.icon,
                 BlendMode.srcIn,
               ),
               child: Image.asset(
