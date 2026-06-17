@@ -142,6 +142,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   // Шторка создания задачи/привычки/события (как на странице «Задачи»).
   bool _isCreateModalOpen = false;
 
+  // Привычки и события для верхней ленты «на весь день» над таймлайном.
+  // Грузятся один раз, фильтруются по выбранному дню в build (isActiveOn /
+  // occursOn), поэтому при листании дней перезагрузка не нужна.
+  List<HabitWithStats> _habits = [];
+  List<Event> _allEvents = [];
+
   @override
   void initState() {
     super.initState();
@@ -167,7 +173,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         _loadMonthTasks();
       }
       _loadTimelineNotes();
-      
+      _loadDayExtras();
+
       // Автоскролл к текущему времени при открытии страницы
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToCurrentTime();
@@ -927,6 +934,25 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     });
   }
 
+  // Грузит привычки и события для верхней ленты «на весь день».
+  Future<void> _loadDayExtras() async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    try {
+      final habits =
+          await habitRepository.loadHabitsWithStats(userId, _selectedDate);
+      final events = await eventRepository.loadAllEvents(userId);
+      if (mounted) {
+        setState(() {
+          _habits = habits;
+          _allEvents = events;
+        });
+      }
+    } catch (e) {
+      debugPrint('Ошибка загрузки привычек/событий списка: $e');
+    }
+  }
+
   DateTime _normalizeDate(DateTime d) => DateTime(d.year, d.month, d.day);
 
   // Создание задачи в «Мои задачи». Сама шторка дополнительно создаёт
@@ -972,6 +998,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       await habitRepository.addHabit(habit, userId, screenId: screenId);
     } catch (_) {}
     _closeCreateModal();
+    _loadDayExtras();
   }
 
   void _saveEvent(Event event, int? screenId) async {
@@ -990,6 +1017,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       );
     } catch (_) {}
     _closeCreateModal();
+    _loadDayExtras();
   }
 
   void _startAttachingNote(String title, String color, String? icon, String? linkedElementType, String? linkedElementId, bool notify) {
@@ -1161,6 +1189,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
               'linkedElementType': contentJson['linkedElementType'],
               'linkedElementId': contentJson['linkedElementId'],
               'notify': contentJson['notify'] ?? true,
+              'allDay': contentJson['allDay'] ?? false,
             });
           }
         } catch (e) {
@@ -1808,6 +1837,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         child: _buildWeekSlider(),
                       ),
+                      // Лента «на весь день»: задачи на весь день, привычки и
+                      // события выбранного дня — над таймлайном.
+                      _buildAllDayStrip(),
                       // Основной контент
                       Expanded(
                         child: AnimatedSwitcher(
@@ -2350,20 +2382,141 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     return lineIndex * lineHeight + positionInLine * lineHeight;
   }
 
+  // Горизонтальная лента «на весь день» над таймлайном: задачи на весь день,
+  // привычки и события выбранного дня. Скроллится по ширине, если их много.
+  Widget _buildAllDayStrip() {
+    if (_listViewType != ListViewType.oneDay) return const SizedBox.shrink();
+    final day = _selectedDate;
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    final chips = <Widget>[];
+
+    // События дня.
+    for (final e in _allEvents.where((e) => e.occursOn(day))) {
+      chips.add(_allDayChip(
+        color: const Color(0xFFFF2D55),
+        icon: CupertinoIcons.gift,
+        label: e.title,
+        onTap: null,
+      ));
+    }
+    // Привычки дня.
+    for (final h in _habits.where((h) => h.habit.isActiveOn(day))) {
+      chips.add(_allDayChip(
+        color: h.habit.color,
+        icon: h.habit.icon,
+        label: h.habit.title,
+        onTap: null,
+      ));
+    }
+    // Задачи «на весь день» (заметки таймлайна с флагом allDay).
+    for (final note in _timelineNotes.where((n) {
+      if (n['allDay'] != true) return false;
+      final s = n['startTime'] as DateTime;
+      final en = n['endTime'] as DateTime;
+      return s.isBefore(dayEnd) && en.isAfter(dayStart);
+    })) {
+      final noteId = note['id']?.toString();
+      chips.add(_allDayChip(
+        color: _getColorFromHex(note['color'] as String?),
+        icon: _getIconData(note['icon'] as String?),
+        label: note['title'] as String,
+        onTap: noteId == null ? null : () => _showTimelineNoteSheet(noteId),
+      ));
+    }
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      child: chips.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    for (int i = 0; i < chips.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      chips[i],
+                    ],
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _allDayChip({
+    required Color color,
+    IconData? icon,
+    required String label,
+    VoidCallback? onTap,
+  }) {
+    final colors = AppColors.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: colors.isDark ? 0.22 : 0.13),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Строит виджеты для сохраненных заметок на таймлайне
   List<Widget> _buildSavedTimelineNotes(BuildContext context, double lineHeight) {
     if (_listViewType != ListViewType.oneDay) return [];
     
+    // Границы выбранного дня [dayStart, dayEnd). Заметка показывается на этом
+    // дне, если её интервал [startTime, endTime) пересекается с днём — так
+    // задача, начатая в 23:00 на 4 часа, рисуется и в этот день (23:00→24:00,
+    // обрезана снизу), и в следующий (00:00→03:00, перенос).
+    final dayStart = DateTime(
+        _selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
     final notes = _timelineNotes.where((note) {
+      if (note['allDay'] == true) return false; // на весь день → в верхнюю ленту
       final startTime = note['startTime'] as DateTime;
-      return _isSameDay(startTime, _selectedDate);
+      final endTime = note['endTime'] as DateTime;
+      return startTime.isBefore(dayEnd) && endTime.isAfter(dayStart);
     }).toList();
-    
+
     final minutesPerLine = _getMinutesPerLine();
     final hourHeight = _getHourHeight(context);
     final linesPerHour = _getTimeLinesCount();
     final lineHeightCalc = hourHeight / linesPerHour;
-    
+
     return notes.map((note) {
       final noteId = note['id']?.toString();
       final startTime = note['startTime'] as DateTime;
@@ -2371,20 +2524,32 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       final title = note['title'] as String;
       final colorHex = note['color'] as String? ?? '#FFEB3B';
       final iconKey = note['icon'] as String?;
-      
-      final startPosition = _getTimePositionForDateTime(context, startTime, _selectedDate) - _currentScrollOffset;
+
+      // Полная длительность задачи (для подписи) и видимый сегмент в этом дне.
       final duration = endTime.difference(startTime);
-      final height = (duration.inMinutes / minutesPerLine) * lineHeightCalc;
-      
+      final segStart = startTime.isBefore(dayStart) ? dayStart : startTime;
+      final segEnd = endTime.isAfter(dayEnd) ? dayEnd : endTime;
+      // Признак «перенос» — сегмент начинается с начала дня (хвост с прошлых
+      // суток). И признак обрезки снизу — задача уходит в следующий день.
+      final bool isContinuation = startTime.isBefore(dayStart);
+      final bool clippedBottom = endTime.isAfter(dayEnd);
+
+      final startPosition =
+          _getTimePositionForDateTime(context, segStart, _selectedDate) -
+              _currentScrollOffset;
+      final height =
+          (segEnd.difference(segStart).inMinutes / minutesPerLine) *
+              lineHeightCalc;
+
       // Скрываем заметку, если она полностью выше или ниже видимой области
       final screenHeight = MediaQuery.of(context).size.height;
       if (startPosition + height < 0 || startPosition > screenHeight) {
         return const SizedBox.shrink();
       }
-      
+
       final color = _getColorFromHex(colorHex);
       final iconData = _getIconData(iconKey);
-      
+
       return Positioned(
         top: startPosition,
         left: 61,
@@ -2398,6 +2563,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           iconSize: 24.0, // Не используется, размер вычисляется динамически на основе noteHeight
           noteHeight: height,
           duration: duration,
+          isContinuation: isContinuation,
+          clippedBottom: clippedBottom,
           onLongPress: (noteId, pos) =>
               _handleNoteLongPress(context, noteId, pos),
           onTap: () => _showTimelineNoteSheet(noteId),
@@ -2421,6 +2588,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     final lineHeightCalc = hourHeight / linesPerHour;
     
     final notes = _timelineNotes.where((note) {
+      if (note['allDay'] == true) return false; // на весь день → в верхнюю ленту
       final startTime = note['startTime'] as DateTime;
       // Проверяем, попадает ли заметка в неделю
       return weekDates.any((date) => _isSameDay(startTime, date));
@@ -3232,6 +3400,10 @@ class _NoteWidget extends StatefulWidget {
   final double iconSize;
   final double noteHeight;
   final Duration duration;
+  // Сегмент задачи, перешедшей через полночь: верх обрезан (продолжение с
+  // прошлых суток) / низ обрезан (продолжается в следующие сутки).
+  final bool isContinuation;
+  final bool clippedBottom;
   final Function(String?, Offset) onLongPress;
   final VoidCallback? onTap;
 
@@ -3243,6 +3415,8 @@ class _NoteWidget extends StatefulWidget {
     required this.iconSize,
     required this.noteHeight,
     required this.duration,
+    this.isContinuation = false,
+    this.clippedBottom = false,
     required this.onLongPress,
     this.onTap,
   });
@@ -3320,7 +3494,12 @@ class _NoteWidgetState extends State<_NoteWidget> {
       child: Container(
         decoration: BoxDecoration(
           color: widget.color.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(8),
+          // У перенесённых через полночь сегментов скругляем только «целый»
+          // край: верх обрезан → верхние углы прямые, низ обрезан → нижние.
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(widget.isContinuation ? 0 : 8),
+            bottom: Radius.circular(widget.clippedBottom ? 0 : 8),
+          ),
           border: Border.all(color: widget.color.withValues(alpha: 0.5), width: 1),
         ),
         child: LayoutBuilder(

@@ -159,10 +159,16 @@ class _MainHeaderState extends State<MainHeader> {
                                         colorBlendMode:
                                             colors.isDark ? BlendMode.srcIn : null,
                                       )
-                                    : Icon(
-                                        CupertinoIcons.bell,
-                                        size: 23,
-                                        color: colors.icon,
+                                    : Transform.translate(
+                                        // Глиф колокольчика Material имеет
+                                        // встроенный нижний отступ → кажется
+                                        // мельче и ниже лупы; компенсируем.
+                                        offset: const Offset(0, -2),
+                                        child: Icon(
+                                          Icons.notifications_none_rounded,
+                                          size: 28,
+                                          color: colors.icon,
+                                        ),
                                       ),
                               ),
                             ),

@@ -792,6 +792,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
         'linkedElementType': 'task',
         'linkedElementId': task.id,
         'notify': true,
+        'allDay': _allDay,
       };
       final note = NoteModel(
         title: task.title,
@@ -1266,6 +1267,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                   FocusScope.of(context).unfocus();
                                 }
                               },
+                              // Тап вне поля НЕ скрывает клавиатуру (по умолч.
+                              // Flutter 3.7+ скрывает) — на этапе ввода имени
+                              // клавиатура должна оставаться.
+                              onTapOutside: (_) {},
                               style: TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w600,
@@ -1300,6 +1305,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                               maxLines: 8,
                               minLines: 1,
                               maxLength: 200,
+                              onTapOutside: (_) {},
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w400,
