@@ -7,7 +7,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:open_filex/open_filex.dart';
 import '../data/repositories/task_repository.dart';
-import '../data/repositories/note_repository.dart';
 import '../data/repositories/plan_repository.dart';
 import '../data/repositories/chat_repository.dart';
 import '../data/database_instance.dart';
@@ -22,6 +21,7 @@ import '../pages/list_page.dart';
 import '../pages/plan_page.dart';
 import '../services/yandex_gpt_service.dart';
 import '../widgets/custom_snackbar.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../theme/app_colors.dart';
 import '../l10n/app_translations.dart';
 
@@ -112,7 +112,6 @@ class _SpotlightSearchState extends State<SpotlightSearch>
   String _currentQuery = '';
 
   late final TaskRepository _taskRepository;
-  late final NoteRepository _noteRepository;
   late final PlanRepository _planRepository;
   late final ChatRepository _chatRepository;
   late final YandexGptService _gptService;
@@ -123,7 +122,6 @@ class _SpotlightSearchState extends State<SpotlightSearch>
   void initState() {
     super.initState();
     _taskRepository = TaskRepository(appDatabase);
-    _noteRepository = NoteRepository(appDatabase);
     _planRepository = PlanRepository(appDatabase);
     _chatRepository = ChatRepository(appDatabase);
     _gptService = YandexGptService();
@@ -273,38 +271,6 @@ class _SpotlightSearchState extends State<SpotlightSearch>
         }
       }
 
-      // Поиск заметок (только если не поиск по хештегам)
-      if (!isHashtagSearch) {
-        final notes = await _noteRepository.loadNotes(userId);
-        for (final note in notes) {
-          if (_matchesQuery(query, note.title) ||
-              _matchesQuery(query, note.content)) {
-            // Для заметок subtitle - это только контент без заголовка
-            // Убираем заголовок из контента, если он там есть
-            String subtitle = note.content;
-            // Если контент начинается с заголовка, убираем его
-            if (subtitle.startsWith(note.title)) {
-              subtitle = subtitle.substring(note.title.length).trim();
-              // Убираем возможные разделители в начале
-              while (subtitle.isNotEmpty && (subtitle.startsWith('\n') || subtitle.startsWith(' '))) {
-                subtitle = subtitle.substring(1).trim();
-              }
-            }
-            // Если после удаления заголовка subtitle пустой или равен title, делаем пустым
-            if (subtitle.isEmpty || subtitle == note.title) {
-              subtitle = '';
-            }
-            results.add(SearchResult(
-              type: SearchResultType.note,
-              title: note.title,
-              subtitle: subtitle,
-              data: note,
-              date: note.updatedAt,
-            ));
-          }
-        }
-      }
-
       // Поиск целей (только если не поиск по хештегам)
       if (!isHashtagSearch) {
         final goals = await _planRepository.loadGoals(userId);
@@ -335,24 +301,6 @@ class _SpotlightSearchState extends State<SpotlightSearch>
                   subtitle: tr('Файл в задаче: {0}', [task.title]),
                   data: file,
                   date: task.date,
-                ));
-              }
-            }
-          }
-        }
-        
-        // Поиск файлов в заметках
-        final notes = await _noteRepository.loadNotes(userId);
-        for (final note in notes) {
-          if (note.attachedFiles != null && note.attachedFiles!.isNotEmpty) {
-            for (final file in note.attachedFiles!) {
-              if (_matchesQuery(query, file.fileName)) {
-                results.add(SearchResult(
-                  type: SearchResultType.file,
-                  title: file.fileName,
-                  subtitle: tr('Файл в заметке: {0}', [note.title]),
-                  data: file,
-                  date: note.updatedAt,
                 ));
               }
             }
@@ -977,45 +925,42 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     }
   }
   
+  // Переход к целевой странице из поиска.
+  //
+  // ВАЖНО: используем КОРНЕВОЙ навигатор (SwipeNav.navigatorKey) и сначала
+  // закрываем диалог поиска (pop), затем pushReplacement самой нижней
+  // страницы. Раньше делали pushReplacement прямо из контекста диалога —
+  // это заменяло только диалог, оставляя старую страницу под новой, и в
+  // ряде случаев переход «не срабатывал» (казалось, что ничего не происходит).
+  void _navigateToPage(Widget page) {
+    final nav = SwipeNav.instance.navigatorKey.currentState ??
+        Navigator.of(context, rootNavigator: true);
+    // Закрываем диалог поиска.
+    nav.pop();
+    // Заменяем текущую (нижнюю) страницу целевой.
+    nav.pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, animation, _) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: page,
+        ),
+      ),
+    );
+  }
+
   void _navigateToTask(task_model.Task task) {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, _) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: TasksPage(
-            animateNavIn: false,
-            initialTaskToOpen: task,
-          ),
-        ),
-      ),
+    _navigateToPage(
+      TasksPage(animateNavIn: false, initialTaskToOpen: task),
     );
   }
-  
+
   void _navigateToNote(NoteModel note) {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, _) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: const ListPage(),
-        ),
-      ),
-    );
+    _navigateToPage(const ListPage());
   }
-  
+
   void _navigateToGoal(GoalModel goal) {
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, animation, _) => FadeTransition(
-          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          child: PlanPage(
-            initialGoalIdToOpen: goal.id,
-          ),
-        ),
-      ),
-    );
+    _navigateToPage(PlanPage(initialGoalIdToOpen: goal.id));
   }
 
   Future<void> _openFile(AttachedFile file) async {

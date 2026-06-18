@@ -123,10 +123,8 @@ class _TasksPageState extends State<TasksPage> {
         _loadEvents();
         _loadUserNameIfNeeded();
         _checkDelegatedTasks();
-        // Открыта из поиска — сразу показываем саму задачу.
-        if (widget.initialTaskToOpen != null) {
-          _openTaskModal(task: widget.initialTaskToOpen);
-        }
+        // Открыта из поиска — просто открываем страницу на дне задачи
+        // (день уже выставлен в _selectedDate выше). Редактор НЕ открываем.
       });
     });
   }

@@ -85,9 +85,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   // Свайп-вниз для закрытия шторки: текущее смещение и контроллер «доводки».
   double _dragDy = 0.0;
   late AnimationController _dragController;
-  // Крестик закрытия (вверху справа) разворачивается в подтверждение отмены.
-  bool _cancelConfirmOpen = false;
-  late AnimationController _cancelController;
   // Шаг планирования времени задачи (после ввода названия и тапа «Создать»).
   bool _schedulingStep = false;
   // Начало задачи в минутах от полуночи (шаг 10 мин) и длительность в минутах.
@@ -299,11 +296,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       duration: const Duration(milliseconds: 240),
       vsync: this,
     );
-    _cancelController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      reverseDuration: const Duration(milliseconds: 240),
-      vsync: this,
-    );
     // Для новой задачи — начало в ближайшие 10 минут от текущего времени.
     if (widget.initialTask == null) {
       final now = DateTime.now();
@@ -483,7 +475,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     _wavesAnimationController.dispose();
     _buttonsSlideController?.dispose();
     _dragController.dispose();
-    _cancelController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
     _tagsController.dispose();
@@ -607,19 +598,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
           widget.onClose();
         });
       }
-    });
-  }
-
-  // Разворачивает крестик в карточку-подтверждение отмены.
-  void _openCancelConfirm() {
-    setState(() => _cancelConfirmOpen = true);
-    _cancelController.forward();
-  }
-
-  // Сворачивает карточку-подтверждение обратно в крестик.
-  void _closeCancelConfirm() {
-    _cancelController.reverse().whenComplete(() {
-      if (mounted) setState(() => _cancelConfirmOpen = false);
     });
   }
 
@@ -1196,7 +1174,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                           // теперь входит в зону свайпа.
                           padding: EdgeInsets.only(
                             top: 10,
-                            bottom: _showModeToggle ? 41 : 4,
+                            bottom: _showModeToggle ? 46 : 4,
                           ),
                           child: Container(
                             // Размер как у черточки открытия верхней шторки.
@@ -1690,24 +1668,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                       ),
                     ],
                   ),
-                      // Тап мимо подтверждения сворачивает его обратно в крестик.
-                      if (_cancelConfirmOpen)
-                        Positioned.fill(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _closeCancelConfirm,
-                          ),
-                        ),
-                      // Крестик закрытия (вверху справа). На шаге выбора времени —
-                      // с подтверждением (_buildCancelButton); на этапе ввода —
-                      // простой крестик, сразу закрывает шторку (без подтверждения).
-                      if (_schedulingStep)
-                        Positioned(
-                          top: 14,
-                          right: 14,
-                          child: _buildCancelButton(colors),
-                        )
-                      else if (!eventViewing)
+                      // Крестик закрытия (вверху справа) — liquid-glass кнопка,
+                      // как у прекращения аудио-ввода. И на этапе ввода, и на
+                      // шаге выбора времени/продолжительности.
+                      if (_schedulingStep || !eventViewing)
                         Positioned(
                           top: 14,
                           right: 14,
@@ -2821,147 +2785,31 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     );
   }
 
-  /// Крестик закрытия вверху справа. По тапу карточка-подтверждение «Точно
-  /// хочешь отменить эти изменения?» (с красной кнопкой «Отменить изменения»)
-  /// появляется СРАЗУ ПОЛНОСТЬЮ, плавно проявляясь (fade + лёгкий scale).
-  Widget _buildCancelButton(AppColors colors) {
-    const red = Color(0xFFFF3B30);
-    return AnimatedBuilder(
-      animation: _cancelController,
-      builder: (context, _) {
-        final v = Curves.easeOutCubic.transform(_cancelController.value);
-        final open = _cancelController.value > 0.001;
-        // Крестик (свёрнутое состояние) — тёмный круг с белым xmark.
-        // В режиме просмотра события и при РЕДАКТИРОВАНИИ существующей
-        // задачи/привычки/события (вход по лонгпрессу) закрывает шторку
-        // без подтверждения. Подтверждение — только при создании с нуля.
-        final bool closeDirectly = _eventView ||
-            widget.isEdit ||
-            widget.initialHabit != null ||
-            widget.initialEvent != null;
-        final collapsed = GestureDetector(
-          onTap: closeDirectly ? _handleClose : _openCancelConfirm,
-          child: Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.32),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: colors.border.withValues(alpha: 0.6),
-                width: 0.5,
-              ),
-            ),
-            child: const Icon(
-              CupertinoIcons.xmark,
-              size: 18,
-              color: Colors.white,
-            ),
-          ),
-        );
-        // Полная карточка-подтверждение — появляется целиком (fade + scale).
-        final card = Opacity(
-          opacity: v.clamp(0.0, 1.0),
-          child: Transform.scale(
-            scale: ui.lerpDouble(0.92, 1.0, v)!,
-            alignment: Alignment.topRight,
-            child: Container(
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: colors.border.withValues(alpha: 0.6),
-                  width: 0.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: SizedBox(
-                  width: 220,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        tr('Точно хочешь отменить эти изменения?'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: colors.textPrimary,
-                          height: 1.3,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      GestureDetector(
-                        onTap: _handleClose,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: red.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            tr('Отменить изменения'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: red,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-        // Карточка раскрывается «из» крестика (оба прижаты к верхнему-правому
-        // углу), крестик ловит тап только когда полностью свёрнут.
-        return Stack(
-          alignment: Alignment.topRight,
-          children: [
-            IgnorePointer(ignoring: open, child: collapsed),
-            if (open) card,
-          ],
-        );
-      },
-    );
-  }
-
-  // Простой крестик закрытия (тот же стиль, что на шаге выбора времени) —
-  // сразу закрывает шторку, без карточки-подтверждения.
+  // Простой крестик закрытия — тот же дизайн, что у кнопки прекращения
+  // аудио-ввода (liquid glass), но текущего размера (36). Сразу закрывает
+  // шторку, без карточки-подтверждения.
   Widget _buildSimpleCloseButton(AppColors colors) {
-    return GestureDetector(
-      onTap: _handleClose,
-      child: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.32),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: colors.border.withValues(alpha: 0.6),
-            width: 0.5,
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 8,
+            spreadRadius: 0.5,
           ),
-        ),
-        child: const Icon(
-          CupertinoIcons.xmark,
-          size: 18,
-          color: Colors.white,
-        ),
+        ],
+      ),
+      child: GlassCircleButton(
+        onTap: _handleClose,
+        size: 36,
+        iconSize: 18,
+        // Тёмная тема — белый крестик, светлая — чёрный.
+        iconColor: Theme.of(context).brightness == Brightness.dark
+            ? CupertinoColors.white
+            : CupertinoColors.black,
       ),
     );
   }

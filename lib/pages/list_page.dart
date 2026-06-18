@@ -3698,7 +3698,10 @@ class _TimelineNoteSheetState extends State<_TimelineNoteSheet> {
             top: 12,
             bottom: (viewInsets > 0 ? viewInsets : MediaQuery.of(context).padding.bottom) + 20,
           ),
-          child: Column(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+          Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3915,6 +3918,63 @@ class _TimelineNoteSheetState extends State<_TimelineNoteSheet> {
                 ),
               ),
             ],
+          ),
+          // Крестик закрытия (liquid glass), как в шторке создания.
+          Positioned(
+            top: 0,
+            right: 0,
+            child: _buildCloseButton(colors),
+          ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Крестик закрытия — frosted-стекло (как в шторке создания задачи).
+  // Внутри BackdropFilter-шторки live-шейдер LiquidGlass даёт артефакты,
+  // поэтому повторяем тот же вид вручную (ClipOval + размытие + заливка).
+  Widget _buildCloseButton(AppColors colors) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 8,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors.isDark
+                    ? Colors.white.withValues(alpha: 0.18)
+                    : Colors.white.withValues(alpha: 0.55),
+                border: Border.all(
+                  color: Colors.white
+                      .withValues(alpha: colors.isDark ? 0.25 : 0.6),
+                  width: 0.8,
+                ),
+              ),
+              child: Icon(
+                CupertinoIcons.xmark,
+                size: 18,
+                color:
+                    colors.isDark ? CupertinoColors.white : CupertinoColors.black,
+              ),
+            ),
           ),
         ),
       ),
