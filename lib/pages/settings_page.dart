@@ -12,6 +12,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:local_auth/local_auth.dart';
 
 
 import '../theme/theme_controller.dart';
@@ -24,6 +28,7 @@ import '../widgets/sidebar.dart';
 import 'tasks_page.dart';
 import 'login_page.dart';
 import 'subscription_page.dart';
+import 'privacy_page.dart';
 import '../data/database_instance.dart';
 import '../data/user_session.dart';
 import '../data/app_database.dart';
@@ -51,9 +56,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _isSidebarOpen = false;
   late AnimationController _starsController;
   final TextEditingController _emailController = TextEditingController();
-  bool _saving = false;
   String? _avatarPath;
   String? _userName;
+  DateTime? _userCreatedAt;
   bool _isAvatarHovered = false;
   bool _importingCalendar = false;
   bool _importingAppleCalendar = false;
@@ -61,6 +66,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   int _appleNewEvents = 0; // не импортированных событий Apple (для бейджа)
   bool _notificationsEnabled = true;
   bool _emailNotificationsEnabled = true;
+  bool _faceIdEnabled = false; // блокировка приложения по Face ID / Touch ID
   OverlayEntry? _selectMenuOverlay;
   final GlobalKey _themeAnchorKey = GlobalKey();
   final GlobalKey _languageAnchorKey = GlobalKey();
@@ -143,8 +149,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       duration: const Duration(seconds: 5),
     )..repeat();
     _loadUserProfile();
+    _loadFaceIdSetting();
     // Считаем не импортированные события календарей для индикаторов.
     _refreshCalendarBadges();
+  }
+
+  Future<void> _loadFaceIdSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _faceIdEnabled = prefs.getBool('app_lock_enabled') ?? false);
   }
 
   @override
@@ -165,6 +178,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (users.isNotEmpty) {
       final user = users.first;
       _userName = user.name;
+      _userCreatedAt = user.createdAt;
       _emailController.text = user.email;
       
       // Проверяем, что файл аватара существует
@@ -234,39 +248,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     UserSession.currentName = name;
     if (!mounted) return;
     setState(() => _userName = name);
-  }
-
-  Future<void> _saveProfile() async {
-    final userId = UserSession.currentUserId;
-    if (userId == null) return;
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      CustomSnackBar.show(context, tr('Введите email'));
-      return;
-    }
-    // Вибрация при сохранении (такая же как при отметках)
-    HapticFeedback.heavyImpact();
-    setState(() {
-      _saving = true;
-    });
-    // Получаем текущего пользователя, чтобы сохранить существующий путь к аватару, если он не был изменен
-    final currentUser = await (appDatabase.select(appDatabase.users)..where((u) => u.id.equals(userId))).getSingleOrNull();
-    final avatarUrlToSave = _avatarPath ?? currentUser?.avatarUrl;
-    
-    await (appDatabase.update(appDatabase.users)..where((u) => u.id.equals(userId))).write(
-      UsersCompanion(
-        email: dr.Value(email),
-        avatarUrl: dr.Value(avatarUrlToSave),
-        updatedAt: dr.Value(DateTime.now()),
-      ),
-    );
-    UserSession.setUser(id: userId, email: email, name: _userName);
-    setState(() {
-      _saving = false;
-    });
-    if (mounted) {
-      CustomSnackBar.show(context, tr('Сохранено'));
-    }
   }
 
   Future<void> _pickAndCropImage() async {
@@ -635,28 +616,21 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
+            // Контент уходит под прозрачный хедер.
             Padding(
               padding: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top - 10,
               ),
-              child: Column(
-                children: [
-                  MainHeader(
-                    title: tr('Настройки'),
-                    onMenuTap: _toggleSidebar,
-                    onSearchTap: null,
-                    onSettingsTap: null,
-                    hideSearchAndSettings: true,
-                    showBackButton: true,
-                    onBack: _goBack,
-                    onGreetingToggle: null,
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(15, 20, 15, 40),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  15,
+                  60 + 20,
+                  15,
+                  40,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                           _buildProfile(),
                           const SizedBox(height: 32),
                           _buildSubscription(),
@@ -667,14 +641,88 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                           const SizedBox(height: 32),
                           _buildNotifications(),
                           const SizedBox(height: 32),
+                          _buildSecurity(),
+                          const SizedBox(height: 32),
+                          _buildSupport(),
+                          const SizedBox(height: 32),
                           _buildAbout(),
-                          const SizedBox(height: 20),
-                          _buildSaveButton(),
-                        ],
-                      ),
+                          if (_userCreatedAt != null) ...[
+                            const SizedBox(height: 24),
+                            Center(
+                              child: Text(
+                                _memberSince(),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.of(context).textTertiary,
+                                ),
+                              ),
+                            ),
+                          ],
+                  ],
+                ),
+              ),
+            ),
+            // Сплошной хедер с лёгкой тенью снизу.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.of(context).background,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
+                  ],
+                ),
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.of(context).padding.top - 10,
                   ),
-                ],
+                  child: Stack(
+                    children: [
+                      MainHeader(
+                        title: tr('Настройки'),
+                        onMenuTap: _toggleSidebar,
+                        onSearchTap: null,
+                        onSettingsTap: null,
+                        hideSearchAndSettings: true,
+                        showBackButton: true,
+                        onBack: _goBack,
+                        onGreetingToggle: null,
+                        backgroundColor: Colors.transparent,
+                      ),
+                      // Кнопка выхода справа в хедере.
+                      Positioned(
+                        right: 14,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: GestureDetector(
+                            onTap: _logout,
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              color: Colors.transparent,
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.logout,
+                                size: 24,
+                                color: AppColors.of(context).isDark
+                                    ? Colors.white
+                                    : Colors.black,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             Sidebar(
@@ -700,8 +748,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _buildSectionTitle(''),
         Container(
           decoration: BoxDecoration(
+            // Блок профиля остаётся белым (не сероватым).
             color: AppColors.of(context).surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(19),
             border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
@@ -793,6 +842,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                // Невидимый отступ слева, равный карандашу+зазору
+                                // справа — чтобы имя было по центру относительно
+                                // аватарки, а не съезжало влево из-за карандаша.
+                                const SizedBox(width: 28),
                                 Text(
                                   _userName ?? tr('Пользователь'),
                                   style: TextStyle(
@@ -1032,8 +1085,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _buildSectionTitle(tr('Внешний вид')),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.of(context).surface,
-            borderRadius: BorderRadius.circular(16),
+            color: _blockColor,
+            borderRadius: BorderRadius.circular(19),
             border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
@@ -1081,8 +1134,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _buildSectionTitle(tr('Уведомления')),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.of(context).surface,
-            borderRadius: BorderRadius.circular(16),
+            color: _blockColor,
+            borderRadius: BorderRadius.circular(19),
             border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
@@ -1120,8 +1173,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _buildSectionTitle(tr('Интеграции')),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.of(context).surface,
-            borderRadius: BorderRadius.circular(16),
+            color: _blockColor,
+            borderRadius: BorderRadius.circular(19),
             border: Border.all(color: AppColors.of(context).border),
           ),
           child: Column(
@@ -1339,6 +1392,283 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     } catch (_) {/* индикатор не критичен */}
   }
 
+  // ───────── Безопасность и данные ─────────
+  Widget _buildSecurity() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(tr('Безопасность и данные')),
+        Container(
+          decoration: BoxDecoration(
+            color: _blockColor,
+            borderRadius: BorderRadius.circular(19),
+            border: Border.all(color: AppColors.of(context).border),
+          ),
+          child: Column(
+            children: [
+              _buildToggleItem(
+                title: tr('Face ID / Touch ID'),
+                subtitle: tr('Блокировать приложение'),
+                value: _faceIdEnabled,
+                onChanged: _toggleFaceId,
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildActionItem(
+                title: tr('Экспорт данных'),
+                subtitle: tr('Скачать копию ваших данных'),
+                icon: CupertinoIcons.square_arrow_up,
+                onTap: _exportData,
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildActionItem(
+                title: tr('Очистить кэш'),
+                subtitle: tr('Освободить место на устройстве'),
+                icon: CupertinoIcons.trash,
+                onTap: _clearCache,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ───────── Поддержка и информация ─────────
+  Widget _buildSupport() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(tr('Поддержка')),
+        Container(
+          decoration: BoxDecoration(
+            color: _blockColor,
+            borderRadius: BorderRadius.circular(19),
+            border: Border.all(color: AppColors.of(context).border),
+          ),
+          child: Column(
+            children: [
+              _buildActionItem(
+                title: tr('Написать отзыв'),
+                subtitle: tr('Оцените приложение в App Store'),
+                icon: CupertinoIcons.star,
+                onTap: _writeReview,
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildActionItem(
+                title: tr('Поделиться приложением'),
+                subtitle: tr('Расскажите друзьям'),
+                icon: CupertinoIcons.share,
+                onTap: _shareApp,
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildActionItem(
+                title: tr('Восстановить покупку'),
+                subtitle: tr('Вернуть оформленную подписку'),
+                icon: CupertinoIcons.arrow_clockwise,
+                onTap: _restorePurchase,
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildActionItem(
+                title: tr('Конфиденциальность'),
+                subtitle: tr('Политика конфиденциальности'),
+                icon: CupertinoIcons.lock_shield,
+                onTap: _openPrivacy,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Кликабельный пункт настроек: заголовок + подзаголовок + иконка справа.
+  Widget _buildActionItem({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.of(context).textPrimary),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(icon, size: 20, color: AppColors.of(context).textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ───────── Логика пунктов ─────────
+
+  // Идентификатор приложения в App Store (заполнить после публикации).
+  static const String _appStoreId = '0000000000';
+
+  Future<void> _toggleFaceId(bool value) async {
+    if (value) {
+      // Включаем — сначала убедимся, что биометрия доступна и проходит проверку.
+      final auth = LocalAuthentication();
+      bool ok = false;
+      try {
+        final canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+        if (!canCheck) {
+          if (mounted) CustomSnackBar.show(context, tr('Биометрия недоступна на устройстве'));
+          return;
+        }
+        ok = await auth.authenticate(
+          localizedReason: tr('Подтвердите, чтобы включить блокировку'),
+          persistAcrossBackgrounding: true,
+        );
+      } catch (e) {
+        debugPrint('Ошибка биометрии: $e');
+        if (mounted) CustomSnackBar.show(context, tr('Не удалось включить блокировку'));
+        return;
+      }
+      if (!ok) return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('app_lock_enabled', value);
+    HapticFeedback.selectionClick();
+    if (mounted) setState(() => _faceIdEnabled = value);
+  }
+
+  Future<void> _exportData() async {
+    try {
+      HapticFeedback.lightImpact();
+      final userId = UserSession.currentUserId;
+      final buffer = StringBuffer();
+      buffer.writeln('{');
+      buffer.writeln('  "app": "ladder",');
+      buffer.writeln('  "exportedAt": "${DateTime.now().toIso8601String()}",');
+      buffer.writeln('  "userId": ${userId ?? 'null'},');
+
+      final tasks = await (appDatabase.select(appDatabase.tasks)
+            ..where((t) => t.isDeleted.equals(false)))
+          .get();
+      final notes = await (appDatabase.select(appDatabase.notes)
+            ..where((n) => n.isDeleted.equals(false)))
+          .get();
+      final habits = await (appDatabase.select(appDatabase.habits)
+            ..where((h) => h.isDeleted.equals(false)))
+          .get();
+      final events = await (appDatabase.select(appDatabase.events)
+            ..where((e) => e.isDeleted.equals(false)))
+          .get();
+
+      String esc(String? s) => (s ?? '').replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n');
+
+      buffer.writeln('  "tasks": [');
+      for (var i = 0; i < tasks.length; i++) {
+        final t = tasks[i];
+        buffer.write('    {"title": "${esc(t.title)}", "date": "${t.date.toIso8601String()}", "completed": ${t.isCompleted}}');
+        buffer.writeln(i < tasks.length - 1 ? ',' : '');
+      }
+      buffer.writeln('  ],');
+      buffer.writeln('  "notes": [');
+      for (var i = 0; i < notes.length; i++) {
+        final n = notes[i];
+        buffer.write('    {"content": "${esc(n.content)}"}');
+        buffer.writeln(i < notes.length - 1 ? ',' : '');
+      }
+      buffer.writeln('  ],');
+      buffer.writeln('  "habits": [');
+      for (var i = 0; i < habits.length; i++) {
+        final h = habits[i];
+        buffer.write('    {"title": "${esc(h.title)}"}');
+        buffer.writeln(i < habits.length - 1 ? ',' : '');
+      }
+      buffer.writeln('  ],');
+      buffer.writeln('  "events": [');
+      for (var i = 0; i < events.length; i++) {
+        final e = events[i];
+        buffer.write('    {"title": "${esc(e.title)}", "date": "${e.date.toIso8601String()}"}');
+        buffer.writeln(i < events.length - 1 ? ',' : '');
+      }
+      buffer.writeln('  ]');
+      buffer.writeln('}');
+
+      final dir = await getTemporaryDirectory();
+      final file = File(path.join(dir.path, 'ladder_export_${DateTime.now().millisecondsSinceEpoch}.json'));
+      await file.writeAsString(buffer.toString());
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], subject: tr('Экспорт данных')),
+      );
+    } catch (e) {
+      debugPrint('Ошибка экспорта данных: $e');
+      if (mounted) CustomSnackBar.show(context, tr('Не удалось экспортировать данные'));
+    }
+  }
+
+  Future<void> _clearCache() async {
+    try {
+      HapticFeedback.lightImpact();
+      imageCache.clear();
+      imageCache.clearLiveImages();
+      final dir = await getTemporaryDirectory();
+      if (dir.existsSync()) {
+        for (final entity in dir.listSync()) {
+          try {
+            entity.deleteSync(recursive: true);
+          } catch (_) {/* отдельные файлы могут быть заняты */}
+        }
+      }
+      if (mounted) CustomSnackBar.show(context, tr('Кэш очищен'));
+    } catch (e) {
+      debugPrint('Ошибка очистки кэша: $e');
+      if (mounted) CustomSnackBar.show(context, tr('Не удалось очистить кэш'));
+    }
+  }
+
+  Future<void> _writeReview() async {
+    HapticFeedback.lightImpact();
+    final uri = Uri.parse('https://apps.apple.com/app/id$_appStoreId?action=write-review');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) CustomSnackBar.show(context, tr('Не удалось открыть App Store'));
+    }
+  }
+
+  Future<void> _shareApp() async {
+    HapticFeedback.lightImpact();
+    final link = 'https://apps.apple.com/app/id$_appStoreId';
+    await SharePlus.instance.share(
+      ShareParams(text: tr('Попробуй планер ladder: {0}', [link])),
+    );
+  }
+
+  Future<void> _restorePurchase() async {
+    HapticFeedback.lightImpact();
+    // Покупки в приложении ещё не подключены — заглушка до релиза.
+    if (mounted) CustomSnackBar.show(context, tr('Покупок для восстановления не найдено'));
+  }
+
+  void _openPrivacy() {
+    HapticFeedback.lightImpact();
+    Navigator.of(context).push(
+      SwipeablePageRoute(builder: (_) => const PrivacyPage()),
+    );
+  }
+
   Widget _buildAbout() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1346,84 +1676,108 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _buildSectionTitle(tr('О приложении')),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.of(context).surface,
-            borderRadius: BorderRadius.circular(16),
+            color: _blockColor,
+            borderRadius: BorderRadius.circular(19),
             border: Border.all(color: AppColors.of(context).border),
           ),
-          child: _buildSimpleItem(
-            title: tr('Версия'),
-            subtitle: '1.0.1',
+          child: Column(
+            children: [
+              _buildSimpleItem(
+                title: tr('Версия'),
+                subtitle: '1.0.1',
+              ),
+              Divider(height: 1, color: AppColors.of(context).divider),
+              _buildIdItem(),
+            ],
           ),
         ),
       ],
     );
   }
 
+  // Уникальный ID пользователя: LDDR-XXXXXXX (7 цифр, отсчёт справа).
+  String get _appId {
+    final id = UserSession.currentUserId ?? 0;
+    return 'LDDR-${id.toString().padLeft(7, '0')}';
+  }
 
-  Widget _buildSaveButton() {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.of(context).inverseSurface,
-              foregroundColor: AppColors.of(context).onInverseSurface,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              elevation: 0,
-            ),
-            onPressed: _saving ? null : _saveProfile,
-            child: _saving
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.of(context).onInverseSurface,
+  // Кликабельный пункт с ID — тап копирует в буфер и показывает тост.
+  Widget _buildIdItem() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        await Clipboard.setData(ClipboardData(text: _appId));
+        HapticFeedback.selectionClick();
+        if (mounted) CustomSnackBar.show(context, tr('Скопировано'));
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ID',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.of(context).textPrimary,
                     ),
-                  )
-                : Text(
-                    tr('Сохранить'),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        GestureDetector(
-          onTap: () async {
-            // Полный выход: чистим сохранённую сессию (иначе автологин вернёт).
-            await AuthRepository(appDatabase).logout();
-            if (!mounted) return;
-            Navigator.of(context).pushReplacement(
-              PageRouteBuilder(
-                transitionDuration: const Duration(milliseconds: 220),
-                pageBuilder: (_, animation, _) => FadeTransition(
-                  opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-                  child: const LoginPage(),
-                ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _appId,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.of(context).textTertiary,
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              // В тёмной теме серая заливка вместо светло-розовой.
-              color: AppColors.of(context).isDark
-                  ? AppColors.of(context).surfaceVariant
-                  : const Color(0xFFFFEEEE),
-              border: Border.all(color: const Color(0xFFD60000), width: 1.5),
             ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.logout,
-              size: 24,
-              color: Color(0xFFD60000),
+            Icon(
+              CupertinoIcons.doc_on_doc,
+              size: 18,
+              color: AppColors.of(context).textTertiary,
             ),
-          ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+
+  // «Участник с июня 2027» — внизу настроек.
+  String _memberSince() {
+    final d = _userCreatedAt;
+    if (d == null) return '';
+    const months = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    ];
+    return tr('Участник с {0}', ['${months[d.month - 1]} ${d.year}']);
+  }
+
+
+  // Цвет блоков-секций (Внешний вид/Интеграции/Уведомления/О приложении) —
+  // в светлой теме слегка сероватый, в тёмной — обычный surface.
+  Color get _blockColor => AppColors.of(context).isDark
+      ? AppColors.of(context).surface
+      : const Color(0xFFF7F8FA);
+
+  Future<void> _logout() async {
+    // Полный выход: чистим сохранённую сессию (иначе автологин вернёт).
+    await AuthRepository(appDatabase).logout();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, animation, _) => FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: const LoginPage(),
+        ),
+      ),
     );
   }
 

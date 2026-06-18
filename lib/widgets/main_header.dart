@@ -21,6 +21,8 @@ class MainHeader extends StatefulWidget {
   // Скрыть «черточку» открытия шторки приветствия (напр. пока открыта
   // шторка создания задачи).
   final bool hideGreetingHandle;
+  // Цвет фона хедера. Если null — colors.background.
+  final Color? backgroundColor;
 
   const MainHeader({
     super.key,
@@ -38,6 +40,7 @@ class MainHeader extends StatefulWidget {
     this.searchIconPath,
     this.settingsIconPath,
     this.hideGreetingHandle = false,
+    this.backgroundColor,
   });
 
   @override
@@ -52,7 +55,7 @@ class _MainHeaderState extends State<MainHeader> {
       children: [
         Container(
           height: 60,
-          color: colors.background,
+          color: widget.backgroundColor ?? colors.background,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Stack(
             children: [

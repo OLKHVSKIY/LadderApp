@@ -826,16 +826,6 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   }
 
 
-  void _openSearch() {
-    setState(() {
-      _isSearchOpen = true;
-    });
-    _searchAnimController.forward();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _searchFocusNode.requestFocus();
-    });
-  }
-
   void _closeSearch() {
     FocusScope.of(context).unfocus();
     // Сворачиваем поле обратной анимацией; флаги сбрасываем, когда она
@@ -1884,16 +1874,16 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   ),
                   ),
             ),
-          // Кнопка поиска с полем ввода (трансформируется из круга в овал)
+          // Левая кнопка показывается только в режиме прикрепления/редактирования
+          // заметки (как «отмена»). Кнопка поиска (лупа) убрана.
+          if (_isAttachingNote || _isEditingNote)
           AnimatedPositioned(
             duration: isKeyboardClosing ? Duration.zero : const Duration(milliseconds: 150),
             curve: Curves.easeOutCubic,
             left: 22,
             bottom: bottomPosition,
             child: GestureDetector(
-              onTap: (_isAttachingNote || _isEditingNote) 
-                ? (_isEditingNote ? _cancelEditingNote : _cancelAttachingNote)
-                : (_isSearchOpen ? null : _openSearch),
+              onTap: _isEditingNote ? _cancelEditingNote : _cancelAttachingNote,
               child: AnimatedBuilder(
                 animation: _searchAnim,
                 builder: (context, _) {

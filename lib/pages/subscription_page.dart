@@ -275,37 +275,51 @@ class _SubscriptionPageState extends State<SubscriptionPage>
                     children: _buildStars(screenWidth, screenHeight),
                   ),
                 ),
-                // Скроллируемый контент
-                Column(
-                  children: [
-                    // Кнопка назад
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 16, 16, 0),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.of(context).pop(),
-                            behavior: HitTestBehavior.opaque,
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              color: Colors.transparent,
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                // Стандартный шеврон "назад" как в iOS.
-                                CupertinoIcons.back,
-                                size: 24,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                // Скроллируемый контент (на всю высоту, уходит под хедер).
+                Positioned.fill(
+                  child: _buildScrollContent(),
+                ),
+                // Хедер — прозрачный, с лёгким затемнением-градиентом снизу,
+                // чтобы кнопка назад читалась поверх контента.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(10, 16, 16, 12),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0xFF000000),
+                          Color(0xF2000000),
+                          Color(0x00000000),
                         ],
+                        stops: [0.0, 0.5, 1.0],
                       ),
                     ),
-                    Expanded(
-                      child: _buildScrollContent(),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.of(context).pop(),
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            color: Colors.transparent,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              // Стандартный шеврон "назад" как в iOS.
+                              CupertinoIcons.back,
+                              size: 24,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),

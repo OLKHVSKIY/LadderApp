@@ -85,12 +85,18 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   // Свайп-вниз для закрытия шторки: текущее смещение и контроллер «доводки».
   double _dragDy = 0.0;
   late AnimationController _dragController;
+  // Свайп-вниз в ЛЮБОЙ области контента (поверх скролла). Тянем шторку вниз,
+  // только когда внутренний скролл уже наверху; при этом блокируем скролл.
+  final ScrollController _mainScrollController = ScrollController();
+  bool _sheetDragActive = false;
+  double _sheetDragVelocity = 0.0;
+  int _lastSheetDragTime = 0;
   // Крестик закрытия (вверху справа) разворачивается в подтверждение отмены.
   bool _cancelConfirmOpen = false;
   late AnimationController _cancelController;
   // Шаг планирования времени задачи (после ввода названия и тапа «Создать»).
   bool _schedulingStep = false;
-  // Начало задачи в минутах от полуночи (шаг 15 мин) и длительность в минутах.
+  // Начало задачи в минутах от полуночи (шаг 10 мин) и длительность в минутах.
   int _scheduleStartMinutes = 10 * 60;
   int _durationMinutes = 15;
   // Значения длительности (мин) для блока «Продолжительность». Мутабельны:
@@ -304,11 +310,11 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       reverseDuration: const Duration(milliseconds: 240),
       vsync: this,
     );
-    // Для новой задачи — начало в ближайшие 15 минут от текущего времени.
+    // Для новой задачи — начало в ближайшие 10 минут от текущего времени.
     if (widget.initialTask == null) {
       final now = DateTime.now();
-      _scheduleStartMinutes = ((now.hour * 60 + now.minute) ~/ 15 + 1) * 15;
-      if (_scheduleStartMinutes >= 24 * 60) _scheduleStartMinutes = 23 * 60 + 45;
+      _scheduleStartMinutes = ((now.hour * 60 + now.minute) ~/ 10 + 1) * 10;
+      if (_scheduleStartMinutes >= 24 * 60) _scheduleStartMinutes = 23 * 60 + 50;
     }
     // Колёса подробного режима — стартовые позиции из начала/конца задачи.
     final endTotal = _scheduleStartMinutes + _durationMinutes;
@@ -483,6 +489,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     _wavesAnimationController.dispose();
     _buttonsSlideController?.dispose();
     _dragController.dispose();
+    _mainScrollController.dispose();
     _cancelController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -628,6 +635,46 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     setState(() {
       _dragDy = (_dragDy + details.delta.dy).clamp(0.0, double.infinity);
     });
+  }
+
+  // Свайп-вниз в любой области контента. Используем Listener (наблюдает за
+  // указателем, не конкурируя в gesture-арене со скроллом). Начинаем тянуть
+  // шторку только если скролл уже наверху и палец идёт вниз.
+  bool get _scrollAtTop =>
+      !_mainScrollController.hasClients ||
+      _mainScrollController.position.pixels <= 0;
+
+  void _onContentPointerMove(PointerMoveEvent e) {
+    if (_dragController.isAnimating) return;
+    final dy = e.delta.dy;
+    if (!_sheetDragActive) {
+      // Начинаем закрытие только при движении вниз с верхней позиции скролла.
+      if (dy > 0 && _scrollAtTop) {
+        _sheetDragActive = true;
+        _lastSheetDragTime = e.timeStamp.inMilliseconds;
+      } else {
+        return;
+      }
+    }
+    final now = e.timeStamp.inMilliseconds;
+    final dt = now - _lastSheetDragTime;
+    if (dt > 0) _sheetDragVelocity = dy / dt * 1000.0;
+    _lastSheetDragTime = now;
+    setState(() {
+      _dragDy = (_dragDy + dy).clamp(0.0, double.infinity);
+    });
+  }
+
+  void _onContentPointerUp(PointerUpEvent e) {
+    if (!_sheetDragActive) return;
+    _sheetDragActive = false;
+    _onSheetDragEnd(
+      DragEndDetails(
+        velocity: Velocity(pixelsPerSecond: Offset(0, _sheetDragVelocity)),
+      ),
+      MediaQuery.of(context).size.height * 0.9,
+    );
+    _sheetDragVelocity = 0.0;
   }
 
   // Отпустили: достаточно утянули или резкий флик вниз — закрываем,
@@ -1205,7 +1252,21 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         fit: eventViewing
                             ? FlexFit.loose
                             : FlexFit.tight,
-                        child: SingleChildScrollView(
+                        child: Listener(
+                          onPointerMove: _onContentPointerMove,
+                          onPointerUp: _onContentPointerUp,
+                          onPointerCancel: (_) {
+                            if (_sheetDragActive) {
+                              _onContentPointerUp(PointerUpEvent(
+                                timeStamp: Duration.zero,
+                              ));
+                            }
+                          },
+                          child: SingleChildScrollView(
+                          controller: _mainScrollController,
+                          physics: _sheetDragActive
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1415,6 +1476,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                           ),
                         ),
                       ),
+                      ),
                       // Нижняя закреплённая секция: плавно поднимается вместе с
                       // клавиатурой (bottom = высота клавиатуры; iOS обновляет
                       // viewInsets покадрово → следует за клавиатурой).
@@ -1606,7 +1668,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                                 onTap: _handleDictate,
                                                 size: 48,
                                                 iconSize: 22,
-                                                iconColor: CupertinoColors.black,
+                                                // Тёмная тема — белый крестик,
+                                                // светлая — чёрный.
+                                                iconColor: Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark
+                                                    ? CupertinoColors.white
+                                                    : CupertinoColors.black,
                                               ),
                                             ),
                                           ],
@@ -2047,10 +2115,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     );
   }
 
-  // Колесо выбора времени (Apple-стиль, шаг 15 мин). Выбранная строка —
+  // Колесо выбора времени (Apple-стиль, шаг 10 мин). Выбранная строка —
   // диапазон «начало—конец» на цветной пилюле.
   Widget _buildTimeWheel(AppColors colors) {
-    final selectedIndex = _scheduleStartMinutes ~/ 15;
+    final selectedIndex = _scheduleStartMinutes ~/ 10;
     const itemExtent = 40.0;
     return Container(
       height: 268,
@@ -2096,16 +2164,16 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
               perspective: 0.001,
               physics: const FixedExtentScrollPhysics(),
               onSelectedItemChanged: (raw) {
-                final i = raw % 96;
+                final i = raw % 144;
                 HapticFeedback.selectionClick();
                 SystemSound.play(SystemSoundType.click);
-                setState(() => _scheduleStartMinutes = i * 15);
+                setState(() => _scheduleStartMinutes = i * 10);
               },
               // Бесконечная прокрутка — время идёт по кругу.
               childDelegate: ListWheelChildLoopingListDelegate(
-                children: List.generate(96, (i) {
-                  final isSel = i * 15 == _scheduleStartMinutes;
-                  final s = _formatHM(i * 15);
+                children: List.generate(144, (i) {
+                  final isSel = i * 10 == _scheduleStartMinutes;
+                  final s = _formatHM(i * 10);
                   return Center(
                     child: Text(
                       s,

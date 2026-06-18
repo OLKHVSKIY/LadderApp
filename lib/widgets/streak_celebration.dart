@@ -67,33 +67,38 @@ class _StreakCelebrationState extends State<StreakCelebration>
     _rollTimer = Timer(const Duration(milliseconds: 520), () {
       if (mounted) setState(() => _displayValue = widget.toValue);
     });
-    // Авто-закрытие.
-    _dismissTimer = Timer(const Duration(milliseconds: 2400), _close);
+    // Авто-закрытие (на 1 секунду дольше).
+    _dismissTimer = Timer(const Duration(milliseconds: 3400), _close);
   }
 
-  // Беспорядочная вибрация: импульсы разной силы и со случайными интервалами,
-  // как будто огонь разгорается.
+  // Беспорядочная вибрация в стиле Duolingo: плотная серия импульсов разной
+  // силы со случайными короткими интервалами — «дрожь» при продлении серии.
   void _playChaoticHaptics() {
-    const pattern = [0, 50, 95, 160, 215, 255, 330, 410, 470, 560, 640];
     final rnd = Random();
-    for (final d in pattern) {
+    // Генерируем плотную череду импульсов на ~1.4 сек.
+    int t = 0;
+    const total = 1400;
+    while (t < total) {
+      final delay = t;
+      // Чем ближе к концу — тем реже импульсы (затухание дрожи).
+      final intensity = 1.0 - (t / total);
       _hapticTimers.add(
-        Timer(Duration(milliseconds: d + rnd.nextInt(28)), () {
-          switch (rnd.nextInt(4)) {
-            case 0:
-              HapticFeedback.lightImpact();
-              break;
-            case 1:
-              HapticFeedback.mediumImpact();
-              break;
-            case 2:
-              HapticFeedback.heavyImpact();
-              break;
-            default:
-              HapticFeedback.selectionClick();
+        Timer(Duration(milliseconds: delay), () {
+          // Ближе к началу — сильнее (heavy/medium), в конце — легче.
+          final roll = rnd.nextDouble();
+          if (roll < 0.25 + 0.35 * intensity) {
+            HapticFeedback.heavyImpact();
+          } else if (roll < 0.6 + 0.2 * intensity) {
+            HapticFeedback.mediumImpact();
+          } else if (roll < 0.85) {
+            HapticFeedback.lightImpact();
+          } else {
+            HapticFeedback.selectionClick();
           }
         }),
       );
+      // Случайный шаг 28–80 мс, к концу — длиннее (реже).
+      t += 28 + rnd.nextInt(32) + ((1 - intensity) * 30).round();
     }
   }
 

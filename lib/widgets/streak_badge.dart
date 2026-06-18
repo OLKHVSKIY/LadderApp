@@ -73,7 +73,8 @@ class _StreakBadgeState extends State<StreakBadge>
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
+          // Слегка затемнённый блок (чёрная подложка вместо светлой).
+          color: Colors.black.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),

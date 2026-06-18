@@ -260,6 +260,11 @@ class _BottomNavigationState extends State<BottomNavigation> {
                 alignment: Alignment.center,
                 child: GestureDetector(
                   onTap: widget.onAddTask,
+                  // Свайп вверх по кнопке также открывает шторку создания.
+                  onVerticalDragEnd: (details) {
+                    final v = details.primaryVelocity ?? 0;
+                    if (v < -150) widget.onAddTask?.call();
+                  },
                   child: Container(
                     width: 63,
                     height: 63,

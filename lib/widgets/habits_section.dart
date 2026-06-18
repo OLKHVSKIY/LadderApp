@@ -369,14 +369,15 @@ class _CheckCircle extends StatelessWidget {
     // галочка после выполнения.
     final idleBorder =
         colors.isDark ? colors.textTertiary : const Color(0xFFB8B8BD);
+    // Чекбокс как у задач: скруглённый квадрат 24×24, белая галочка.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutBack,
-      width: 28,
-      height: 28,
+      width: 24,
+      height: 24,
       decoration: BoxDecoration(
         color: done ? color : Colors.transparent,
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: done ? color : idleBorder,
           width: 2,
@@ -387,7 +388,7 @@ class _CheckCircle extends StatelessWidget {
         curve: Curves.easeOutBack,
         scale: done ? 1.0 : 0.0,
         child: const Icon(
-          CupertinoIcons.check_mark,
+          Icons.check,
           size: 16,
           color: Colors.white,
         ),
