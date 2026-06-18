@@ -11,6 +11,7 @@ import 'services/notification_service.dart';
 import 'theme/theme_controller.dart';
 import 'l10n/locale_controller.dart';
 import 'utils/app_paths.dart';
+import 'widgets/swipeable_page_route.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -84,6 +85,8 @@ class MyApp extends StatelessWidget {
               title: 'Ladder',
               debugShowCheckedModeBanner: false,
               locale: locale,
+              navigatorKey: SwipeNav.instance.navigatorKey,
+              navigatorObservers: [SwipeNavObserver()],
               theme: _buildTheme(Brightness.light),
               darkTheme: _buildTheme(Brightness.dark),
               themeMode: mode,
@@ -97,7 +100,8 @@ class MyApp extends StatelessWidget {
                     }
                   },
                   behavior: HitTestBehavior.opaque,
-                  child: child,
+                  // Свайп от правого края открывает заново закрытую страницу.
+                  child: SwipeForwardArea(child: child ?? const SizedBox()),
                 );
               },
               home: isLoggedIn

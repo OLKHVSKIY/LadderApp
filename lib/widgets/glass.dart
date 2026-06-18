@@ -87,6 +87,9 @@ class GlassCircleButton extends StatelessWidget {
   /// теме и белый на тёмной (иначе крестик сливался бы с тёмным фоном).
   final Color? iconColor;
 
+  /// Настройки стекла. Если не заданы — AppGlass.control.
+  final LiquidGlassSettings? settings;
+
   const GlassCircleButton({
     super.key,
     required this.onTap,
@@ -94,6 +97,7 @@ class GlassCircleButton extends StatelessWidget {
     this.size = 30,
     this.iconSize = 15,
     this.iconColor,
+    this.settings,
   });
 
   @override
@@ -111,7 +115,7 @@ class GlassCircleButton extends StatelessWidget {
         height: size < 44 ? 44 : size,
         child: Center(
           child: LiquidGlass.withOwnLayer(
-            settings: AppGlass.control,
+            settings: settings ?? AppGlass.control,
             shape: const LiquidOval(),
             glassContainsChild: false,
             child: SizedBox(

@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/main_header.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/spotlight_search.dart';
 import '../services/yandex_gpt_service.dart';
@@ -92,7 +92,7 @@ class _ChatPageState extends State<ChatPage> {
     if (page is SettingsPage) {
       // Для настроек используем push с CupertinoPageRoute для iOS swipe back
       Navigator.of(context).push(
-        CupertinoPageRoute(
+        SwipeablePageRoute(
           builder: (_) => page,
         ),
       );

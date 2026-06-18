@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'glass.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -23,7 +24,6 @@ import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
 import '../data/user_session.dart';
 import 'package:drift/drift.dart' as dr;
-import 'glass.dart';
 import 'event_image_cropper.dart';
 import '../theme/app_colors.dart';
 import '../l10n/app_translations.dart';
@@ -1139,13 +1139,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                   offset: Offset(0, _dragDy),
                   child: Container(
                   // Просмотр события — шторка по содержимому (не выше пол-экрана).
-                  // Иначе — на весь экран (минус системная строка статуса);
-                  // +11, чтобы перекрыть грабер страницы Задачи под шторкой.
+                  // Иначе — 90% высоты экрана.
                   height: eventViewing
                       ? null
-                      : MediaQuery.of(context).size.height -
-                          MediaQuery.of(context).padding.top +
-                          11,
+                      : MediaQuery.of(context).size.height * 0.9,
                   constraints: eventViewing
                       ? BoxConstraints(
                           maxHeight: MediaQuery.of(context).size.height * 0.5,
@@ -1180,8 +1177,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         onVerticalDragUpdate: _onSheetDragUpdate,
                         onVerticalDragEnd: (d) => _onSheetDragEnd(
                           d,
-                          MediaQuery.of(context).size.height -
-                              MediaQuery.of(context).padding.top,
+                          MediaQuery.of(context).size.height * 0.9,
                         ),
                         child: Container(
                           width: double.infinity,
@@ -1189,11 +1185,16 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                           padding: const EdgeInsets.only(top: 10, bottom: 4),
                           child: Center(
                             child: Container(
-                              width: 38,
+                              // Размер как у черточки открытия верхней шторки.
+                              width: 45,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: colors.border,
-                                borderRadius: BorderRadius.circular(2),
+                                // В светлой теме — как черточка хедера.
+                                color: Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? colors.border
+                                    : const Color(0xFFC2C1C1),
+                                borderRadius: BorderRadius.circular(5),
                               ),
                             ),
                           ),
@@ -1210,7 +1211,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                             children: [
                       // Заголовок с датой.
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 29, 20, 12),
+                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1492,8 +1493,17 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                                   width: size,
                                                   height: size,
                                                   decoration: BoxDecoration(
-                                                    color: Colors.red.withValues(alpha: 0.3 * (1 - animationValue)),
+                                                    // Только кольцо по краям —
+                                                    // центр не заливаем.
                                                     shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: colors.textPrimary
+                                                          .withValues(
+                                                              alpha: 0.28 *
+                                                                  (1 -
+                                                                      animationValue)),
+                                                      width: 1.5,
+                                                    ),
                                                   ),
                                                 ),
                                               );
@@ -1507,12 +1517,16 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                           width: 48,
                                           height: 48,
                                           decoration: BoxDecoration(
-                                            color: _isListening ? Colors.red.shade700 : Colors.red,
+                                            color: Colors.transparent,
                                             shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: colors.textPrimary,
+                                              width: 1.5,
+                                            ),
                                           ),
                                           child: Icon(
                                             Icons.mic,
-                                            color: Colors.white,
+                                            color: colors.textPrimary,
                                             size: 24,
                                           ),
                                         ),
@@ -1522,22 +1536,83 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                 ),
                                 // Кнопка остановки записи (появляется справа при записи)
                                 AnimatedSize(
-                                  duration: const Duration(milliseconds: 300),
+                                  duration: const Duration(milliseconds: 360),
                                   curve: Curves.easeOutCubic,
-                                  child: _isListening
+                                  // Без обрезки — иначе круглая тень обрезается
+                                  // в квадрат во время анимации ширины.
+                                  clipBehavior: Clip.none,
+                                  child: AnimatedSwitcher(
+                                    duration:
+                                        const Duration(milliseconds: 360),
+                                    switchInCurve: Curves.easeOutCubic,
+                                    switchOutCurve: Curves.easeInCubic,
+                                    // Уходящий крестик позиционируем абсолютно —
+                                    // он НЕ держит ширину, поэтому AnimatedSize
+                                    // сворачивает её синхронно с выездом вбок
+                                    // (иначе ширина схлопывалась рывком в конце).
+                                    layoutBuilder:
+                                        (currentChild, previousChildren) {
+                                      return Stack(
+                                        alignment: Alignment.centerLeft,
+                                        children: <Widget>[
+                                          ...previousChildren.map(
+                                            (c) => Positioned(
+                                              left: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              child: c,
+                                            ),
+                                          ),
+                                          if (currentChild != null) currentChild,
+                                        ],
+                                      );
+                                    },
+                                    // Крестик просто выезжает/уезжает вбок (без
+                                    // затемнения/масштаба).
+                                    transitionBuilder: (child, anim) {
+                                      return SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: const Offset(0.5, 0),
+                                          end: Offset.zero,
+                                        ).animate(anim),
+                                        child: child,
+                                      );
+                                    },
+                                    child: _isListening
                                       ? Row(
                                           mainAxisSize: MainAxisSize.min,
                                           key: const ValueKey('stop_button'),
                                           children: [
                                             const SizedBox(width: 12),
-                                            GlassCircleButton(
-                                              onTap: _handleDictate,
-                                              size: 48,
-                                              iconSize: 22,
+                                            // Старый дизайн крестика (liquid
+                                            // glass), чёрный значок. Небольшая
+                                            // тень вокруг стекла, чтобы круг
+                                            // читался на белом фоне.
+                                            Container(
+                                              width: 48,
+                                              height: 48,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.18),
+                                                    blurRadius: 8,
+                                                    spreadRadius: 0.5,
+                                                  ),
+                                                ],
+                                              ),
+                                              child: GlassCircleButton(
+                                                onTap: _handleDictate,
+                                                size: 48,
+                                                iconSize: 22,
+                                                iconColor: CupertinoColors.black,
+                                              ),
                                             ),
                                           ],
                                         )
                                       : const SizedBox.shrink(key: ValueKey('empty')),
+                                  ),
                                 ),
                               ],
                             ),
@@ -1706,18 +1781,17 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                 onVerticalDragUpdate: _onSheetDragUpdate,
                 onVerticalDragEnd: (d) => _onSheetDragEnd(
                   d,
-                  MediaQuery.of(context).size.height -
-                      MediaQuery.of(context).padding.top,
+                  MediaQuery.of(context).size.height * 0.9,
                 ),
                 child: Container(
                   alignment: Alignment.center,
                   padding: const EdgeInsets.only(bottom: 28),
                   child: Container(
-                    width: 38,
+                    width: 45,
                     height: 4,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(5),
                     ),
                   ),
                 ),

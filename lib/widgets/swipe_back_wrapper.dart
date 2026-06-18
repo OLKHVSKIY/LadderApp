@@ -134,11 +134,16 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
 
           if (shouldComplete) {
             // animateTo стартует из текущего значения (без ремапа кривой) →
-            // плавный доводок до края. Длительность по остатку пути.
-            final ms = ((1.0 - start) * _snapDurationMs).clamp(120, _snapDurationMs).round();
+            // плавный доводок до края. Минимум 200мс даже при коротком остатке,
+            // чтобы доводок (когда старая страница доезжает за край и текущая
+            // заполняет экран) не «щёлкал» резко, а мягко завершался.
+            // easeOutCubic даёт плавное затухание скорости у самого края →
+            // передача управления (pop / onSwipeBack) проходит незаметно.
+            final ms = ((1.0 - start) * _snapDurationMs).clamp(200, _snapDurationMs).round();
             _animationController
                 .animateTo(1.0,
-                    duration: Duration(milliseconds: ms), curve: Curves.easeOut)
+                    duration: Duration(milliseconds: ms),
+                    curve: Curves.easeOutCubic)
                 .then((_) {
               if (!mounted) return;
               if (widget.onSwipeBack != null) {

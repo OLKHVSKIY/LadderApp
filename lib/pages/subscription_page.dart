@@ -280,23 +280,21 @@ class _SubscriptionPageState extends State<SubscriptionPage>
                   children: [
                     // Кнопка назад
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(10, 16, 16, 0),
                       child: Row(
                         children: [
                           GestureDetector(
                             onTap: () => Navigator.of(context).pop(),
+                            behavior: HitTestBehavior.opaque,
                             child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white24),
-                              ),
+                              width: 44,
+                              height: 44,
+                              color: Colors.transparent,
+                              alignment: Alignment.center,
                               child: const Icon(
                                 // Стандартный шеврон "назад" как в iOS.
                                 CupertinoIcons.back,
-                                size: 22,
+                                size: 24,
                                 color: Colors.white,
                               ),
                             ),

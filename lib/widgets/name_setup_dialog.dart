@@ -1,9 +1,10 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_translations.dart';
 import '../utils/name_validator.dart';
-import 'glass.dart';
 
 /// Показывает окно ввода имени в стиле Apple Liquid Glass.
 ///
@@ -19,8 +20,8 @@ Future<String?> showNameDialog(
     context: context,
     barrierDismissible: dismissible,
     barrierLabel: 'name_dialog',
-    barrierColor: Colors.black.withValues(alpha: 0.55),
-    transitionDuration: const Duration(milliseconds: 360),
+    barrierColor: Colors.black.withValues(alpha: 0.5),
+    transitionDuration: const Duration(milliseconds: 420),
     pageBuilder: (ctx, a1, a2) => _NameDialog(
       initialName: initialName,
       dismissible: dismissible,
@@ -33,10 +34,24 @@ Future<String?> showNameDialog(
         curve: Curves.easeOutCubic,
         reverseCurve: Curves.easeInCubic,
       );
-      final scale = Tween<double>(begin: 0.92, end: 1.0).animate(curved);
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(scale: scale, child: child),
+      // Один контроллер кривой гонит сразу blur фона, прозрачность и масштаб
+      // окна — всё нарастает и затухает РАЗОМ, как единое целое. Фон слегка
+      // размывается синхронно с появлением окна.
+      return AnimatedBuilder(
+        animation: curved,
+        builder: (context, _) {
+          final v = curved.value.clamp(0.0, 1.0);
+          return BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 6 * v, sigmaY: 6 * v),
+            child: Opacity(
+              opacity: v,
+              child: Transform.scale(
+                scale: 0.94 + 0.06 * v,
+                child: child,
+              ),
+            ),
+          );
+        },
       );
     },
   );
@@ -103,8 +118,36 @@ class _NameDialogState extends State<_NameDialog> {
               child: SingleChildScrollView(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
-                  child: GlassPanel(
-                    borderRadius: 30,
+                  // Панель — обычный полупрозрачный контейнер (без own-layer
+                  // Liquid Glass и BackdropFilter): такой блок входит в общее
+                  // дерево слоёв вместе с текстом и эмодзи, поэтому при
+                  // scale+fade всё появляется/исчезает РАЗОМ, а не «стеклянный
+                  // блок последним». Барьер уже затемняет фон, так что
+                  // тёмная стеклоподобная заливка с белой подсветкой смотрится
+                  // премиально и в стиле Apple.
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.16),
+                          Colors.white.withValues(alpha: 0.08),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 30,
+                          offset: const Offset(0, 18),
+                        ),
+                      ],
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
                       child: Column(

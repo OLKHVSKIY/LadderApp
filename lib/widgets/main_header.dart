@@ -18,6 +18,9 @@ class MainHeader extends StatefulWidget {
   final String? searchIconPath;
   // Иконка правой кнопки. Если null — показываем колокольчик (уведомления).
   final String? settingsIconPath;
+  // Скрыть «черточку» открытия шторки приветствия (напр. пока открыта
+  // шторка создания задачи).
+  final bool hideGreetingHandle;
 
   const MainHeader({
     super.key,
@@ -34,6 +37,7 @@ class MainHeader extends StatefulWidget {
     this.onBack,
     this.searchIconPath,
     this.settingsIconPath,
+    this.hideGreetingHandle = false,
   });
 
   @override
@@ -179,27 +183,39 @@ class _MainHeaderState extends State<MainHeader> {
             ],
           ),
         ),
-        // Header divider для открытия шторки
+        // Header divider для открытия шторки. Плавно появляется/исчезает
+        // (напр. скрывается пока открыта шторка создания задачи).
         if (widget.onGreetingToggle != null)
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: Center(
-              child: GestureDetector(
-                onTap: widget.onGreetingToggle,
-                child: Container(
-                  width: 150,
-                  height: 40,
-                  color: Colors.transparent,
-                  alignment: Alignment.topCenter,
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Container(
-                    width: 45,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFC2C1C1),
-                      borderRadius: BorderRadius.circular(5),
+              child: IgnorePointer(
+                ignoring: widget.hideGreetingHandle,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeInOutCubic,
+                  opacity: widget.hideGreetingHandle ? 0.0 : 1.0,
+                  child: GestureDetector(
+                    onTap: widget.onGreetingToggle,
+                    child: Container(
+                      width: 150,
+                      height: 40,
+                      color: Colors.transparent,
+                      alignment: Alignment.topCenter,
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        width: 45,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          // В тёмной теме черточка приглушена.
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withValues(alpha: 0.22)
+                              : const Color(0xFFC2C1C1),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
                     ),
                   ),
                 ),

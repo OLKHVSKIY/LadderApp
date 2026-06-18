@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' as dr;
 import '../data/database_instance.dart';
+import 'swipeable_page_route.dart';
 import '../data/app_database.dart' as db;
 import '../data/user_session.dart';
 import '../pages/custom_tasks_page.dart';
@@ -477,7 +477,7 @@ class _GreetingPanelState extends State<GreetingPanel>
                           reloadToken: widget.completedTasksToday,
                           onTap: () {
                             Navigator.of(context).push(
-                              CupertinoPageRoute(
+                              SwipeablePageRoute(
                                 builder: (_) => const AnalyticsPage(),
                               ),
                             );
@@ -742,7 +742,7 @@ class _CustomScreensSectionState extends State<_CustomScreensSection>
     // CupertinoPageRoute даёт нативный iOS-переход и свайп слева направо
     // для возврата назад.
     Navigator.of(context).push(
-      CupertinoPageRoute(
+      SwipeablePageRoute(
         builder: (_) => CustomTasksPage(
           screenId: screen.id,
           screenName: screen.name,

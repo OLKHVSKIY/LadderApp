@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import 'package:uuid/uuid.dart';
 
 import '../widgets/main_header.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/ai_menu_modal.dart';
@@ -199,7 +199,7 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
     if (page is SettingsPage || page is ChatPage) {
       // Для настроек и чата — push с CupertinoPageRoute (нативный iOS swipe back)
       Navigator.of(context).push(
-        CupertinoPageRoute(
+        SwipeablePageRoute(
           builder: (_) => page,
         ),
       );

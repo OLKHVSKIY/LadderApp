@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' as dr;
 import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
 import '../data/user_session.dart';
 import '../widgets/main_header.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/week_calendar.dart';
 import '../widgets/task_list.dart';
 import '../widgets/habits_section.dart';
@@ -452,10 +452,10 @@ class _CustomTasksPageState extends State<CustomTasksPage> {
   }
 
   void _navigateTo(Widget page) {
-    if (page is ChatPage) {
-      // Чат — push с CupertinoPageRoute (нативный iOS swipe back).
+    if (page is ChatPage || page is SettingsPage) {
+      // Чат/Настройки — push со свайп-маршрутом (свайп назад/вперёд).
       Navigator.of(context).push(
-        CupertinoPageRoute(
+        SwipeablePageRoute(
           builder: (_) => page,
         ),
       );

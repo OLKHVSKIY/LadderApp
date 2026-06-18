@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '../pages/subscription_page.dart';
+import 'swipeable_page_route.dart';
 import '../theme/app_colors.dart';
 import '../l10n/app_translations.dart';
 
@@ -297,7 +297,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
       onTap: () {
         widget.onClose();
         Navigator.of(context).push(
-          CupertinoPageRoute(
+          SwipeablePageRoute(
             builder: (_) => const SubscriptionPage(),
           ),
         );

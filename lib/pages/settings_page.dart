@@ -19,6 +19,7 @@ import '../theme/app_colors.dart';
 import '../l10n/locale_controller.dart';
 import '../l10n/app_translations.dart';
 import '../widgets/main_header.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/sidebar.dart';
 import 'tasks_page.dart';
 import 'login_page.dart';
@@ -946,7 +947,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 ),
                 onPressed: () {
                   Navigator.of(context).push(
-                    CupertinoPageRoute(
+                    SwipeablePageRoute(
                       builder: (_) => const SubscriptionPage(),
                     ),
                   );

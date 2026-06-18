@@ -9,6 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/swipe_down_sheet.dart';
 import 'tasks_page.dart';
 import 'plan_page.dart';
@@ -568,7 +569,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     if (page is SettingsPage || page is ChatPage) {
       // Нативный iOS-переход (свайп-назад без артефактов).
       Navigator.of(context).push(
-        CupertinoPageRoute(
+        SwipeablePageRoute(
           builder: (_) => page,
         ),
       );

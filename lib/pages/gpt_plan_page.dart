@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/main_header.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
@@ -68,7 +68,7 @@ class _GptPlanPageState extends State<GptPlanPage> with TickerProviderStateMixin
     if (page is SettingsPage || page is ChatPage) {
       // Для настроек и чата — push с CupertinoPageRoute (нативный iOS swipe back)
       Navigator.of(context).push(
-        CupertinoPageRoute(
+        SwipeablePageRoute(
           builder: (_) => page,
         ),
       );

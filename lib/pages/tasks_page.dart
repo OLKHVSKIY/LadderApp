@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import '../models/task.dart';
+import '../widgets/swipeable_page_route.dart';
 import '../widgets/greeting_panel.dart';
 import '../widgets/main_header.dart';
 import '../widgets/week_calendar.dart';
@@ -561,7 +562,7 @@ class _TasksPageState extends State<TasksPage> {
     if (page is ChatPage) {
       // Чат — push с CupertinoPageRoute (нативный iOS swipe back).
       Navigator.of(context).push(
-        CupertinoPageRoute(
+        SwipeablePageRoute(
           builder: (_) => page,
         ),
       );
@@ -853,7 +854,7 @@ class _TasksPageState extends State<TasksPage> {
                     onSettingsTap: () {
                       // Колокольчик в хедере открывает уведомления.
                       Navigator.of(context).push(
-                        CupertinoPageRoute(
+                        SwipeablePageRoute(
                             builder: (_) => const NotificationsPage()),
                       );
                     },
@@ -861,6 +862,7 @@ class _TasksPageState extends State<TasksPage> {
                     onGreetingPanUpdate: _handleHeaderPanUpdate,
                     onGreetingPanEnd: _handleHeaderPanEnd,
                     isGreetingPanelOpen: _isGreetingPanelOpen,
+                    hideGreetingHandle: _isTaskModalOpen,
                   ),
                   // Контент
                   Expanded(
@@ -1007,14 +1009,14 @@ class _TasksPageState extends State<TasksPage> {
               },
               onAnalyticsTap: () {
                 Navigator.of(context).push(
-                  CupertinoPageRoute(
+                  SwipeablePageRoute(
                     builder: (_) => const AnalyticsPage(),
                   ),
                 );
               },
               onSettingsTap: () {
                 Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const SettingsPage()),
+                  SwipeablePageRoute(builder: (_) => const SettingsPage()),
                 );
               },
             ),

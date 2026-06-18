@@ -146,16 +146,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     UserSession.currentEmail = _emailController.text.trim();
     // Первый вход: имени ещё нет — просим ввести (закрыть без имени нельзя).
     final hasName = UserSession.currentName?.trim().isNotEmpty == true;
-    if (!hasName) {
-      final name = await showNameDialog(context, dismissible: false);
-      if (!mounted) return;
-      final userId = UserSession.currentUserId;
-      if (name != null && name.isNotEmpty && userId != null) {
-        await _authRepository.updateName(userId, name);
-        if (!mounted) return;
-      }
-    }
-    Navigator.of(context).pushReplacement(
+    // Захватываем navigator ДО pushReplacement: после него виджет логина
+    // размонтируется (mounted == false), и его context использовать нельзя.
+    final navigator = Navigator.of(context);
+    navigator.pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 240),
         pageBuilder: (_, animation, _) => FadeTransition(
@@ -164,6 +158,18 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         ),
       ),
     );
+    if (!hasName) {
+      // Показываем окно ввода имени ТОЛЬКО после того, как страница входа
+      // исчезла (ждём завершения fade-перехода) — окно появляется поверх
+      // главного экрана, а не на фоне логина. navigator.context стабилен.
+      await Future.delayed(const Duration(milliseconds: 280));
+      if (!navigator.mounted) return;
+      final name = await showNameDialog(navigator.context, dismissible: false);
+      final userId = UserSession.currentUserId;
+      if (name != null && name.isNotEmpty && userId != null) {
+        await _authRepository.updateName(userId, name);
+      }
+    }
   }
 
   Widget _circleButton({required Widget child, required VoidCallback onTap}) {
