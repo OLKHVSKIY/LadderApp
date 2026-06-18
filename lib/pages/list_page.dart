@@ -3488,10 +3488,21 @@ class _NoteWidgetState extends State<_NoteWidget> {
         final localPosition = renderBox != null ? renderBox.globalToLocal(event.position) : event.localPosition;
         _handleTapUp(TapUpDetails(globalPosition: event.position, localPosition: localPosition, kind: PointerDeviceKind.touch));
       },
+      onPointerMove: (event) {
+        // Палец поехал → это скролл таймлайна, а не тап/лонг-пресс.
+        // Снимаем нажатие, чтобы не открыть шторку и не словить лонг-пресс.
+        if (_isPressed && (event.position - _pressPosition).distance > 12) {
+          _handleTapCancel();
+        }
+      },
       onPointerCancel: (event) {
         _handleTapCancel();
       },
-      child: Container(
+      // Сама заметка НЕ перехватывает вертикальный скролл: визуал в IgnorePointer,
+      // поэтому translucent-Listener не поглощает события и перетаскивание уходит
+      // в ListView под заметкой (таймлайн скроллится сквозь блок).
+      child: IgnorePointer(
+        child: Container(
         decoration: BoxDecoration(
           color: widget.color.withValues(alpha: 0.85),
           // У перенесённых через полночь сегментов скругляем только «целый»
@@ -3553,6 +3564,7 @@ class _NoteWidgetState extends State<_NoteWidget> {
             );
           },
         ),
+      ),
       ),
     );
   }

@@ -1158,7 +1158,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                       topRight: Radius.circular(28),
                     ),
                   ),
-                  child: Stack(
+                  child: GestureDetector(
+                    // Тап по пустой области шторки поглощается (не проваливается
+                    // на барьер и НЕ скрывает клавиатуру). Поля/кнопки/чипы —
+                    // вложенные жесты — выигрывают арену, поэтому работают.
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: Stack(
                     clipBehavior: Clip.none,
                     children: [
                       if (_schedulingStep)
@@ -1602,6 +1608,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         child: _buildCancelButton(colors),
                       ),
                     ],
+                  ),
                   ),
                 ),
                 ),

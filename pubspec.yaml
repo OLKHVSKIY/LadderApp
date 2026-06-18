@@ -123,6 +123,6 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/Ladder-logo-clean.PNG"
+  image_path: "assets/images/app_icon.PNG"
   min_sdk_android: 21
   remove_alpha_ios: true
