@@ -579,8 +579,11 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildInput() {
     final colors = AppColors.of(context);
     final bottomInset = MediaQuery.of(context).padding.bottom;
+    // При открытой клавиатуре safe-area снизу = 0, поле прилипает к клавиатуре.
+    // Оставляем зазор 7px между низом поля и клавиатурой.
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     return Container(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset),
+      padding: EdgeInsets.fromLTRB(20, 12, 20, keyboardOpen ? 7 : bottomInset),
       decoration: BoxDecoration(
         border: Border(
           top: BorderSide(color: colors.border, width: 1),

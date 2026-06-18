@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../models/habit.dart';
@@ -135,19 +134,6 @@ class _WeekCalendarState extends State<WeekCalendar> {
     return priorities;
   }
 
-  Color _priorityColor(int priority) {
-    switch (priority) {
-      case 1:
-        return Colors.red;
-      case 2:
-        return Colors.yellow;
-      case 3:
-        return const Color(0xFF0066FF); // Синий цвет (не голубой)
-      default:
-        return Colors.grey;
-    }
-  }
-
   // Есть ли на дату активная привычка (по расписанию и периоду).
   bool _hasHabitOn(DateTime date) {
     final d = DateTime(date.year, date.month, date.day);
@@ -165,48 +151,25 @@ class _WeekCalendarState extends State<WeekCalendar> {
     return false;
   }
 
-  // Метки под днём: задачи — квадраты со скруглёнными краями (по приоритетам),
-  // привычки — круг, события — звёздочка.
+  // Метки под днём: единый стиль — одинаковые кружки системных цветов iOS.
+  // По одному кружку на КАТЕГОРИЮ, присутствующую в дне (не на каждый элемент):
+  // задачи — systemRed, привычки — systemBlue, события — systemOrange.
   Widget _buildDayIndicators(DateTime date) {
     const size = 6.0;
 
-    final markers = <Widget>[];
+    final markers = <Color>[];
 
-    // Задачи — скруглённые квадратики (по одному на каждый присутствующий приоритет).
-    final priorities = _getPrioritiesForDate(date).toList()..sort();
-    for (final p in priorities) {
-      markers.add(Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: _priorityColor(p),
-          borderRadius: BorderRadius.circular(2),
-        ),
-      ));
+    // Задачи (любого приоритета) — один красный кружок.
+    if (_getPrioritiesForDate(date).isNotEmpty) {
+      markers.add(const Color(0xFFFF3B30)); // systemRed
     }
-
-    // Привычка — круг.
+    // Привычки — один зелёный кружок.
     if (_hasHabitOn(date)) {
-      markers.add(Container(
-        width: size,
-        height: size,
-        decoration: const BoxDecoration(
-          color: Color(0xFF34C759),
-          shape: BoxShape.circle,
-        ),
-      ));
+      markers.add(const Color(0xFF34C759)); // systemGreen
     }
-
-    // Событие — звёздочка (рисуем сами, чтобы она была точно по центру —
-    // у иконочного глифа звезды центр смещён вниз).
+    // События — один оранжевый кружок.
     if (_hasEventOn(date)) {
-      markers.add(SizedBox(
-        width: size + 2,
-        height: size + 2,
-        child: CustomPaint(
-          painter: _StarPainter(const Color(0xFFFF2D55)),
-        ),
-      ));
+      markers.add(const Color(0xFFFF9500)); // systemOrange
     }
 
     // Всегда фиксированная высота для выравнивания дней.
@@ -222,8 +185,15 @@ class _WeekCalendarState extends State<WeekCalendar> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           for (int i = 0; i < markers.length; i++) ...[
-            if (i > 0) const SizedBox(width: 2),
-            markers[i],
+            if (i > 0) const SizedBox(width: 3),
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: markers[i],
+                shape: BoxShape.circle,
+              ),
+            ),
           ],
         ],
       ),
@@ -248,18 +218,12 @@ class _WeekCalendarState extends State<WeekCalendar> {
                 child: Container(
                   width: double.infinity,
                   margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  padding: const EdgeInsets.symmetric(vertical: 8.5),
                   decoration: BoxDecoration(
                     color: isActive
                         ? const Color(0xFFDC3545)
                         : colors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                    border: isToday
-                        ? Border.all(
-                            color: const Color(0xFFDC3545),
-                            width: 2,
-                          )
-                        : null,
+                    borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.03),
@@ -268,6 +232,18 @@ class _WeekCalendarState extends State<WeekCalendar> {
                       ),
                     ],
                   ),
+                  // Рамка текущего дня рисуется ПОВЕРХ (foregroundDecoration) и
+                  // внутри контура — не добавляется к layout-паддингу блока,
+                  // поэтому метки под днями остаются на одном уровне со всеми.
+                  foregroundDecoration: isToday
+                      ? BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFFDC3545),
+                            width: 2,
+                          ),
+                        )
+                      : null,
                   child: Column(
                     children: [
                       Text(
@@ -308,7 +284,7 @@ class _WeekCalendarState extends State<WeekCalendar> {
       padding: const EdgeInsets.only(bottom: 0, top: 5),
       // Высота под ряд дней + увеличенный отступ над метками + место под линией.
       child: SizedBox(
-        height: 92,
+        height: 94,
         child: PageView.builder(
           controller: _controller,
           physics: const BouncingScrollPhysics(),
@@ -338,42 +314,6 @@ class _WeekCalendarState extends State<WeekCalendar> {
       ),
     );
   }
-}
-
-// Залитая 5-конечная звезда, точно вписанная в центр бокса.
-class _StarPainter extends CustomPainter {
-  final Color color;
-  _StarPainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final outer = math.min(size.width, size.height) / 2;
-    final inner = outer * 0.46;
-    final path = Path();
-    for (int i = 0; i < 10; i++) {
-      final r = i.isEven ? outer : inner;
-      final angle = -math.pi / 2 + i * math.pi / 5;
-      final x = cx + r * math.cos(angle);
-      final y = cy + r * math.sin(angle);
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _StarPainter oldDelegate) =>
-      oldDelegate.color != color;
 }
 
 class DashedLinePainter extends CustomPainter {

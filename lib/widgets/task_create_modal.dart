@@ -1208,10 +1208,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                      // Заголовок с датой. Верхний отступ увеличен, чтобы
-                      // крестик закрытия аккуратно вместился над сегментом.
+                      // Заголовок с датой.
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 44, 20, 12),
+                        padding: const EdgeInsets.fromLTRB(20, 29, 20, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1601,12 +1600,14 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                           ),
                         ),
                       // Крестик закрытия (вверху справа) → плавно превращается
-                      // в подтверждение отмены изменений.
-                      Positioned(
-                        top: 14,
-                        right: 14,
-                        child: _buildCancelButton(colors),
-                      ),
+                      // в подтверждение отмены изменений. Показываем только на
+                      // шаге выбора времени, на этапе ввода крестика нет.
+                      if (_schedulingStep)
+                        Positioned(
+                          top: 14,
+                          right: 14,
+                          child: _buildCancelButton(colors),
+                        ),
                     ],
                   ),
                   ),

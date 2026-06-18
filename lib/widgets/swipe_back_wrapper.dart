@@ -27,22 +27,27 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
   DateTime? _lastMoveTime;
   double _lastMoveX = 0;
   late AnimationController _animationController;
-  late Animation<double> _offsetAnimation;
   static const double _edgeThreshold = 30.0;
-  
+  // Базовая длительность снапа; реальная масштабируется по остатку пути,
+  // чтобы короткий доводок не тянулся и не казался «рывком».
+  static const int _snapDurationMs = 320;
+
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: _snapDurationMs),
     );
-    _offsetAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    );
+    // Один-единственный слушатель: гонит смещение напрямую из контроллера
+    // (линейно, без CurvedAnimation-ремапа → нет скачка при отпускании).
+    _animationController.addListener(() {
+      if (!_isDragging) {
+        setState(() => _animatedOffset = _animationController.value);
+      }
+    });
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -54,20 +59,11 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
     final colors = AppColors.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     // Используем анимацию, если не тянем, иначе используем реальное значение
-    final currentOffset = _isDragging 
-        ? _dragOffset 
+    final currentOffset = _isDragging
+        ? _dragOffset
         : _animatedOffset * screenWidth;
     final progress = (currentOffset / screenWidth).clamp(0.0, 1.0);
-    
-    // Слушаем анимацию для плавного движения
-    _offsetAnimation.addListener(() {
-      if (!_isDragging) {
-        setState(() {
-          _animatedOffset = _offsetAnimation.value;
-        });
-      }
-    });
-    
+
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
@@ -124,12 +120,27 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
           
           // Определяем, нужно ли завершить переход
           final shouldComplete = _dragOffset > screenWidth * 0.3 || velocity > 300;
-          
+
+          final start = (_dragOffset / screenWidth).clamp(0.0, 1.0);
+          _pointerId = null;
+          // Снимаем флаг drag и синхронизируем анимируемое смещение со стартовой
+          // позицией ДО запуска анимации — иначе первый кадр прыгнет.
+          setState(() {
+            _isDragging = false;
+            _dragOffset = 0;
+            _animatedOffset = start;
+          });
+          _animationController.value = start;
+
           if (shouldComplete) {
-            // Анимируем до конца экрана плавно
-            _animationController.value = _dragOffset / screenWidth;
-            _animatedOffset = _dragOffset / screenWidth;
-            _animationController.forward().then((_) {
+            // animateTo стартует из текущего значения (без ремапа кривой) →
+            // плавный доводок до края. Длительность по остатку пути.
+            final ms = ((1.0 - start) * _snapDurationMs).clamp(120, _snapDurationMs).round();
+            _animationController
+                .animateTo(1.0,
+                    duration: Duration(milliseconds: ms), curve: Curves.easeOut)
+                .then((_) {
+              if (!mounted) return;
               if (widget.onSwipeBack != null) {
                 widget.onSwipeBack!();
               } else {
@@ -140,47 +151,50 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> with SingleTickerPr
               }
             });
           } else {
-            // Анимируем обратно к началу плавно
-            _animationController.value = _dragOffset / screenWidth;
-            _animatedOffset = _dragOffset / screenWidth;
-            _animationController.reverse();
+            final ms = (start * _snapDurationMs).clamp(120, _snapDurationMs).round();
+            _animationController.animateBack(0.0,
+                duration: Duration(milliseconds: ms), curve: Curves.easeOut);
           }
-          
-          _pointerId = null;
-          setState(() {
-            _isDragging = false;
-            _dragOffset = 0;
-          });
         }
       },
       onPointerCancel: (event) {
         if (_pointerId == event.pointer) {
           final screenWidth = MediaQuery.of(context).size.width;
-          _animationController.value = _dragOffset / screenWidth;
-          _animatedOffset = _dragOffset / screenWidth;
-          _animationController.reverse();
+          final start = (_dragOffset / screenWidth).clamp(0.0, 1.0);
           _pointerId = null;
           setState(() {
             _isDragging = false;
             _dragOffset = 0;
+            _animatedOffset = start;
           });
+          _animationController.value = start;
+          final ms = (start * _snapDurationMs).clamp(120, _snapDurationMs).round();
+          _animationController.animateBack(0.0,
+              duration: Duration(milliseconds: ms), curve: Curves.easeOut);
         }
       },
       child: Stack(
         children: [
-          // Предыдущий экран (остается на месте, слегка затемняется) - как в CupertinoPageRoute
+          // Предыдущий экран: едет из-под текущего (параллакс) и проявляется
+          // по мере завершения свайпа — как в CupertinoPageRoute. При progress=1
+          // он на месте и при полной яркости, поэтому передача управления
+          // (pop / onSwipeBack) проходит бесшовно, без вспышки.
           if (progress > 0)
             Positioned.fill(
               child: Container(
                 color: colors.background,
                 child: widget.previousScreen != null
-                    ? Opacity(
-                        opacity: 1.0 - (0.3 * progress), // Легкое затемнение при свайпе
-                        child: widget.previousScreen!,
+                    ? Transform.translate(
+                        // Сдвиг влево на четверть экрана в начале → к 0 в конце.
+                        offset: Offset(-screenWidth * 0.25 * (1 - progress), 0),
+                        child: Opacity(
+                          opacity: 0.7 + 0.3 * progress,
+                          child: widget.previousScreen!,
+                        ),
                       )
                     : Container(
-                        // Если предыдущий экран не передан, показываем затемненный фон
-                        color: colors.surfaceVariant.withValues(alpha: 1.0 - (0.3 * progress)),
+                        color: colors.surfaceVariant
+                            .withValues(alpha: 0.7 + 0.3 * progress),
                       ),
               ),
             ),

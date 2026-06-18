@@ -451,6 +451,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       'linkedElementType': note['linkedElementType'],
       'linkedElementId': note['linkedElementId'],
       'notify': note['notify'] ?? true,
+      // Сохраняем флаг «на весь день», иначе после редактирования заметка
+      // теряет статус и уезжает из верхней ленты в тело таймлайна.
+      'allDay': note['allDay'] ?? false,
     };
     try {
       final notes = await noteRepository.loadNotes(userId);
