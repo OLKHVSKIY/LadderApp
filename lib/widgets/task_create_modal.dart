@@ -85,12 +85,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   // Свайп-вниз для закрытия шторки: текущее смещение и контроллер «доводки».
   double _dragDy = 0.0;
   late AnimationController _dragController;
-  // Свайп-вниз в ЛЮБОЙ области контента (поверх скролла). Тянем шторку вниз,
-  // только когда внутренний скролл уже наверху; при этом блокируем скролл.
-  final ScrollController _mainScrollController = ScrollController();
-  bool _sheetDragActive = false;
-  double _sheetDragVelocity = 0.0;
-  int _lastSheetDragTime = 0;
   // Крестик закрытия (вверху справа) разворачивается в подтверждение отмены.
   bool _cancelConfirmOpen = false;
   late AnimationController _cancelController;
@@ -489,7 +483,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     _wavesAnimationController.dispose();
     _buttonsSlideController?.dispose();
     _dragController.dispose();
-    _mainScrollController.dispose();
     _cancelController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -635,46 +628,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     setState(() {
       _dragDy = (_dragDy + details.delta.dy).clamp(0.0, double.infinity);
     });
-  }
-
-  // Свайп-вниз в любой области контента. Используем Listener (наблюдает за
-  // указателем, не конкурируя в gesture-арене со скроллом). Начинаем тянуть
-  // шторку только если скролл уже наверху и палец идёт вниз.
-  bool get _scrollAtTop =>
-      !_mainScrollController.hasClients ||
-      _mainScrollController.position.pixels <= 0;
-
-  void _onContentPointerMove(PointerMoveEvent e) {
-    if (_dragController.isAnimating) return;
-    final dy = e.delta.dy;
-    if (!_sheetDragActive) {
-      // Начинаем закрытие только при движении вниз с верхней позиции скролла.
-      if (dy > 0 && _scrollAtTop) {
-        _sheetDragActive = true;
-        _lastSheetDragTime = e.timeStamp.inMilliseconds;
-      } else {
-        return;
-      }
-    }
-    final now = e.timeStamp.inMilliseconds;
-    final dt = now - _lastSheetDragTime;
-    if (dt > 0) _sheetDragVelocity = dy / dt * 1000.0;
-    _lastSheetDragTime = now;
-    setState(() {
-      _dragDy = (_dragDy + dy).clamp(0.0, double.infinity);
-    });
-  }
-
-  void _onContentPointerUp(PointerUpEvent e) {
-    if (!_sheetDragActive) return;
-    _sheetDragActive = false;
-    _onSheetDragEnd(
-      DragEndDetails(
-        velocity: Velocity(pixelsPerSecond: Offset(0, _sheetDragVelocity)),
-      ),
-      MediaQuery.of(context).size.height * 0.9,
-    );
-    _sheetDragVelocity = 0.0;
   }
 
   // Отпустили: достаточно утянули или резкий флик вниз — закрываем,
@@ -1163,6 +1116,12 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     // Просмотр события: компактная шторка (максимум — пол-экрана, минимум —
     // по содержимому), закрывается крестиком без подтверждения.
     final bool eventViewing = _isEvent && _eventView;
+    // Высота шторки — 97% экрана, но не залезаем под статус-бар/Dynamic Island
+    // (оставляем верхний safe-area отступ + небольшой зазор).
+    final double screenH = MediaQuery.of(context).size.height;
+    final double topSafe = MediaQuery.of(context).padding.top;
+    final double sheetHeight =
+        (screenH * 0.97).clamp(0.0, screenH - topSafe - 6);
     return Positioned.fill(
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 300),
@@ -1189,7 +1148,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                   // Иначе — 90% высоты экрана.
                   height: eventViewing
                       ? null
-                      : MediaQuery.of(context).size.height * 0.9,
+                      : sheetHeight,
                   constraints: eventViewing
                       ? BoxConstraints(
                           maxHeight: MediaQuery.of(context).size.height * 0.5,
@@ -1219,60 +1178,58 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         eventViewing ? MainAxisSize.min : MainAxisSize.max,
                     children: [
                       // Грабер-«язычок» + зона свайпа вниз для закрытия шторки.
+                      // Зона свайпа тянется от верха шторки до верхней грани
+                      // секции Задача/Привычка/Событие (или до полей, если её нет).
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onVerticalDragUpdate: _onSheetDragUpdate,
                         onVerticalDragEnd: (d) => _onSheetDragEnd(
                           d,
-                          MediaQuery.of(context).size.height * 0.9,
+                          sheetHeight,
                         ),
                         child: Container(
                           width: double.infinity,
                           color: Colors.transparent,
-                          padding: const EdgeInsets.only(top: 10, bottom: 4),
-                          child: Center(
-                            child: Container(
-                              // Размер как у черточки открытия верхней шторки.
-                              width: 45,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                // В светлой теме — как черточка хедера.
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? colors.border
-                                    : const Color(0xFFC2C1C1),
-                                borderRadius: BorderRadius.circular(5),
-                              ),
+                          alignment: Alignment.topCenter,
+                          // bottom: пустой промежуток до секции переключателя
+                          // (раньше был в хедере: top 22 + SizedBox 15 + 4),
+                          // теперь входит в зону свайпа.
+                          padding: EdgeInsets.only(
+                            top: 10,
+                            bottom: _showModeToggle ? 41 : 4,
+                          ),
+                          child: Container(
+                            // Размер как у черточки открытия верхней шторки.
+                            width: 45,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              // В светлой теме — как черточка хедера.
+                              color: Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? colors.border
+                                  : const Color(0xFFC2C1C1),
+                              borderRadius: BorderRadius.circular(5),
                             ),
                           ),
                         ),
                       ),
                       // Прокручиваемая часть (заголовок, поля, чипы).
+                      // Свайп-вниз закрывает шторку ТОЛЬКО в зоне грабера выше —
+                      // здесь обычный скролл, без перехвата жеста закрытия.
                       Flexible(
                         fit: eventViewing
                             ? FlexFit.loose
                             : FlexFit.tight,
-                        child: Listener(
-                          onPointerMove: _onContentPointerMove,
-                          onPointerUp: _onContentPointerUp,
-                          onPointerCancel: (_) {
-                            if (_sheetDragActive) {
-                              _onContentPointerUp(PointerUpEvent(
-                                timeStamp: Duration.zero,
-                              ));
-                            }
-                          },
-                          child: SingleChildScrollView(
-                          controller: _mainScrollController,
-                          physics: _sheetDragActive
-                              ? const NeverScrollableScrollPhysics()
-                              : null,
+                        child: SingleChildScrollView(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                       // Заголовок с датой.
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
+                        // Верхний отступ перенесён в зону грабера (для свайпа),
+                        // когда показан переключатель Задача/Привычка/Событие.
+                        padding: EdgeInsets.fromLTRB(
+                            20, _showModeToggle ? 0 : 22, 20, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1475,7 +1432,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                             ],
                           ),
                         ),
-                      ),
                       ),
                       // Нижняя закреплённая секция: плавно поднимается вместе с
                       // клавиатурой (bottom = высота клавиатуры; iOS обновляет
@@ -1742,14 +1698,20 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                             onTap: _closeCancelConfirm,
                           ),
                         ),
-                      // Крестик закрытия (вверху справа) → плавно превращается
-                      // в подтверждение отмены изменений. Показываем только на
-                      // шаге выбора времени, на этапе ввода крестика нет.
+                      // Крестик закрытия (вверху справа). На шаге выбора времени —
+                      // с подтверждением (_buildCancelButton); на этапе ввода —
+                      // простой крестик, сразу закрывает шторку (без подтверждения).
                       if (_schedulingStep)
                         Positioned(
                           top: 14,
                           right: 14,
                           child: _buildCancelButton(colors),
+                        )
+                      else if (!eventViewing)
+                        Positioned(
+                          top: 14,
+                          right: 14,
+                          child: _buildSimpleCloseButton(colors),
                         ),
                     ],
                   ),
@@ -1849,7 +1811,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                 onVerticalDragUpdate: _onSheetDragUpdate,
                 onVerticalDragEnd: (d) => _onSheetDragEnd(
                   d,
-                  MediaQuery.of(context).size.height * 0.9,
+                  MediaQuery.of(context).size.height * 0.93,
                 ),
                 child: Container(
                   alignment: Alignment.center,
@@ -2975,6 +2937,32 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
           ],
         );
       },
+    );
+  }
+
+  // Простой крестик закрытия (тот же стиль, что на шаге выбора времени) —
+  // сразу закрывает шторку, без карточки-подтверждения.
+  Widget _buildSimpleCloseButton(AppColors colors) {
+    return GestureDetector(
+      onTap: _handleClose,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.32),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: colors.border.withValues(alpha: 0.6),
+            width: 0.5,
+          ),
+        ),
+        child: const Icon(
+          CupertinoIcons.xmark,
+          size: 18,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 

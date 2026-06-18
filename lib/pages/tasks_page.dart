@@ -26,6 +26,8 @@ import '../widgets/streak_celebration.dart';
 import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
 import '../data/repositories/task_repository.dart';
+import '../data/repositories/note_repository.dart';
+import 'dart:convert';
 import '../data/repositories/habit_repository.dart';
 import '../models/habit.dart';
 import '../widgets/habits_section.dart';
@@ -647,10 +649,52 @@ class _TasksPageState extends State<TasksPage> {
       _showError(tr('Некорректный id задачи'));
       return;
     }
+    // Запоминаем задачу до удаления, чтобы убрать связанный блок на таймлайне.
+    Task? deleted;
+    for (final t in _tasks) {
+      if (t.id == id) {
+        deleted = t;
+        break;
+      }
+    }
     await _taskRepository.deleteTask(intId);
+    if (deleted != null) {
+      await _deleteLinkedTimelineNotes(deleted);
+    }
     _loadTasksForDate(_selectedDate);
     _loadWeekTasks();
     _loadTodayCounts();
+  }
+
+  /// Удаляет на таймлайне «Списка» блок(и), созданный вместе с этой задачей.
+  /// Связь по id ненадёжна (у задачи и заметки разные id), поэтому ищем по
+  /// названию и совпадению дня начала.
+  Future<void> _deleteLinkedTimelineNotes(Task task) async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    try {
+      final repo = NoteRepository(appDatabase);
+      final notes = await repo.loadNotes(userId);
+      for (final note in notes) {
+        if (note.id == null) continue;
+        try {
+          final data = jsonDecode(note.content) as Map<String, dynamic>;
+          if (data['type'] != 'timeline') continue;
+          if (data['linkedElementType'] != 'task') continue;
+          if (note.title != task.title) continue;
+          final start = DateTime.parse(data['startTime'] as String);
+          if (start.year == task.date.year &&
+              start.month == task.date.month &&
+              start.day == task.date.day) {
+            await repo.deleteNote(note.id!);
+          }
+        } catch (_) {
+          // Некорректная заметка — пропускаем.
+        }
+      }
+    } catch (_) {
+      // Ошибки чистки таймлайна не должны блокировать удаление задачи.
+    }
   }
 
   void _removeMenuOverlay() {
