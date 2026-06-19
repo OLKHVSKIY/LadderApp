@@ -11,6 +11,7 @@ class TaskList extends StatelessWidget {
   final String? openMenuTaskId;
   final Function(String?, GlobalKey?)? onMenuToggle;
   final Function(String)? onTaskDelete;
+  final void Function(String taskId, List<SubTask> updated)? onSubtasksChanged;
   final bool isLoading;
 
   const TaskList({
@@ -21,6 +22,7 @@ class TaskList extends StatelessWidget {
     this.openMenuTaskId,
     this.onMenuToggle,
     this.onTaskDelete,
+    this.onSubtasksChanged,
     this.isLoading = false,
   });
 
@@ -140,7 +142,7 @@ class TaskList extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: TaskCard(
                         key: ValueKey(task.id),
                         task: task,
@@ -149,6 +151,10 @@ class TaskList extends StatelessWidget {
                         openMenuTaskId: openMenuTaskId,
                         onMenuToggle: onMenuToggle,
                         onDelete: onTaskDelete,
+                        onSubtasksChanged: onSubtasksChanged == null
+                            ? null
+                            : (updated) =>
+                                onSubtasksChanged!(task.id, updated),
                       ),
                     ),
                     // Имя создателя задачи справа под блоком задачи

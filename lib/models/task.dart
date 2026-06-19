@@ -1,5 +1,36 @@
 import 'attached_file.dart';
 
+/// Пункт чек-листа внутри задачи (подзадача).
+class SubTask {
+  final String id;
+  final String title;
+  final bool isCompleted;
+
+  const SubTask({
+    required this.id,
+    required this.title,
+    this.isCompleted = false,
+  });
+
+  SubTask copyWith({String? id, String? title, bool? isCompleted}) => SubTask(
+        id: id ?? this.id,
+        title: title ?? this.title,
+        isCompleted: isCompleted ?? this.isCompleted,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'title': title,
+        'done': isCompleted,
+      };
+
+  factory SubTask.fromMap(Map<String, dynamic> map) => SubTask(
+        id: map['id'] as String,
+        title: map['title'] as String? ?? '',
+        isCompleted: map['done'] as bool? ?? false,
+      );
+}
+
 class Task {
   final String id;
   final String title;
@@ -10,6 +41,7 @@ class Task {
   final DateTime? endDate; // для периода
   final bool isCompleted;
   final List<AttachedFile>? attachedFiles;
+  final List<SubTask> subtasks; // чек-лист внутри задачи
   final String? creatorName; // Имя создателя задачи (для кастомных экранов)
 
   Task({
@@ -22,8 +54,23 @@ class Task {
     this.endDate,
     this.isCompleted = false,
     this.attachedFiles,
+    this.subtasks = const [],
     this.creatorName,
   });
+
+  Task copyWith({List<SubTask>? subtasks, bool? isCompleted}) => Task(
+        id: id,
+        title: title,
+        description: description,
+        priority: priority,
+        tags: tags,
+        date: date,
+        endDate: endDate,
+        isCompleted: isCompleted ?? this.isCompleted,
+        attachedFiles: attachedFiles,
+        subtasks: subtasks ?? this.subtasks,
+        creatorName: creatorName,
+      );
 
   // Mock данные для тестирования
   static List<Task> getMockTasks() {

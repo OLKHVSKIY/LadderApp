@@ -693,6 +693,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _subtasksMeta = const VerificationMeta(
+    'subtasks',
+  );
+  @override
+  late final GeneratedColumn<String> subtasks = GeneratedColumn<String>(
+    'subtasks',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -707,6 +718,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     createdAt,
     updatedAt,
     isDeleted,
+    subtasks,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -801,6 +813,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
       );
     }
+    if (data.containsKey('subtasks')) {
+      context.handle(
+        _subtasksMeta,
+        subtasks.isAcceptableOrUnknown(data['subtasks']!, _subtasksMeta),
+      );
+    }
     return context;
   }
 
@@ -858,6 +876,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_deleted'],
       )!,
+      subtasks: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subtasks'],
+      ),
     );
   }
 
@@ -880,6 +902,7 @@ class Task extends DataClass implements Insertable<Task> {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isDeleted;
+  final String? subtasks;
   const Task({
     required this.id,
     this.uuid,
@@ -893,6 +916,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.createdAt,
     required this.updatedAt,
     required this.isDeleted,
+    this.subtasks,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -915,6 +939,9 @@ class Task extends DataClass implements Insertable<Task> {
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['is_deleted'] = Variable<bool>(isDeleted);
+    if (!nullToAbsent || subtasks != null) {
+      map['subtasks'] = Variable<String>(subtasks);
+    }
     return map;
   }
 
@@ -936,6 +963,9 @@ class Task extends DataClass implements Insertable<Task> {
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       isDeleted: Value(isDeleted),
+      subtasks: subtasks == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subtasks),
     );
   }
 
@@ -957,6 +987,7 @@ class Task extends DataClass implements Insertable<Task> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      subtasks: serializer.fromJson<String?>(json['subtasks']),
     );
   }
   @override
@@ -975,6 +1006,7 @@ class Task extends DataClass implements Insertable<Task> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'isDeleted': serializer.toJson<bool>(isDeleted),
+      'subtasks': serializer.toJson<String?>(subtasks),
     };
   }
 
@@ -991,6 +1023,7 @@ class Task extends DataClass implements Insertable<Task> {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
+    Value<String?> subtasks = const Value.absent(),
   }) => Task(
     id: id ?? this.id,
     uuid: uuid.present ? uuid.value : this.uuid,
@@ -1004,6 +1037,7 @@ class Task extends DataClass implements Insertable<Task> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     isDeleted: isDeleted ?? this.isDeleted,
+    subtasks: subtasks.present ? subtasks.value : this.subtasks,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1023,6 +1057,7 @@ class Task extends DataClass implements Insertable<Task> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      subtasks: data.subtasks.present ? data.subtasks.value : this.subtasks,
     );
   }
 
@@ -1040,7 +1075,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('isCompleted: $isCompleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('subtasks: $subtasks')
           ..write(')'))
         .toString();
   }
@@ -1059,6 +1095,7 @@ class Task extends DataClass implements Insertable<Task> {
     createdAt,
     updatedAt,
     isDeleted,
+    subtasks,
   );
   @override
   bool operator ==(Object other) =>
@@ -1075,7 +1112,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.isCompleted == this.isCompleted &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.isDeleted == this.isDeleted);
+          other.isDeleted == this.isDeleted &&
+          other.subtasks == this.subtasks);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1091,6 +1129,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<bool> isDeleted;
+  final Value<String?> subtasks;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.uuid = const Value.absent(),
@@ -1104,6 +1143,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.subtasks = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -1118,6 +1158,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.subtasks = const Value.absent(),
   }) : userId = Value(userId),
        title = Value(title),
        date = Value(date);
@@ -1134,6 +1175,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<bool>? isDeleted,
+    Expression<String>? subtasks,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1148,6 +1190,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (isDeleted != null) 'is_deleted': isDeleted,
+      if (subtasks != null) 'subtasks': subtasks,
     });
   }
 
@@ -1164,6 +1207,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<bool>? isDeleted,
+    Value<String?>? subtasks,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -1178,6 +1222,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,
+      subtasks: subtasks ?? this.subtasks,
     );
   }
 
@@ -1220,6 +1265,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (isDeleted.present) {
       map['is_deleted'] = Variable<bool>(isDeleted.value);
     }
+    if (subtasks.present) {
+      map['subtasks'] = Variable<String>(subtasks.value);
+    }
     return map;
   }
 
@@ -1237,7 +1285,8 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('isCompleted: $isCompleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('subtasks: $subtasks')
           ..write(')'))
         .toString();
   }
@@ -11298,6 +11347,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<bool> isDeleted,
+      Value<String?> subtasks,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
     TasksCompanion Function({
@@ -11313,6 +11363,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<bool> isDeleted,
+      Value<String?> subtasks,
     });
 
 final class $$TasksTableReferences
@@ -11455,6 +11506,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<bool> get isDeleted => $composableBuilder(
     column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subtasks => $composableBuilder(
+    column: $table.subtasks,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11621,6 +11677,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get subtasks => $composableBuilder(
+    column: $table.subtasks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$UsersTableOrderingComposer get userId {
     final $$UsersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11690,6 +11751,9 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<bool> get isDeleted =>
       $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<String> get subtasks =>
+      $composableBuilder(column: $table.subtasks, builder: (column) => column);
 
   $$UsersTableAnnotationComposer get userId {
     final $$UsersTableAnnotationComposer composer = $composerBuilder(
@@ -11835,6 +11899,7 @@ class $$TasksTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<String?> subtasks = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 uuid: uuid,
@@ -11848,6 +11913,7 @@ class $$TasksTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 isDeleted: isDeleted,
+                subtasks: subtasks,
               ),
           createCompanionCallback:
               ({
@@ -11863,6 +11929,7 @@ class $$TasksTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<String?> subtasks = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 uuid: uuid,
@@ -11876,6 +11943,7 @@ class $$TasksTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 isDeleted: isDeleted,
+                subtasks: subtasks,
               ),
           withReferenceMapper: (p0) => p0
               .map(

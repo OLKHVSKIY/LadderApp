@@ -104,6 +104,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   DateTime? _attachingNoteStartTime;
   DateTime? _attachingNoteEndTime;
   bool _attachingNoteNotify = true; // Уведомлять о начале события
+  bool _attachingNoteAllDay = false; // Задача «на весь день» — без уведомлений
   double _attachingNoteHeight = 0.0;
   double _attachingNoteWidth = 0.0; // Ширина заметки (от левого края)
   // Экранная Y-позиция верха заметки (относительно верха шкалы) во время
@@ -387,6 +388,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       _attachingNoteStartTime = startTime;
       _attachingNoteEndTime = endTime;
       _attachingNoteNotify = note['notify'] as bool? ?? true;
+      _attachingNoteAllDay = note['allDay'] == true;
 
       // Вычисляем высоту и ширину на основе времени
       final hourHeight = _getHourHeight(context);
@@ -548,6 +550,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         'linkedElementType': _attachingNoteLinkedElementType,
         'linkedElementId': _attachingNoteLinkedElementId,
         'notify': _attachingNoteNotify,
+        'allDay': _attachingNoteAllDay,
       };
 
       // Загружаем существующую заметку
@@ -577,7 +580,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       await noteRepository.saveNote(updatedNote, userId);
       // Перепланируем уведомление на (новое) время начала заметки, если
       // уведомления включены; иначе отменяем ранее запланированное.
-      if (_attachingNoteNotify) {
+      // Задачи «на весь день» уведомлений не получают.
+      if (_attachingNoteNotify && !_attachingNoteAllDay) {
         await NotificationService.instance.scheduleNoteReminder(
           id: intNoteId,
           title: _attachingNoteTitle!,
@@ -1055,6 +1059,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     _attachingNoteLinkedElementType = linkedElementType;
     _attachingNoteLinkedElementId = linkedElementId;
     _attachingNoteNotify = notify;
+    _attachingNoteAllDay = false;
     final now = DateTime.now();
     final hourHeight = _getHourHeight(context);
     final linesPerHour = _getTimeLinesCount();
@@ -1167,6 +1172,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         'linkedElementType': _attachingNoteLinkedElementType,
         'linkedElementId': _attachingNoteLinkedElementId,
         'notify': _attachingNoteNotify,
+        'allDay': _attachingNoteAllDay,
       };
 
       // Создаем NoteModel для сохранения
@@ -2251,7 +2257,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           }
           return false;
         },
-        child: ClipRect(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+          ClipRect(
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -2377,9 +2386,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
             // Блок-превью заметки в режиме прикрепления/редактирования
             if ((_isAttachingNote || _isEditingNote) && _attachingNoteStartTime != null && _listViewType == ListViewType.oneDay && _isSameDay(_selectedDate, _attachingNoteStartTime!))
               _buildAttachingNotePreview(context, lineHeight),
-            // Индикатор текущего времени (красная линия с меткой времени) - поверх заметок
-            // Показываем только для сегодняшнего дня
-            // Позиция вычисляется относительно прокрученного контента
+            ],
+          ),
+          ),
+            // Индикатор текущего времени (красная линия с меткой времени).
+            // Вынесен из ClipRect, чтобы овал времени не обрезался у верха
+            // (как в недельном виде). Показываем только для сегодняшнего дня.
             if (_shouldShowCurrentTimeIndicator())
               Positioned(
                 top: (_getCurrentTimePosition(context) - _currentScrollOffset).clamp(0.0, double.infinity),
@@ -2390,8 +2402,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                   child: _buildCurrentTimeIndicator(),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

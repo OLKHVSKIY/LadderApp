@@ -343,7 +343,9 @@ class _PomodoroTimerState extends State<PomodoroTimer>
                       ),
                     ),
                   ),
-                  const Spacer(),
+                  // Нижний отступ больше верхнего — кольцо таймера
+                  // поднимается ближе к центру экрана.
+                  const Spacer(flex: 2),
                   // Управление: главная кнопка Старт/Пауза + пропуск фазы.
                   Padding(
                     padding: const EdgeInsets.only(bottom: 28),

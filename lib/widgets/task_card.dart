@@ -19,6 +19,8 @@ class TaskCard extends StatefulWidget {
   final String? openMenuTaskId;
   final Function(String?, GlobalKey?)? onMenuToggle;
   final Function(String)? onDelete;
+  // Колбэк изменения чек-листа: возвращает обновлённый список подзадач.
+  final void Function(List<SubTask>)? onSubtasksChanged;
 
   const TaskCard({
     super.key,
@@ -27,6 +29,7 @@ class TaskCard extends StatefulWidget {
     this.openMenuTaskId,
     this.onMenuToggle,
     this.onDelete,
+    this.onSubtasksChanged,
   });
 
   @override
@@ -261,6 +264,115 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
     }
     
     return lineMetrics;
+  }
+
+  void _toggleSubtask(int index) {
+    HapticFeedback.selectionClick();
+    final updated = List<SubTask>.from(widget.task.subtasks);
+    updated[index] =
+        updated[index].copyWith(isCompleted: !updated[index].isCompleted);
+    widget.onSubtasksChanged?.call(updated);
+  }
+
+  // Компактный чек-лист подзадач с индикатором прогресса.
+  Widget _buildSubtasks(AppColors colors) {
+    final subtasks = widget.task.subtasks;
+    final done = subtasks.where((s) => s.isCompleted).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Индикатор прогресса: тонкая полоса + счётчик.
+        Row(
+          children: [
+            Icon(Icons.checklist_rounded,
+                size: 14, color: colors.textTertiary),
+            const SizedBox(width: 6),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(
+                    begin: 0,
+                    end: subtasks.isEmpty ? 0 : done / subtasks.length,
+                  ),
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => LinearProgressIndicator(
+                    value: value,
+                    minHeight: 3,
+                    backgroundColor: colors.border,
+                    valueColor: AlwaysStoppedAnimation(
+                      _getPriorityColor(widget.task.priority),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$done/${subtasks.length}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: colors.textTertiary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        for (var i = 0; i < subtasks.length; i++)
+          GestureDetector(
+            onTap: () => _toggleSubtask(i),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: subtasks[i].isCompleted
+                          ? _getPriorityColor(widget.task.priority)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: subtasks[i].isCompleted
+                            ? _getPriorityColor(widget.task.priority)
+                            : (colors.isDark
+                                ? colors.textTertiary
+                                : const Color(0xFFB8B8BD)),
+                        width: 1.6,
+                      ),
+                    ),
+                    child: subtasks[i].isCompleted
+                        ? const Icon(Icons.check,
+                            size: 11, color: Colors.white)
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      subtasks[i].title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: subtasks[i].isCompleted
+                            ? colors.textTertiary
+                            : colors.textSecondary,
+                        decoration: subtasks[i].isCompleted
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        decorationColor: colors.textTertiary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -632,6 +744,11 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
                         isCompact: true,
                       ),
                     ],
+                    // Чек-лист подзадач
+                    if (widget.task.subtasks.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _buildSubtasks(colors),
+                    ],
                   ],
                 ),
               ),
@@ -669,7 +786,7 @@ class _TaskCardState extends State<TaskCard> with TickerProviderStateMixin {
       background: Padding(
         // Совпадает с нижним отступом карточки, чтобы кнопка центрировалась
         // по её высоте.
-        padding: const EdgeInsets.only(bottom: 4, right: 6),
+        padding: const EdgeInsets.only(bottom: 8, right: 6),
         child: Align(
           alignment: Alignment.centerRight,
           child: Container(

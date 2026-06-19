@@ -397,6 +397,7 @@ class _TasksPageState extends State<TasksPage> {
           endDate: null,
           isCompleted: false,
           attachedFiles: task.attachedFiles,
+          subtasks: task.subtasks,
         );
         await _taskRepository.addTask(copy);
         counter++;
@@ -432,6 +433,31 @@ class _TasksPageState extends State<TasksPage> {
       _loadWeekTasks();
       _loadTodayCounts();
     });
+  }
+
+  // Переключение пункта чек-листа в карточке: оптимистично обновляем список
+  // и сохраняем в БД.
+  void _updateTaskSubtasks(String taskId, List<SubTask> updated) {
+    final intId = int.tryParse(taskId);
+    if (intId == null) return;
+    final i = _tasks.indexWhere((t) => t.id == taskId);
+    final wasCompleted = i != -1 ? _tasks[i].isCompleted : false;
+    setState(() {
+      if (i != -1) {
+        _tasks[i] = _tasks[i].copyWith(subtasks: updated);
+      }
+    });
+    _taskRepository.updateSubtasks(intId, updated);
+    // Двусторонняя авто-связь чек-листа и статуса задачи:
+    // все пункты выполнены → задача выполнена; сняли пункт → задача открыта.
+    if (updated.isNotEmpty) {
+      final allDone = updated.every((s) => s.isCompleted);
+      if (allDone && !wasCompleted) {
+        _updateTaskCompletion(taskId, true);
+      } else if (!allDone && wasCompleted) {
+        _updateTaskCompletion(taskId, false);
+      }
+    }
   }
 
   // Баннер-празднование серии сверху экрана (огонь + перемотка счётчика).
@@ -966,6 +992,7 @@ class _TasksPageState extends State<TasksPage> {
                                 openMenuTaskId: _openMenuTaskId,
                                 onMenuToggle: _handleMenuToggle,
                                 onTaskDelete: _deleteTaskById,
+                                onSubtasksChanged: _updateTaskSubtasks,
                                 isLoading: _isLoadingTasks,
                               ),
                             ],

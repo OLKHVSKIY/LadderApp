@@ -117,6 +117,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   String _previousTitleText = '';
   String _previousDescriptionText = '';
   List<AttachedFile> _attachedFiles = [];
+  // Черновики подзадач/чек-листа задачи (id, title, isCompleted).
+  List<SubTask> _subtaskDrafts = [];
+  // Развёрнута ли inline-панель чек-листа под чипами.
+  bool _subtasksExpanded = false;
+  // Контроллер поля ввода нового пункта чек-листа.
+  final TextEditingController _subtaskInputController = TextEditingController();
+  final FocusNode _subtaskInputFocus = FocusNode();
   bool _isTagsExpanded = false;
   final ScrollController _chipsScrollController = ScrollController();
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -126,9 +133,17 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   int? _selectedScreenId; // null = "Мои задачи", иначе ID кастомного экрана
   List<db.CustomTaskScreen> _screens = [];
   // Режим повтора задачи (русский ключ перевода). 'Не повторять' = одна задача.
+  // 'Свой вариант' = кастомное правило (поля _custom* ниже).
   String _repeatMode = 'Не повторять';
   final GlobalKey _repeatChipKey = GlobalKey();
   OverlayEntry? _repeatMenuOverlay;
+  // Кастомное правило повтора (показывается inline-панелью под чипами).
+  bool _customRepeatExpanded = false;
+  String _customFreq = 'Неделя'; // 'День' / 'Неделя' / 'Месяц' / 'Год'
+  int _customInterval = 1; // «каждые N»
+  final Set<int> _customWeekdays = {}; // 1=Пн..7=Вс, для частоты «Неделя»
+  // Для частоты «Месяц»: 'День месяца' / 'Последний день' / 'N-й день недели'.
+  String _customMonthMode = 'День месяца';
 
   // Режим привычки.
   bool _isHabit = false;
@@ -270,6 +285,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       _selectedPriority = t.priority;
       _selectedDate = t.date;
       _attachedFiles = t.attachedFiles ?? [];
+      _subtaskDrafts = List<SubTask>.from(t.subtasks);
+      _subtasksExpanded = _subtaskDrafts.isNotEmpty;
       // Восстанавливаем время начала и длительность из существующей задачи.
       _scheduleStartMinutes = t.date.hour * 60 + t.date.minute;
       if (t.endDate != null) {
@@ -281,7 +298,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     }
     _animationController = AnimationController(
       // Длиннее открытие/закрытие — шторка двигается заметно мягче.
-      duration: const Duration(milliseconds: 460),
+      duration: const Duration(milliseconds: 560),
       reverseDuration: const Duration(milliseconds: 420),
       vsync: this,
     );
@@ -343,9 +360,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      // Плавная iOS-подобная кривая (мягкий старт и затухание в конце)
+      // Плавная iOS-подобная кривая (мягкий старт и долгое затухание в конце)
       // для максимально гладкого выезда и ухода шторки.
-      curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+      curve: const Cubic(0.16, 1.0, 0.3, 1.0),
       reverseCurve: Curves.easeInOutCubic,
     ));
     _wavesAnimation = Tween<double>(
@@ -482,6 +499,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     _titleController.dispose();
     _descriptionController.dispose();
     _tagsController.dispose();
+    _subtaskInputController.dispose();
+    _subtaskInputFocus.dispose();
     _titleFocusNode.dispose();
     _descriptionFocusNode.dispose();
     _chipsScrollController.dispose();
@@ -594,10 +613,12 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   }
 
   void _handleClose() {
-    // Не закрываем клавиатуру - пользователь может продолжать вводить текст.
+    if (!mounted) return;
+    // Клавиатуру убираем моментально, чтобы она не «висела» во время ухода
+    // шторки и закрытие ощущалось мгновенным.
+    FocusManager.instance.primaryFocus?.unfocus();
     // Сразу запускаем плавный обратный проигрыш (без задержки — иначе
     // закрытие ощущалось «отвязанным» от нажатия).
-    if (!mounted) return;
     _animationController.reverse().then((_) {
       widget.onClose();
     });
@@ -615,6 +636,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   void _onSheetDragEnd(DragEndDetails details, double sheetHeight) {
     final velocity = details.primaryVelocity ?? 0;
     final shouldClose = _dragDy > 140 || velocity > 700;
+    if (shouldClose) {
+      // Закрытие свайпом — клавиатура уходит моментально вместе со шторкой.
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
     final from = _dragDy;
     final to = shouldClose ? sheetHeight : 0.0;
     final tween = Tween<double>(begin: from, end: to);
@@ -736,6 +761,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
         endDate: start.add(Duration(minutes: _durationMinutes)),
         isCompleted: widget.initialTask?.isCompleted ?? false,
         attachedFiles: _attachedFiles.isNotEmpty ? _attachedFiles : null,
+        subtasks: _collectSubtasks(),
       );
       widget.onSave(task, _selectedScreenId);
       createdTasks.add(task);
@@ -799,6 +825,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     if (widget.initialTask != null || _repeatMode == 'Не повторять') {
       return [_selectedDate];
     }
+    if (_repeatMode == 'Свой вариант') {
+      return _generateCustomDates();
+    }
     final dates = <DateTime>[];
     for (var i = 0; i < 30; i++) {
       final d = _selectedDate.add(Duration(days: i));
@@ -817,6 +846,94 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       }
     }
     return dates.isEmpty ? [_selectedDate] : dates;
+  }
+
+  // Генерирует до 24 дат по кастомному правилу повтора.
+  List<DateTime> _generateCustomDates() {
+    const maxCount = 24;
+    final start = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final interval = _customInterval < 1 ? 1 : _customInterval;
+    final dates = <DateTime>[];
+
+    switch (_customFreq) {
+      case 'День':
+        for (var i = 0; dates.length < maxCount && i < maxCount * interval; i += interval) {
+          dates.add(start.add(Duration(days: i)));
+        }
+        break;
+      case 'Неделя':
+        // Если дни недели не выбраны — берём день недели исходной даты.
+        final days = _customWeekdays.isEmpty
+            ? {start.weekday}
+            : _customWeekdays;
+        // Начало недели (понедельник), к которой относится start.
+        final weekStart = start.subtract(Duration(days: start.weekday - 1));
+        for (var w = 0; dates.length < maxCount && w < maxCount * interval; w += interval) {
+          final base = weekStart.add(Duration(days: w * 7));
+          for (var wd = 1; wd <= 7; wd++) {
+            if (!days.contains(wd)) continue;
+            final d = base.add(Duration(days: wd - 1));
+            if (!d.isBefore(start)) dates.add(d);
+          }
+        }
+        dates.sort();
+        break;
+      case 'Месяц':
+        for (var m = 0; dates.length < maxCount && m < maxCount * interval; m += interval) {
+          final ym = start.year * 12 + (start.month - 1) + m;
+          final year = ym ~/ 12;
+          final month = ym % 12 + 1;
+          final daysInMonth = DateTime(year, month + 1, 0).day;
+          DateTime d;
+          if (_customMonthMode == 'Последний день') {
+            d = DateTime(year, month, daysInMonth);
+          } else if (_customMonthMode == 'N-й день недели') {
+            // Тот же порядковый номер дня недели, что у исходной даты.
+            final nth = ((start.day - 1) ~/ 7) + 1;
+            d = _nthWeekdayOfMonth(year, month, start.weekday, nth) ??
+                DateTime(year, month, daysInMonth);
+          } else {
+            // 'День месяца' — тот же день, с зажимом по длине месяца.
+            d = DateTime(year, month, start.day.clamp(1, daysInMonth));
+          }
+          if (!d.isBefore(start)) dates.add(d);
+        }
+        break;
+      case 'Год':
+        for (var y = 0; dates.length < maxCount && y < maxCount * interval; y += interval) {
+          final year = start.year + y;
+          final daysInMonth = DateTime(year, start.month + 1, 0).day;
+          dates.add(DateTime(year, start.month, start.day.clamp(1, daysInMonth)));
+        }
+        break;
+    }
+    return dates.isEmpty ? [start] : dates;
+  }
+
+  // Дата n-го вхождения дня недели weekday в месяце (null если такого нет).
+  DateTime? _nthWeekdayOfMonth(int year, int month, int weekday, int nth) {
+    final first = DateTime(year, month, 1);
+    final offset = (weekday - first.weekday + 7) % 7;
+    final day = 1 + offset + (nth - 1) * 7;
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    if (day > daysInMonth) return null;
+    return DateTime(year, month, day);
+  }
+
+  // Короткая сводка кастомного правила для подписи чипа.
+  String _customRepeatSummary() {
+    final n = _customInterval < 1 ? 1 : _customInterval;
+    switch (_customFreq) {
+      case 'День':
+        return n == 1 ? tr('Каждый день') : tr('Каждые {0} дн.', [n]);
+      case 'Неделя':
+        return n == 1 ? tr('Каждую неделю') : tr('Каждые {0} нед.', [n]);
+      case 'Месяц':
+        return n == 1 ? tr('Каждый месяц') : tr('Каждые {0} мес.', [n]);
+      case 'Год':
+        return n == 1 ? tr('Каждый год') : tr('Каждые {0} г.', [n]);
+    }
+    return tr('Свой вариант');
   }
 
   Future<void> _loadScreens() async {
@@ -1424,6 +1541,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                     // Овал с приоритетом
                                     _buildPriorityChip(),
                                     const SizedBox(width: 8),
+                                    // Овал чек-листа / подзадач
+                                    _buildSubtasksChip(),
+                                    const SizedBox(width: 8),
                                     // Овал прикрепить
                                     _buildAttachmentChip(),
                                     const SizedBox(width: 8),
@@ -1435,6 +1555,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         ),
                       ),
                       ),
+                      // Inline-панель кастомного правила повтора.
+                      if (!_isHabit && !_isEvent) _buildCustomRepeatPanel(),
+                      // Inline-панель чек-листа (подзадачи задачи).
+                      if (!_isHabit && !_isEvent) _buildSubtasksPanel(),
                             ],
                           ),
                         ),
@@ -3360,7 +3484,11 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
             ),
             const SizedBox(width: 8),
             Text(
-              active ? tr(_repeatMode) : tr('Повтор'),
+              !active
+                  ? tr('Повтор')
+                  : (_repeatMode == 'Свой вариант'
+                      ? _customRepeatSummary()
+                      : tr(_repeatMode)),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -3457,7 +3585,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     // позицию меряем как есть.
     final bottom = screenSize.height - (anchorPosition.dy - 6);
 
-    const options = ['Не повторять', 'Каждый день', 'По будням', 'Каждую неделю'];
+    const options = [
+      'Не повторять',
+      'Каждый день',
+      'По будням',
+      'Каждую неделю',
+      'Свой вариант'
+    ];
     _repeatMenuOverlay = OverlayEntry(
       builder: (context) => _RepeatGlassMenu(
         left: left,
@@ -3467,7 +3601,17 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
         currentValue: _repeatMode,
         onSelected: (v) {
           _removeRepeatMenu();
-          setState(() => _repeatMode = v);
+          setState(() {
+            _repeatMode = v;
+            if (v == 'Свой вариант') {
+              _customRepeatExpanded = true;
+              if (_customWeekdays.isEmpty) {
+                _customWeekdays.add(_selectedDate.weekday);
+              }
+            } else {
+              _customRepeatExpanded = false;
+            }
+          });
         },
         onClose: _removeRepeatMenu,
       ),
@@ -3967,6 +4111,488 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Чип «Чек-лист»: разворачивает inline-панель подзадач под чипами.
+  Widget _buildSubtasksChip() {
+    final colors = AppColors.of(context);
+    final count = _subtaskDrafts.where((s) => s.title.trim().isNotEmpty).length;
+    final active = _subtasksExpanded || count > 0;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _subtasksExpanded = !_subtasksExpanded);
+        if (_subtasksExpanded) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _subtaskInputFocus.requestFocus();
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.surfaceVariant,
+          borderRadius: BorderRadius.circular(20),
+          border: active
+              ? Border(left: BorderSide(color: colors.textPrimary, width: 4))
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.checklist_rounded,
+              size: 18,
+              color: active ? colors.textPrimary : colors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              count == 0 ? tr('Чек-лист') : tr('Чек-лист ({0})', [count]),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: active ? colors.textPrimary : colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Собирает пункты чек-листа, включая недописанный текст из поля ввода.
+  List<SubTask> _collectSubtasks() {
+    final list =
+        _subtaskDrafts.where((s) => s.title.trim().isNotEmpty).toList();
+    final pending = _subtaskInputController.text.trim();
+    if (pending.isNotEmpty) {
+      list.add(SubTask(
+        id: '${DateTime.now().microsecondsSinceEpoch}',
+        title: pending,
+      ));
+    }
+    return list;
+  }
+
+  void _addSubtaskDraft() {
+    final text = _subtaskInputController.text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _subtaskDrafts.add(SubTask(
+        id: '${DateTime.now().microsecondsSinceEpoch}',
+        title: text,
+      ));
+      _subtaskInputController.clear();
+    });
+    // Возвращаем фокус, чтобы можно было быстро добавлять пункты подряд.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subtaskInputFocus.requestFocus();
+    });
+  }
+
+  // Inline-панель кастомного правила повтора в стиле liquid glass.
+  Widget _buildCustomRepeatPanel() {
+    final colors = AppColors.of(context);
+    final expanded = _repeatMode == 'Свой вариант' && _customRepeatExpanded;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: const Cubic(0.16, 1.0, 0.3, 1.0),
+      alignment: Alignment.topCenter,
+      child: !expanded
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceVariant.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: colors.textPrimary.withValues(alpha: 0.06),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // «Повторять каждые [N]» + шаговый счётчик.
+                        Row(
+                          children: [
+                            Text(
+                              tr('Повторять каждые'),
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                            const Spacer(),
+                            _buildIntervalStepper(colors),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        // Сегменты частоты: День / Неделя / Месяц / Год.
+                        _buildFreqSegments(colors),
+                        // Для недели — выбор дней недели.
+                        if (_customFreq == 'Неделя') ...[
+                          const SizedBox(height: 12),
+                          _buildWeekdayPicker(colors),
+                        ],
+                        // Для месяца — режим (день месяца / последний / N-й).
+                        if (_customFreq == 'Месяц') ...[
+                          const SizedBox(height: 12),
+                          _buildMonthModePicker(colors),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildIntervalStepper(AppColors colors) {
+    Widget btn(IconData icon, VoidCallback onTap) => GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onTap();
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            child: Icon(icon, size: 20, color: colors.textPrimary),
+          ),
+        );
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          btn(Icons.remove_rounded, () {
+            if (_customInterval > 1) setState(() => _customInterval--);
+          }),
+          SizedBox(
+            width: 32,
+            child: Text(
+              '$_customInterval',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
+          btn(Icons.add_rounded, () {
+            if (_customInterval < 99) setState(() => _customInterval++);
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFreqSegments(AppColors colors) {
+    const freqs = ['День', 'Неделя', 'Месяц', 'Год'];
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: freqs.map((f) {
+          final selected = _customFreq == f;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _customFreq = f);
+              },
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: selected ? colors.surfaceVariant : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  tr(f),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color:
+                        selected ? colors.textPrimary : colors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildWeekdayPicker(AppColors colors) {
+    const labels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(7, (i) {
+        final wd = i + 1;
+        final selected = _customWeekdays.contains(wd);
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              if (selected) {
+                if (_customWeekdays.length > 1) _customWeekdays.remove(wd);
+              } else {
+                _customWeekdays.add(wd);
+              }
+            });
+          },
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: selected ? colors.textPrimary : Colors.transparent,
+              border: Border.all(
+                color: selected ? colors.textPrimary : colors.textTertiary,
+                width: 1.4,
+              ),
+            ),
+            child: Text(
+              tr(labels[i]),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: selected ? colors.surfaceVariant : colors.textSecondary,
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildMonthModePicker(AppColors colors) {
+    final nth = ((_selectedDate.day - 1) ~/ 7) + 1;
+    final weekdayName = _getDayName(_selectedDate.weekday);
+    final modes = <String, String>{
+      'День месяца': tr('{0}-го числа', [_selectedDate.day]),
+      'Последний день': tr('Последний день'),
+      'N-й день недели': tr('{0}-й {1}', [nth, weekdayName]),
+    };
+    return Column(
+      children: modes.entries.map((e) {
+        final selected = _customMonthMode == e.key;
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _customMonthMode = e.key);
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: selected ? colors.textPrimary : colors.textTertiary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    e.value,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: selected
+                          ? colors.textPrimary
+                          : colors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // Inline-панель чек-листа в стиле liquid glass.
+  Widget _buildSubtasksPanel() {
+    final colors = AppColors.of(context);
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      curve: const Cubic(0.16, 1.0, 0.3, 1.0),
+      alignment: Alignment.topCenter,
+      child: !_subtasksExpanded
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceVariant.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: colors.textPrimary.withValues(alpha: 0.06),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < _subtaskDrafts.length; i++)
+                          _buildSubtaskDraftRow(i, colors),
+                        // Поле добавления нового пункта.
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.add_rounded,
+                              size: 20,
+                              color: colors.textTertiary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _subtaskInputController,
+                                focusNode: _subtaskInputFocus,
+                                textInputAction: TextInputAction.done,
+                                onTapOutside: (_) {},
+                                onSubmitted: (_) => _addSubtaskDraft(),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w400,
+                                  color: colors.textPrimary,
+                                ),
+                                decoration: InputDecoration(
+                                  isCollapsed: true,
+                                  hintText: tr('Добавить пункт'),
+                                  hintStyle: TextStyle(
+                                    fontSize: 15,
+                                    color: colors.textTertiary,
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                cursorColor: colors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildSubtaskDraftRow(int index, AppColors colors) {
+    final s = _subtaskDrafts[index];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          // Круглый чекбокс.
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _subtaskDrafts[index] =
+                    s.copyWith(isCompleted: !s.isCompleted);
+              });
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: s.isCompleted
+                      ? colors.textPrimary
+                      : Colors.transparent,
+                  border: Border.all(
+                    color: s.isCompleted
+                        ? colors.textPrimary
+                        : colors.textTertiary,
+                    width: 1.6,
+                  ),
+                ),
+                child: s.isCompleted
+                    ? Icon(Icons.check_rounded,
+                        size: 13, color: colors.surfaceVariant)
+                    : null,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              s.title,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+                color: s.isCompleted
+                    ? colors.textTertiary
+                    : colors.textPrimary,
+                decoration: s.isCompleted
+                    ? TextDecoration.lineThrough
+                    : TextDecoration.none,
+                decorationColor: colors.textTertiary,
+              ),
+            ),
+          ),
+          // Удаление пункта.
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() => _subtaskDrafts.removeAt(index));
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: colors.textTertiary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

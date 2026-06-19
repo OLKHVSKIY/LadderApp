@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:drift/drift.dart' as dr;
 import 'package:uuid/uuid.dart';
 import '../app_database.dart' as db;
@@ -27,7 +28,29 @@ class TaskRepository {
     if (!columnNames.contains('priority')) {
       await database.customStatement('ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 1;');
     }
+    if (!columnNames.contains('subtasks')) {
+      await database.customStatement('ALTER TABLE tasks ADD COLUMN subtasks TEXT;');
+    }
     _checkedSchema = true;
+  }
+
+  /// Кодирует список подзадач в JSON для хранения (null если пусто).
+  static String? _encodeSubtasks(List<model.SubTask> subtasks) {
+    if (subtasks.isEmpty) return null;
+    return jsonEncode(subtasks.map((s) => s.toMap()).toList());
+  }
+
+  /// Декодирует JSON подзадач из строки БД.
+  static List<model.SubTask> _decodeSubtasks(String? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => model.SubTask.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<int> addTask(model.Task task) async {
@@ -44,6 +67,7 @@ class TaskRepository {
             endDate: dr.Value(task.endDate),
             priority: dr.Value(task.priority),
             isCompleted: dr.Value(task.isCompleted),
+            subtasks: dr.Value(_encodeSubtasks(task.subtasks)),
             createdAt: dr.Value(DateTime.now()),
             updatedAt: dr.Value(DateTime.now()),
           ),
@@ -69,6 +93,17 @@ class TaskRepository {
     await (database.update(database.tasks)..where((t) => t.id.equals(taskId))).write(
       db.TasksCompanion(
         isCompleted: dr.Value(isCompleted),
+        updatedAt: dr.Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Обновляет только список подзадач задачи (для переключения чек-листа в карточке).
+  Future<void> updateSubtasks(int taskId, List<model.SubTask> subtasks) async {
+    await _ensureTaskColumns();
+    await (database.update(database.tasks)..where((t) => t.id.equals(taskId))).write(
+      db.TasksCompanion(
+        subtasks: dr.Value(_encodeSubtasks(subtasks)),
         updatedAt: dr.Value(DateTime.now()),
       ),
     );
@@ -106,6 +141,7 @@ class TaskRepository {
           endDate: row.endDate,
           isCompleted: row.isCompleted,
           attachedFiles: files.isNotEmpty ? files : null,
+          subtasks: _decodeSubtasks(row.subtasks),
         ),
       );
     }
@@ -143,6 +179,7 @@ class TaskRepository {
           endDate: row.endDate,
           isCompleted: row.isCompleted,
           attachedFiles: files.isNotEmpty ? files : null,
+          subtasks: _decodeSubtasks(row.subtasks),
         ),
       );
     }
@@ -179,6 +216,7 @@ class TaskRepository {
         endDate: dr.Value(task.endDate),
         priority: dr.Value(task.priority),
         isCompleted: isCompleted != null ? dr.Value(isCompleted) : dr.Value(task.isCompleted),
+        subtasks: dr.Value(_encodeSubtasks(task.subtasks)),
         updatedAt: dr.Value(DateTime.now()),
       ),
     );
@@ -242,6 +280,7 @@ class TaskRepository {
           endDate: row.endDate,
           isCompleted: row.isCompleted,
           attachedFiles: files.isNotEmpty ? files : null,
+          subtasks: _decodeSubtasks(row.subtasks),
         ),
       );
     }

@@ -39,6 +39,7 @@ class Tasks extends Table {
   DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
   DateTimeColumn get updatedAt => dateTime().clientDefault(() => DateTime.now())();
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+  TextColumn get subtasks => text().nullable()(); // JSON-список подзадач/чек-листа
 }
 
 class Tags extends Table {
@@ -260,7 +261,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -404,6 +405,14 @@ class AppDatabase extends _$AppDatabase {
               await customStatement('ALTER TABLE events ADD COLUMN description TEXT;');
             }
           }
+          if (from < 14) {
+            // Подзадачи / чек-лист внутри задачи (JSON в колонке subtasks).
+            final cols = await customSelect('PRAGMA table_info(tasks);').get();
+            final names = cols.map((r) => r.data['name'] as String).toSet();
+            if (!names.contains('subtasks')) {
+              await customStatement('ALTER TABLE tasks ADD COLUMN subtasks TEXT;');
+            }
+          }
         },
         beforeOpen: (details) async {
           // Дополнительная защита: если колонок нет (старый файл без миграции), добавим.
@@ -418,6 +427,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (!columnNames.contains('priority')) {
             await customStatement('ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 1;');
+          }
+          if (!columnNames.contains('subtasks')) {
+            await customStatement('ALTER TABLE tasks ADD COLUMN subtasks TEXT;');
           }
           // Индексы
           await customStatement('CREATE INDEX IF NOT EXISTS idx_tasks_user_date ON tasks(user_id, date);');
