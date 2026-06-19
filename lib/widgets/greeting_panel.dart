@@ -517,11 +517,11 @@ class _GreetingPanelState extends State<GreetingPanel>
                         height: 40,
                         alignment: Alignment.center,
                         child: Container(
-                          width: 40,
+                          width: 45,
                           height: 4,
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(5),
                           ),
                         ),
                       ),

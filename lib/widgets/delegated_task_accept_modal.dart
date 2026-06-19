@@ -83,11 +83,11 @@ class _DelegatedTaskAcceptModalState extends State<DelegatedTaskAcceptModal> wit
                         // Ручка для перетаскивания
                         Container(
                           margin: const EdgeInsets.only(top: 12),
-                          width: 40,
+                          width: 45,
                           height: 4,
                           decoration: BoxDecoration(
                             color: colors.divider,
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(5),
                           ),
                         ),
                         // Заголовок

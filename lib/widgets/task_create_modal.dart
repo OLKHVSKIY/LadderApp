@@ -280,8 +280,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       _selectedDate = widget.initialDate!;
     }
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      reverseDuration: const Duration(milliseconds: 100),
+      // Длиннее открытие/закрытие — шторка двигается заметно мягче.
+      duration: const Duration(milliseconds: 460),
+      reverseDuration: const Duration(milliseconds: 420),
       vsync: this,
     );
     _wavesAnimationController = AnimationController(
@@ -293,7 +294,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       vsync: this,
     );
     _dragController = AnimationController(
-      duration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 340),
       vsync: this,
     );
     // Для новой задачи — начало в ближайшие 10 минут от текущего времени.
@@ -342,7 +343,10 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeOutCubic,
+      // Плавная iOS-подобная кривая (мягкий старт и затухание в конце)
+      // для максимально гладкого выезда и ухода шторки.
+      curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+      reverseCurve: Curves.easeInOutCubic,
     ));
     _wavesAnimation = Tween<double>(
       begin: 0.0,
@@ -590,14 +594,12 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   }
 
   void _handleClose() {
-    // Не закрываем клавиатуру - пользователь может продолжать вводить текст
-    // Задержка для синхронизации с анимацией
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        _animationController.reverse().then((_) {
-          widget.onClose();
-        });
-      }
+    // Не закрываем клавиатуру - пользователь может продолжать вводить текст.
+    // Сразу запускаем плавный обратный проигрыш (без задержки — иначе
+    // закрытие ощущалось «отвязанным» от нажатия).
+    if (!mounted) return;
+    _animationController.reverse().then((_) {
+      widget.onClose();
     });
   }
 
@@ -972,6 +974,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.of(context).surface,
+      // Та же мягкая iOS-плавность, что у шторки создания задачи.
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1121,6 +1130,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                 child: Transform.translate(
                   // Смещение от свайпа-вниз (палец тянет шторку к закрытию).
                   offset: Offset(0, _dragDy),
+                  child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
+                  ),
+                  child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
                   child: Container(
                   // Просмотр события — шторка по содержимому (не выше пол-экрана).
                   // Иначе — 90% высоты экрана.
@@ -1133,10 +1149,22 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         )
                       : null,
                   decoration: BoxDecoration(
-                    color: colors.surface,
+                    // Liquid glass: полупрозрачная заливка поверх размытия фона +
+                    // тонкий блик по верхнему краю.
+                    color: colors.isDark
+                        ? colors.surface.withValues(alpha: 0.72)
+                        : Colors.white.withValues(alpha: 0.78),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(28),
                       topRight: Radius.circular(28),
+                    ),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.white.withValues(
+                          alpha: colors.isDark ? 0.18 : 0.6,
+                        ),
+                        width: 1,
+                      ),
                     ),
                   ),
                   child: GestureDetector(
@@ -1680,6 +1708,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                     ],
                   ),
                   ),
+                ),
+                ),
                 ),
                 ),
               ),
@@ -2356,6 +2386,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      // Та же мягкая iOS-плавность, что у шторки создания задачи.
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
+      ),
       builder: (ctx) {
         final colors = AppColors.of(ctx);
         return StatefulBuilder(
@@ -2456,11 +2493,11 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                     children: [
                       Center(
                         child: Container(
-                          width: 40,
+                          width: 45,
                           height: 4,
                           decoration: BoxDecoration(
                             color: colors.divider,
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(5),
                           ),
                         ),
                       ),
@@ -2789,27 +2826,53 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   // аудио-ввода (liquid glass), но текущего размера (36). Сразу закрывает
   // шторку, без карточки-подтверждения.
   Widget _buildSimpleCloseButton(AppColors colors) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 8,
-            spreadRadius: 0.5,
+    // frosted-стекло вместо GlassCircleButton: live LiquidGlass-шейдер внутри
+    // BackdropFilter-шторки ломается (теряет фон), поэтому повторяем тот же вид
+    // вручную (ClipOval + размытие + полупрозрачная заливка + крестик).
+    return GestureDetector(
+      onTap: _handleClose,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 8,
+              spreadRadius: 0.5,
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors.isDark
+                    ? Colors.white.withValues(alpha: 0.16)
+                    : Colors.black.withValues(alpha: 0.05),
+                border: Border.all(
+                  color: colors.isDark
+                      ? Colors.white.withValues(alpha: 0.22)
+                      : Colors.black.withValues(alpha: 0.08),
+                  width: 0.5,
+                ),
+              ),
+              child: Icon(
+                CupertinoIcons.xmark,
+                size: 18,
+                color: colors.isDark
+                    ? CupertinoColors.white
+                    : CupertinoColors.black,
+              ),
+            ),
           ),
-        ],
-      ),
-      child: GlassCircleButton(
-        onTap: _handleClose,
-        size: 36,
-        iconSize: 18,
-        // Тёмная тема — белый крестик, светлая — чёрный.
-        iconColor: Theme.of(context).brightness == Brightness.dark
-            ? CupertinoColors.white
-            : CupertinoColors.black,
+        ),
       ),
     );
   }
@@ -2839,18 +2902,24 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   /// Шторка выбора цвета и иконки задачи (снизу вверх).
   void _openColorIconSheet() {
     final colors = AppColors.of(context);
+    final double screenH = MediaQuery.of(context).size.height;
+    final double topSafe = MediaQuery.of(context).padding.top;
+    // Та же высота, что и у шторки создания задачи.
+    final double sheetHeight =
+        (screenH * 0.97).clamp(0.0, screenH - topSafe - 6);
     FocusScope.of(context).unfocus();
     setState(() => _colorSheetOpen = true);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      // Плавное появление/скрытие шторки.
+      constraints: BoxConstraints(maxHeight: sheetHeight),
+      // Плавное появление/скрытие шторки (та же мягкая iOS-кривая).
       sheetAnimationStyle: AnimationStyle(
-        duration: const Duration(milliseconds: 440),
-        reverseDuration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
       ),
       builder: (sheetContext) {
         return StatefulBuilder(
@@ -2870,6 +2939,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
                 child: Container(
+                  height: sheetHeight,
                   decoration: BoxDecoration(
                     color: colors.isDark
                         ? colors.surface.withValues(alpha: 0.72)
@@ -2893,16 +2963,16 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                     24 + MediaQuery.of(sheetContext).padding.bottom,
                   ),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisSize: MainAxisSize.max,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Center(
                         child: Container(
-                          width: 38,
+                          width: 45,
                           height: 4,
                           decoration: BoxDecoration(
                             color: colors.border,
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(5),
                           ),
                         ),
                       ),
@@ -2918,36 +2988,57 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                             ),
                           ),
                           const Spacer(),
-                          // Крестик в стиле liquid glass (frosted) — без
-                          // LiquidGlass-шейдера, чтобы не было чёрного артефакта.
+                          // Крестик в том же стиле, что и кнопка закрытия шторки
+                          // создания: круг 36 с лёгкой тенью, frosted-стекло,
+                          // белый крестик в тёмной теме / чёрный в светлой
+                          // (frosted вместо GlassCircleButton — live-шейдер внутри
+                          // BackdropFilter-шторки даёт чёрный артефакт).
                           GestureDetector(
                             onTap: () => Navigator.of(sheetContext).pop(),
                             behavior: HitTestBehavior.opaque,
-                            child: ClipOval(
-                              child: BackdropFilter(
-                                filter: ui.ImageFilter.blur(
-                                  sigmaX: 12,
-                                  sigmaY: 12,
-                                ),
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: colors.isDark
-                                        ? Colors.white.withValues(alpha: 0.16)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                    border: Border.all(
-                                      color: colors.isDark
-                                          ? Colors.white.withValues(alpha: 0.22)
-                                          : Colors.black.withValues(alpha: 0.08),
-                                      width: 0.5,
-                                    ),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                    blurRadius: 8,
+                                    spreadRadius: 0.5,
                                   ),
-                                  child: Icon(
-                                    CupertinoIcons.xmark,
-                                    size: 14,
-                                    color: colors.textSecondary,
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: BackdropFilter(
+                                  filter: ui.ImageFilter.blur(
+                                    sigmaX: 12,
+                                    sigmaY: 12,
+                                  ),
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: colors.isDark
+                                          ? Colors.white.withValues(alpha: 0.16)
+                                          : Colors.black.withValues(alpha: 0.05),
+                                      border: Border.all(
+                                        color: colors.isDark
+                                            ? Colors.white
+                                                .withValues(alpha: 0.22)
+                                            : Colors.black
+                                                .withValues(alpha: 0.08),
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      CupertinoIcons.xmark,
+                                      size: 18,
+                                      color: colors.isDark
+                                          ? CupertinoColors.white
+                                          : CupertinoColors.black,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2956,79 +3047,97 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                         ],
                       ),
                       const SizedBox(height: 22),
-                      // Цвета — горизонтальный ряд кружков.
-                      SizedBox(
-                        height: 44,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _taskColors.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 14),
-                          itemBuilder: (_, i) {
-                            final c = Color(_taskColors[i]);
-                            final selected = i == _taskColorIndex;
-                            return GestureDetector(
-                              onTap: () => pick(() => _taskColorIndex = i),
-                              child: Container(
-                                width: 44,
+                      // Цвета и иконки скроллятся, чтобы шторка не вырастала во
+                      // весь экран (как шторка просмотра задачи на таймлайне).
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Цвета — горизонтальный ряд кружков.
+                              SizedBox(
                                 height: 44,
-                                decoration: BoxDecoration(
-                                  color: c,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: selected
-                                        ? colors.textPrimary
-                                        : Colors.transparent,
-                                    width: 2.5,
-                                  ),
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: _taskColors.length,
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(width: 14),
+                                  itemBuilder: (_, i) {
+                                    final c = Color(_taskColors[i]);
+                                    final selected = i == _taskColorIndex;
+                                    return GestureDetector(
+                                      onTap: () =>
+                                          pick(() => _taskColorIndex = i),
+                                      child: Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: c,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: selected
+                                                ? colors.textPrimary
+                                                : Colors.transparent,
+                                            width: 2.5,
+                                          ),
+                                        ),
+                                        child: selected
+                                            ? const Icon(
+                                                CupertinoIcons.check_mark,
+                                                color: Colors.white,
+                                                size: 22,
+                                              )
+                                            : null,
+                                      ),
+                                    );
+                                  },
                                 ),
-                                child: selected
-                                    ? const Icon(
-                                        CupertinoIcons.check_mark,
-                                        color: Colors.white,
-                                        size: 22,
-                                      )
-                                    : null,
                               ),
-                            );
-                          },
+                              const SizedBox(height: 40),
+                              // Иконки — равномерная сетка на всю ширину.
+                              GridView.count(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                crossAxisCount: 5,
+                                mainAxisSpacing: 14,
+                                crossAxisSpacing: 14,
+                                children:
+                                    List.generate(_taskIcons.length, (i) {
+                                  final selected = i == _taskIconIndex;
+                                  final accent =
+                                      Color(_taskColors[_taskColorIndex]);
+                                  return GestureDetector(
+                                    onTap: () =>
+                                        pick(() => _taskIconIndex = i),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? accent.withValues(alpha: 0.16)
+                                            : colors.surfaceVariant
+                                                .withValues(alpha: 0.6),
+                                        borderRadius:
+                                            BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: selected
+                                              ? accent
+                                              : Colors.transparent,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        _taskIcons[i],
+                                        color: selected
+                                            ? accent
+                                            : colors.textSecondary,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 40),
-                      // Иконки — равномерная сетка на всю ширину (GridView вместо
-                      // Wrap, чтобы колонки распределялись ровно и одинаково на
-                      // любом размере экрана, без «съезжания» влево).
-                      GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: 5,
-                        mainAxisSpacing: 14,
-                        crossAxisSpacing: 14,
-                        children: List.generate(_taskIcons.length, (i) {
-                          final selected = i == _taskIconIndex;
-                          final accent = Color(_taskColors[_taskColorIndex]);
-                          return GestureDetector(
-                            onTap: () => pick(() => _taskIconIndex = i),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? accent.withValues(alpha: 0.16)
-                                    : colors.surfaceVariant
-                                        .withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: selected ? accent : Colors.transparent,
-                                  width: 2,
-                                ),
-                              ),
-                              child: Icon(
-                                _taskIcons[i],
-                                color:
-                                    selected ? accent : colors.textSecondary,
-                                size: 24,
-                              ),
-                            ),
-                          );
-                        }),
                       ),
                     ],
                   ),

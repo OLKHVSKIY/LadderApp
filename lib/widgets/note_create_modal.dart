@@ -174,11 +174,11 @@ class _NoteCreateModalState extends State<NoteCreateModal> with SingleTickerProv
                       Center(
                         child: Container(
                           margin: const EdgeInsets.only(top: 12, bottom: 4),
-                          width: 40,
+                          width: 45,
                           height: 4,
                           decoration: BoxDecoration(
                             color: colors.divider,
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(5),
                           ),
                         ),
                       ),

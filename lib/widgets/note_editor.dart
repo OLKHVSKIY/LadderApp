@@ -640,6 +640,13 @@ class _NoteEditorState extends State<NoteEditor> {
                                         showModalBottomSheet(
                                           context: context,
                                           backgroundColor: Colors.transparent,
+                                          // Та же мягкая iOS-плавность, что у шторки создания задачи.
+                                          sheetAnimationStyle: AnimationStyle(
+                                            duration: const Duration(milliseconds: 460),
+                                            reverseDuration: const Duration(milliseconds: 420),
+                                            curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+                                            reverseCurve: Curves.easeInOutCubic,
+                                          ),
                                           builder: (context) => Container(
                                             decoration: BoxDecoration(
                                               color: colors.surface,

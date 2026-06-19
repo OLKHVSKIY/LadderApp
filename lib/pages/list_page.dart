@@ -260,15 +260,15 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   }
 
   void _handleNoteLongPress(BuildContext context, String? noteId,
-      [Offset? pressPosition]) {
+      [Offset? pressPosition, bool allowEdit = true]) {
     if (noteId == null) return;
 
     HapticFeedback.heavyImpact();
-    _showNoteMenuOverlay(context, noteId, pressPosition);
+    _showNoteMenuOverlay(context, noteId, pressPosition, allowEdit);
   }
 
   void _showNoteMenuOverlay(BuildContext context, String noteId,
-      [Offset? pressPosition]) {
+      [Offset? pressPosition, bool allowEdit = true]) {
     _removeNoteMenuOverlay();
 
     final overlay = Overlay.of(context);
@@ -276,6 +276,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     _noteMenuOverlayEntry = OverlayEntry(
       builder: (context) => _NoteMenuOverlay(
         pressPosition: pressPosition,
+        showEdit: allowEdit,
         onClose: _removeNoteMenuOverlay,
         onEdit: () {
           _removeNoteMenuOverlay();
@@ -289,11 +290,17 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           _removeNoteMenuOverlay();
           final intNoteId = int.tryParse(noteId);
           if (intNoteId == null) return;
-          
+
           HapticFeedback.heavyImpact();
+          // Запоминаем заметку ДО удаления, чтобы снести связанную задачу.
+          final note = _timelineNotes.firstWhere(
+            (n) => n['id']?.toString() == noteId,
+            orElse: () => <String, dynamic>{},
+          );
           try {
             await noteRepository.deleteNote(intNoteId);
             await NotificationService.instance.cancelNoteReminder(intNoteId);
+            await _deleteLinkedTask(note);
             await _loadTimelineNotes();
           } catch (e) {
             debugPrint('Ошибка удаления заметки: $e');
@@ -308,6 +315,28 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   void _removeNoteMenuOverlay() {
     _noteMenuOverlayEntry?.remove();
     _noteMenuOverlayEntry = null;
+  }
+
+  // Удаляет задачу на странице «Задачи», связанную с timeline-заметкой.
+  // Матч по типу 'task', названию и дню (linkedElementId ≠ id задачи в БД).
+  Future<void> _deleteLinkedTask(Map<String, dynamic> note) async {
+    if (note.isEmpty) return;
+    if (note['linkedElementType'] != 'task') return;
+    final title = note['title'] as String?;
+    final startTime = note['startTime'] as DateTime?;
+    if (title == null || startTime == null) return;
+    final day = DateTime(startTime.year, startTime.month, startTime.day);
+    final tasks = await taskRepository.tasksForDateRange(day, day);
+    for (final task in tasks) {
+      final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
+      if (task.title == title && taskDay == day) {
+        final intId = int.tryParse(task.id);
+        if (intId != null) {
+          await taskRepository.deleteTask(intId);
+        }
+        break;
+      }
+    }
   }
 
   // Открыть Pomodoro-таймер для выбранной заметки.
@@ -414,6 +443,13 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      // Та же мягкая iOS-плавность, что у шторки создания задачи.
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
+      ),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height -
             MediaQuery.of(context).padding.top -
@@ -1208,8 +1244,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         final start = note['startTime'];
         final title = note['title'];
         final notify = note['notify'] as bool? ?? true;
+        final allDay = note['allDay'] == true;
         if (id is int && start is DateTime && title is String) {
-          if (notify) {
+          // Задачи «на весь день» уведомлений не получают.
+          if (notify && !allDay) {
             await NotificationService.instance.scheduleNoteReminder(
               id: id,
               title: title,
@@ -1414,11 +1452,11 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                         Center(
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 20),
-                            width: 40,
+                            width: 45,
                             height: 4,
                             decoration: BoxDecoration(
                               color: colors.divider,
-                              borderRadius: BorderRadius.circular(2),
+                              borderRadius: BorderRadius.circular(5),
                             ),
                           ),
                         ),
@@ -2660,7 +2698,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           noteHeight: height,
           duration: duration,
           onLongPress: (noteId, pos) =>
-              _handleNoteLongPress(context, noteId, pos),
+              _handleNoteLongPress(context, noteId, pos, false),
+          onTap: noteId == null ? null : () => _showTimelineNoteSheet(noteId),
         ),
       );
     }).toList();
@@ -2952,12 +2991,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                     });
                   },
                   child: Container(
-                    width: 40,
+                    width: 45,
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 2),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(5),
                     ),
                   ),
                 ),
@@ -2990,7 +3029,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           }
           return false;
         },
-        child: ClipRect(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+          ClipRect(
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -3145,9 +3187,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
             // Блок-превью заметки в режиме прикрепления (для недельного вида)
             if (_isAttachingNote && _attachingNoteStartTime != null && _listViewType == ListViewType.week && _shouldShowCurrentTimeIndicator())
               _buildAttachingNotePreview(context, lineHeight),
-            // Индикатор текущего времени (красная линия с меткой времени) для недельного вида - поверх заметок
-            // Показываем только для сегодняшнего дня
-            // Позиция вычисляется относительно прокрученного контента
+          ],
+          ),
+          ),
+            // Индикатор текущего времени (красная линия с меткой времени).
+            // Вынесен из ClipRect, чтобы овал времени не обрезался у верха и
+            // отображался поверх хедера дней недели. Показываем только для сегодня.
             if (_shouldShowCurrentTimeIndicator())
               Positioned(
                 top: (_getCurrentTimePosition(context) - _currentScrollOffset).clamp(0.0, double.infinity),
@@ -3159,7 +3204,6 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                 ),
               ),
           ],
-          ),
         ),
       ),
     );
@@ -3686,11 +3730,21 @@ class _TimelineNoteSheetState extends State<_TimelineNoteSheet> {
         filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
           decoration: BoxDecoration(
+            // Liquid glass: полупрозрачная заливка + тонкий блик по верхнему
+            // краю (как в шторке выбора цвета и иконки при создании задачи).
             color: colors.isDark
-                ? colors.surface.withValues(alpha: 0.92)
-                : colors.surface,
+                ? colors.surface.withValues(alpha: 0.72)
+                : Colors.white.withValues(alpha: 0.78),
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(
+                  alpha: colors.isDark ? 0.18 : 0.6,
+                ),
+                width: 1,
+              ),
+            ),
           ),
           padding: EdgeInsets.only(
             left: 20,
@@ -3707,11 +3761,11 @@ class _TimelineNoteSheetState extends State<_TimelineNoteSheet> {
             children: [
               Center(
                 child: Container(
-                  width: 40,
+                  width: 45,
                   height: 4,
                   decoration: BoxDecoration(
                     color: colors.divider,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(5),
                   ),
                 ),
               ),
@@ -3833,7 +3887,7 @@ class _TimelineNoteSheetState extends State<_TimelineNoteSheet> {
                       LayoutBuilder(
                         builder: (context, constraints) {
                           const cols = 5;
-                          const spacing = 12.0;
+                          const spacing = 14.0;
                           const visibleRows = 4;
                           final tile =
                               (constraints.maxWidth - (cols - 1) * spacing) /
@@ -3866,15 +3920,19 @@ class _TimelineNoteSheetState extends State<_TimelineNoteSheet> {
                                     decoration: BoxDecoration(
                                       color: selected
                                           ? accent.withValues(alpha: 0.16)
-                                          : colors.surfaceVariant,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: selected
-                                          ? Border.all(color: accent, width: 1.5)
-                                          : null,
+                                          : colors.surfaceVariant
+                                              .withValues(alpha: 0.6),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: selected
+                                            ? accent
+                                            : Colors.transparent,
+                                        width: 2,
+                                      ),
                                     ),
                                     child: Icon(
                                       icon,
-                                      size: 22,
+                                      size: 24,
                                       color: selected
                                           ? accent
                                           : colors.textSecondary,
@@ -3991,6 +4049,7 @@ class _WeekNoteWidget extends StatefulWidget {
   final double noteHeight;
   final Duration duration;
   final Function(String?, Offset) onLongPress;
+  final VoidCallback? onTap;
 
   const _WeekNoteWidget({
     required this.noteId,
@@ -4000,6 +4059,7 @@ class _WeekNoteWidget extends StatefulWidget {
     required this.noteHeight,
     required this.duration,
     required this.onLongPress,
+    this.onTap,
   });
 
   @override
@@ -4029,8 +4089,16 @@ class _WeekNoteWidgetState extends State<_WeekNoteWidget> {
   }
 
   void _handleTapUp(TapUpDetails details) {
+    final wasPressed = _isPressed;
     _isPressed = false;
+    final timerActive = _longPressTimer?.isActive ?? false;
     _longPressTimer?.cancel();
+    // Быстрый тап (long-press не успел сработать) и палец почти не сместился →
+    // открываем шторку просмотра/редактирования заметки (как в дневном виде).
+    if (wasPressed && timerActive) {
+      final moved = (details.globalPosition - _pressPosition).distance;
+      if (moved < 12) widget.onTap?.call();
+    }
   }
 
   void _handleTapCancel() {
@@ -4118,6 +4186,7 @@ class _WeekNoteWidgetState extends State<_WeekNoteWidget> {
 // Меню заметки с backdrop blur
 class _NoteMenuOverlay extends StatefulWidget {
   final Offset? pressPosition;
+  final bool showEdit;
   final VoidCallback onClose;
   final VoidCallback onEdit;
   final VoidCallback onPomodoro;
@@ -4125,6 +4194,7 @@ class _NoteMenuOverlay extends StatefulWidget {
 
   const _NoteMenuOverlay({
     this.pressPosition,
+    this.showEdit = true,
     required this.onClose,
     required this.onEdit,
     required this.onPomodoro,
@@ -4259,12 +4329,14 @@ class _NoteMenuOverlayState extends State<_NoteMenuOverlay> with SingleTickerPro
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _buildMenuItem(
-                                CupertinoIcons.pencil,
-                                tr('Редактировать'),
-                                () => _close(widget.onEdit),
-                              ),
-                              _buildMenuDivider(),
+                              if (widget.showEdit) ...[
+                                _buildMenuItem(
+                                  CupertinoIcons.pencil,
+                                  tr('Редактировать'),
+                                  () => _close(widget.onEdit),
+                                ),
+                                _buildMenuDivider(),
+                              ],
                               _buildMenuItem(
                                 CupertinoIcons.timer,
                                 tr('Запустить таймер'),

@@ -365,6 +365,13 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.of(context).surface,
+      // Та же мягкая iOS-плавность, что у шторки создания задачи.
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -608,6 +615,13 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.of(context).surface,
+      // Та же мягкая iOS-плавность, что у шторки создания задачи.
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -659,6 +673,13 @@ class _PlanPageState extends State<PlanPage> with SingleTickerProviderStateMixin
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.of(context).surface,
+      // Та же мягкая iOS-плавность, что у шторки создания задачи.
+      sheetAnimationStyle: AnimationStyle(
+        duration: const Duration(milliseconds: 460),
+        reverseDuration: const Duration(milliseconds: 420),
+        curve: const Cubic(0.32, 0.72, 0.0, 1.0),
+        reverseCurve: Curves.easeInOutCubic,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),

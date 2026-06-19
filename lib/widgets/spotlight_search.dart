@@ -213,11 +213,15 @@ class _SpotlightSearchState extends State<SpotlightSearch>
       final isHashtagSearch = query.startsWith('#');
       final searchQuery = isHashtagSearch ? query.substring(1).trim() : query;
 
+      // Поиск по дате: «14 марта», «14.03» и т.п. — показываем все задачи на
+      // этот день/месяц, год не важен.
+      final dayMonth = isHashtagSearch ? null : _parseDayMonth(query);
+
       // Поиск задач
       final allTasks = await _taskRepository.searchAllTasks();
       for (final task in allTasks) {
         bool matches = false;
-        
+
         if (isHashtagSearch) {
           // Поиск только по хештегам
           if (task.tags.isNotEmpty) {
@@ -243,8 +247,14 @@ class _SpotlightSearchState extends State<SpotlightSearch>
               }
             }
           }
+
+          // Совпадение по дате (день+месяц, без учёта года).
+          if (!matches && dayMonth != null) {
+            matches = task.date.day == dayMonth.day &&
+                task.date.month == dayMonth.month;
+          }
         }
-        
+
         if (matches) {
           // Для задач храним описание и хештеги отдельно
           String subtitle = '';
@@ -326,6 +336,65 @@ class _SpotlightSearchState extends State<SpotlightSearch>
     final lowerQuery = query.toLowerCase();
     final lowerText = text.toLowerCase();
     return lowerText.contains(lowerQuery);
+  }
+
+  // Названия месяцев (русские в им./род. падеже + английские) → номер месяца.
+  static const Map<int, List<String>> _monthNames = {
+    1: ['января', 'январь', 'january', 'jan'],
+    2: ['февраля', 'февраль', 'february', 'feb'],
+    3: ['марта', 'март', 'march', 'mar'],
+    4: ['апреля', 'апрель', 'april', 'apr'],
+    5: ['мая', 'май', 'may'],
+    6: ['июня', 'июнь', 'june', 'jun'],
+    7: ['июля', 'июль', 'july', 'jul'],
+    8: ['августа', 'август', 'august', 'aug'],
+    9: ['сентября', 'сентябрь', 'september', 'sept', 'sep'],
+    10: ['октября', 'октябрь', 'october', 'oct'],
+    11: ['ноября', 'ноябрь', 'november', 'nov'],
+    12: ['декабря', 'декабрь', 'december', 'dec'],
+  };
+
+  int? _monthFromToken(String t) {
+    for (final entry in _monthNames.entries) {
+      for (final variant in entry.value) {
+        if (t == variant || t.startsWith(variant)) return entry.key;
+      }
+    }
+    return null;
+  }
+
+  // Парсит запрос-дату: «14 марта», «марта 14», «march 14», «14.03», «14/3».
+  // Возвращает день+месяц (год не важен) или null, если это не дата.
+  ({int day, int month})? _parseDayMonth(String query) {
+    final q = query.toLowerCase().trim();
+    if (q.isEmpty) return null;
+
+    // Числовой формат: DD.MM / DD/MM / DD-MM / DD MM.
+    final numMatch =
+        RegExp(r'^(\d{1,2})\s*[./\-\s]\s*(\d{1,2})$').firstMatch(q);
+    if (numMatch != null) {
+      final a = int.parse(numMatch.group(1)!);
+      final b = int.parse(numMatch.group(2)!);
+      if (a >= 1 && a <= 31 && b >= 1 && b <= 12) return (day: a, month: b);
+      if (b >= 1 && b <= 31 && a >= 1 && a <= 12) return (day: b, month: a);
+      return null;
+    }
+
+    // Формат с названием месяца: «14 марта» / «марта 14».
+    final tokens =
+        q.split(RegExp(r'[\s,]+')).where((t) => t.isNotEmpty).toList();
+    int? day;
+    int? month;
+    for (final t in tokens) {
+      final n = int.tryParse(t);
+      if (n != null) {
+        if (n >= 1 && n <= 31) day = n;
+        continue;
+      }
+      month ??= _monthFromToken(t);
+    }
+    if (day != null && month != null) return (day: day, month: month);
+    return null;
   }
 
   // Распознает запрос на создание задачи

@@ -12,6 +12,7 @@ import 'theme/theme_controller.dart';
 import 'l10n/locale_controller.dart';
 import 'utils/app_paths.dart';
 import 'widgets/swipeable_page_route.dart';
+import 'widgets/app_lock_gate.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -101,7 +102,11 @@ class MyApp extends StatelessWidget {
                   },
                   behavior: HitTestBehavior.opaque,
                   // Свайп от правого края открывает заново закрытую страницу.
-                  child: SwipeForwardArea(child: child ?? const SizedBox()),
+                  // AppLockGate перекрывает всё содержимое экраном блокировки
+                  // (Face ID / Touch ID), когда это требуется.
+                  child: AppLockGate(
+                    child: SwipeForwardArea(child: child ?? const SizedBox()),
+                  ),
                 );
               },
               home: isLoggedIn

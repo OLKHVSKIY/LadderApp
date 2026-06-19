@@ -12,10 +12,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:local_auth/local_auth.dart';
+import '../services/biometric_service.dart';
 
 
 import '../theme/theme_controller.dart';
@@ -155,9 +154,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Future<void> _loadFaceIdSetting() async {
-    final prefs = await SharedPreferences.getInstance();
+    final enabled = await BiometricService.instance.isEnabled();
     if (!mounted) return;
-    setState(() => _faceIdEnabled = prefs.getBool('app_lock_enabled') ?? false);
+    setState(() => _faceIdEnabled = enabled);
   }
 
   @override
@@ -1527,27 +1526,23 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _toggleFaceId(bool value) async {
     if (value) {
       // Включаем — сначала убедимся, что биометрия доступна и проходит проверку.
-      final auth = LocalAuthentication();
-      bool ok = false;
-      try {
-        final canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
-        if (!canCheck) {
-          if (mounted) CustomSnackBar.show(context, tr('Биометрия недоступна на устройстве'));
-          return;
+      final available = await BiometricService.instance.isAvailable();
+      if (!available) {
+        if (mounted) {
+          CustomSnackBar.show(context, tr('Биометрия недоступна на устройстве'));
         }
-        ok = await auth.authenticate(
-          localizedReason: tr('Подтвердите, чтобы включить блокировку'),
-          persistAcrossBackgrounding: true,
-        );
-      } catch (e) {
-        debugPrint('Ошибка биометрии: $e');
-        if (mounted) CustomSnackBar.show(context, tr('Не удалось включить блокировку'));
         return;
       }
-      if (!ok) return;
+      final ok = await BiometricService.instance
+          .authenticate(tr('Подтвердите, чтобы включить блокировку'));
+      if (!ok) {
+        if (mounted) {
+          CustomSnackBar.show(context, tr('Не удалось включить блокировку'));
+        }
+        return;
+      }
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('app_lock_enabled', value);
+    await BiometricService.instance.setEnabled(value);
     HapticFeedback.selectionClick();
     if (mounted) setState(() => _faceIdEnabled = value);
   }
