@@ -18,6 +18,7 @@ import '../models/event.dart';
 import '../models/attached_file.dart';
 import '../models/note_model.dart';
 import '../data/repositories/note_repository.dart';
+import '../data/repositories/reminder_repository.dart';
 import 'apple_calendar.dart';
 import 'custom_snackbar.dart';
 import '../data/database_instance.dart';
@@ -137,6 +138,11 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   String _repeatMode = 'Не повторять';
   final GlobalKey _repeatChipKey = GlobalKey();
   OverlayEntry? _repeatMenuOverlay;
+  // Напоминание о задаче (отдельная сущность Reminder). Храним выбор как смещение
+  // от времени начала задачи. 'Без напоминания' = выключено.
+  String _reminderOffset = 'Без напоминания';
+  final GlobalKey _reminderChipKey = GlobalKey();
+  OverlayEntry? _reminderMenuOverlay;
   // Кастомное правило повтора (показывается inline-панелью под чипами).
   bool _customRepeatExpanded = false;
   String _customFreq = 'Неделя'; // 'День' / 'Неделя' / 'Месяц' / 'Год'
@@ -293,6 +299,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
         final diff = t.endDate!.difference(t.date).inMinutes;
         if (diff > 0) _durationMinutes = diff;
       }
+      // Подтягиваем существующее напоминание задачи (если есть).
+      _loadExistingReminder(t);
     } else if (widget.initialDate != null) {
       _selectedDate = widget.initialDate!;
     }
@@ -507,6 +515,8 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     _speech.stop();
     _repeatMenuOverlay?.remove();
     _repeatMenuOverlay = null;
+    _reminderMenuOverlay?.remove();
+    _reminderMenuOverlay = null;
     _scheduleMenuOverlay?.remove();
     _scheduleMenuOverlay = null;
     _periodMenuOverlay?.remove();
@@ -746,11 +756,16 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     final baseId = DateTime.now().millisecondsSinceEpoch;
     final startH = _scheduleStartMinutes ~/ 60;
     final startM = _scheduleStartMinutes % 60;
+    final reminderOffset = _reminderOffsetMinutes();
     final createdTasks = <Task>[];
     for (var i = 0; i < dates.length; i++) {
       final d = dates[i];
       // Время начала из выбранного блока «Время», конец = старт + длительность.
       final start = DateTime(d.year, d.month, d.day, startH, startM);
+      // Напоминание = время начала минус выбранное смещение (если задано).
+      final reminderAt = reminderOffset == null
+          ? null
+          : start.subtract(Duration(minutes: reminderOffset));
       final task = Task(
         id: widget.initialTask?.id ?? '${baseId}_$i',
         title: _titleController.text.trim(),
@@ -762,6 +777,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
         isCompleted: widget.initialTask?.isCompleted ?? false,
         attachedFiles: _attachedFiles.isNotEmpty ? _attachedFiles : null,
         subtasks: _collectSubtasks(),
+        reminderAt: reminderAt,
       );
       widget.onSave(task, _selectedScreenId);
       createdTasks.add(task);
@@ -1537,6 +1553,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
                                     const SizedBox(width: 8),
                                     // Овал повтора
                                     _buildRepeatChip(),
+                                    const SizedBox(width: 8),
+                                    // Овал напоминания
+                                    _buildReminderChip(),
                                     const SizedBox(width: 8),
                                     // Овал с приоритетом
                                     _buildPriorityChip(),
@@ -3617,6 +3636,115 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       ),
     );
     overlay.insert(_repeatMenuOverlay!);
+  }
+
+  // Варианты напоминания (смещение от времени начала задачи) → минуты.
+  static const Map<String, int> _reminderOptions = {
+    'В момент начала': 0,
+    'За 5 минут': 5,
+    'За 15 минут': 15,
+    'За 30 минут': 30,
+    'За 1 час': 60,
+    'За день': 1440,
+  };
+
+  // Минуты смещения для выбранного напоминания (null = выключено).
+  int? _reminderOffsetMinutes() => _reminderOptions[_reminderOffset];
+
+  // Подтягивает напоминание редактируемой задачи и выставляет _reminderOffset.
+  Future<void> _loadExistingReminder(Task t) async {
+    final intId = int.tryParse(t.id);
+    if (intId == null) return;
+    final list =
+        await ReminderRepository(appDatabase).loadForOwner('task', intId);
+    if (list.isEmpty || !mounted) return;
+    final r = list.first;
+    final offset = t.date.difference(r.fireAt).inMinutes;
+    // Сопоставляем со стандартными вариантами; если не совпало — оставляем выкл.
+    String? label;
+    _reminderOptions.forEach((k, v) {
+      if (v == offset) label = k;
+    });
+    if (label != null) setState(() => _reminderOffset = label!);
+  }
+
+  // Овал «Напоминание»: открывает меню выбора смещения (стекло, как у повтора).
+  Widget _buildReminderChip() {
+    final colors = AppColors.of(context);
+    final active = _reminderOffset != 'Без напоминания';
+    return GestureDetector(
+      key: _reminderChipKey,
+      onTap: _showReminderMenu,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: colors.surfaceVariant,
+          borderRadius: BorderRadius.circular(20),
+          border: active
+              ? Border(left: BorderSide(color: colors.textPrimary, width: 4))
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.notifications_none_rounded,
+              size: 18,
+              color: active ? colors.textPrimary : colors.textSecondary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              active ? tr(_reminderOffset) : tr('Напоминание'),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: active ? colors.textPrimary : colors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _removeReminderMenu() {
+    _reminderMenuOverlay?.remove();
+    _reminderMenuOverlay = null;
+  }
+
+  void _showReminderMenu() {
+    HapticFeedback.lightImpact();
+    _removeReminderMenu();
+    final overlay = Overlay.of(context);
+    final renderBox =
+        _reminderChipKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final anchorPosition = renderBox.localToGlobal(Offset.zero);
+    const menuWidth = 200.0;
+    final screenSize = MediaQuery.of(context).size;
+    double left = anchorPosition.dx;
+    if (left + menuWidth > screenSize.width - 12) {
+      left = screenSize.width - 12 - menuWidth;
+    }
+    if (left < 12) left = 12;
+    final bottom = screenSize.height - (anchorPosition.dy - 6);
+
+    final options = ['Без напоминания', ..._reminderOptions.keys];
+    _reminderMenuOverlay = OverlayEntry(
+      builder: (context) => _RepeatGlassMenu(
+        left: left,
+        bottom: bottom,
+        width: menuWidth,
+        options: options,
+        currentValue: _reminderOffset,
+        onSelected: (v) {
+          _removeReminderMenu();
+          setState(() => _reminderOffset = v);
+        },
+        onClose: _removeReminderMenu,
+      ),
+    );
+    overlay.insert(_reminderMenuOverlay!);
   }
 
   // ===== Режим привычки =====

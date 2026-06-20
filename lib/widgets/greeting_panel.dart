@@ -475,6 +475,7 @@ class _GreetingPanelState extends State<GreetingPanel>
                         // Блок «серии» (стрик), как в Duolingo
                         StreakBadge(
                           reloadToken: widget.completedTasksToday,
+                          isPanelOpen: widget.isOpen,
                           onTap: () {
                             Navigator.of(context).push(
                               SwipeablePageRoute(

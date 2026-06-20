@@ -10,11 +10,15 @@ import '../l10n/app_translations.dart';
 class StreakBadge extends StatefulWidget {
   final int reloadToken;
   final VoidCallback? onTap;
+  // Открыта ли шторка приветствия. При открытии перечитываем стрик из
+  // SharedPreferences, чтобы не показать устаревшие «0 дней».
+  final bool isPanelOpen;
 
   const StreakBadge({
     super.key,
     required this.reloadToken,
     this.onTap,
+    this.isPanelOpen = false,
   });
 
   @override
@@ -43,7 +47,8 @@ class _StreakBadgeState extends State<StreakBadge>
   @override
   void didUpdateWidget(StreakBadge oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.reloadToken != widget.reloadToken) {
+    if (oldWidget.reloadToken != widget.reloadToken ||
+        (!oldWidget.isPanelOpen && widget.isPanelOpen)) {
       _load();
     }
   }

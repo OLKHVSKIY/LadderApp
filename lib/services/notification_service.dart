@@ -210,4 +210,107 @@ class NotificationService {
     await _plugin.cancel(_onDayId(id));
     await _plugin.cancel(_dayBeforeId(id));
   }
+
+  // ---------- Напоминания (сущность Reminder) ----------
+
+  // Канал и детали уведомлений напоминаний.
+  static const NotificationDetails _reminderDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'reminders',
+      'Напоминания',
+      channelDescription: 'Напоминания о задачах и делах',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+  );
+
+  // Напоминания живут в отдельном диапазоне id (700000000+), чтобы не
+  // пересекаться с уведомлениями заметок (id заметки) и событий.
+  static int _reminderNotifId(int reminderId) => 700000000 + reminderId;
+
+  /// Переводит правило повтора напоминания в компоненты совпадения для
+  /// flutter_local_notifications (система сама повторяет показ).
+  static DateTimeComponents? _repeatComponents(String repeatRule) {
+    switch (repeatRule) {
+      case 'daily':
+        return DateTimeComponents.time;
+      case 'weekly':
+        return DateTimeComponents.dayOfWeekAndTime;
+      case 'monthly':
+        return DateTimeComponents.dayOfMonthAndTime;
+      case 'yearly':
+        return DateTimeComponents.dateAndTime;
+      default:
+        return null; // 'none'
+    }
+  }
+
+  /// Планирует уведомление напоминания.
+  ///
+  /// [id] — id строки reminders (стабильный, для перепланирования/отмены).
+  /// [fireAt] — фактическое время показа (учитывайте snooze на стороне вызова).
+  /// [repeatRule] — 'none'|'daily'|'weekly'|'monthly'|'yearly'.
+  Future<void> scheduleReminder({
+    required int id,
+    required String title,
+    String? body,
+    required DateTime fireAt,
+    String repeatRule = 'none',
+  }) async {
+    await init();
+    // Перепланируем с нуля.
+    await _plugin.cancel(_reminderNotifId(id));
+
+    final components = _repeatComponents(repeatRule);
+    var when = fireAt;
+    if (components == null) {
+      // Разовое уже прошедшее — не планируем.
+      if (!when.isAfter(DateTime.now())) return;
+    } else {
+      // Повторяющееся: сдвигаем на ближайшее будущее срабатывание.
+      while (!when.isAfter(DateTime.now())) {
+        switch (repeatRule) {
+          case 'daily':
+            when = when.add(const Duration(days: 1));
+            break;
+          case 'weekly':
+            when = when.add(const Duration(days: 7));
+            break;
+          case 'monthly':
+            when = DateTime(when.year, when.month + 1, when.day, when.hour,
+                when.minute);
+            break;
+          case 'yearly':
+            when = DateTime(when.year + 1, when.month, when.day, when.hour,
+                when.minute);
+            break;
+          default:
+            return;
+        }
+      }
+    }
+
+    try {
+      await _plugin.zonedSchedule(
+        _reminderNotifId(id),
+        title,
+        body ?? title,
+        tz.TZDateTime.from(when, tz.local),
+        _reminderDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: components,
+      );
+    } catch (e) {
+      debugPrint('Не удалось запланировать напоминание: $e');
+    }
+  }
+
+  /// Отменяет запланированное напоминание.
+  Future<void> cancelReminder(int id) async {
+    await init();
+    await _plugin.cancel(_reminderNotifId(id));
+  }
 }

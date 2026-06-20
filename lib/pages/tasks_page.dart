@@ -27,6 +27,8 @@ import '../data/database_instance.dart';
 import '../data/app_database.dart' as db;
 import '../data/repositories/task_repository.dart';
 import '../data/repositories/note_repository.dart';
+import '../data/repositories/reminder_repository.dart';
+import '../models/reminder_model.dart';
 import 'dart:convert';
 import '../data/repositories/habit_repository.dart';
 import '../models/habit.dart';
@@ -353,7 +355,8 @@ class _TasksPageState extends State<TasksPage> {
 
         var day = start;
         while (!day.isAfter(endDate)) {
-          await appDatabase.into(appDatabase.customTasks).insert(
+          final customId =
+              await appDatabase.into(appDatabase.customTasks).insert(
             db.CustomTasksCompanion(
               screenId: dr.Value(screenId),
               creatorId: dr.Value(userId),
@@ -365,6 +368,12 @@ class _TasksPageState extends State<TasksPage> {
               isCompleted: dr.Value(false),
             ),
           );
+          // Напоминание для задачи кастомного экрана (ownerType 'custom_task').
+          if (task.reminderAt != null) {
+            final shifted = task.reminderAt!.add(day.difference(start));
+            await _createReminder(
+                'custom_task', customId, userId, task.title, shifted);
+          }
           day = day.add(const Duration(days: 1));
         }
 
@@ -399,7 +408,13 @@ class _TasksPageState extends State<TasksPage> {
           attachedFiles: task.attachedFiles,
           subtasks: task.subtasks,
         );
-        await _taskRepository.addTask(copy);
+        final newId = await _taskRepository.addTask(copy);
+        // Напоминание задачи — отдельная сущность Reminder. Время сдвигаем на тот
+        // же день, что и копия задачи (для периода/повтора по дням).
+        if (task.reminderAt != null) {
+          final shifted = task.reminderAt!.add(day.difference(start));
+          await _createReminder('task', newId, userId, task.title, shifted);
+        }
         counter++;
         day = day.add(const Duration(days: 1));
       }
@@ -410,6 +425,51 @@ class _TasksPageState extends State<TasksPage> {
       _closeTaskModal();
     } catch (e) {
       _showError(tr('Не удалось создать задачу: {0}', [e]));
+    }
+  }
+
+  // Пересобирает напоминание задачи при редактировании: снимает старые и, если
+  // в задаче задано напоминание, создаёт/планирует новое.
+  Future<void> _syncTaskReminder(int taskId, Task newTask) async {
+    final userId = UserSession.currentUserId;
+    if (userId == null) return;
+    try {
+      final repo = ReminderRepository(appDatabase);
+      final existing = await repo.loadForOwner('task', taskId);
+      for (final r in existing) {
+        if (r.id != null) {
+          await NotificationService.instance.cancelReminder(r.id!);
+        }
+      }
+      await repo.deleteForOwner('task', taskId);
+      if (newTask.reminderAt != null) {
+        await _createReminder(
+            'task', taskId, userId, newTask.title, newTask.reminderAt!);
+      }
+    } catch (e) {
+      debugPrint('Не удалось обновить напоминание задачи: $e');
+    }
+  }
+
+  // Создаёт запись напоминания и планирует системное уведомление.
+  Future<void> _createReminder(String ownerType, int ownerId, int userId,
+      String title, DateTime fireAt) async {
+    try {
+      final repo = ReminderRepository(appDatabase);
+      final id = await repo.addReminder(Reminder(
+        userId: userId,
+        ownerType: ownerType,
+        ownerId: ownerId,
+        title: title,
+        fireAt: fireAt,
+      ));
+      await NotificationService.instance.scheduleReminder(
+        id: id,
+        title: title,
+        fireAt: fireAt,
+      );
+    } catch (e) {
+      debugPrint('Не удалось создать напоминание: $e');
     }
   }
 
@@ -569,6 +629,7 @@ class _TasksPageState extends State<TasksPage> {
         newTask,
         isCompleted: _editingTask!.isCompleted,
       );
+      await _syncTaskReminder(intId, newTask);
       _editingTask = null;
       _loadTasksForDate(_selectedDate);
       _loadWeekTasks();
@@ -682,6 +743,19 @@ class _TasksPageState extends State<TasksPage> {
       }
     }
     await _taskRepository.deleteTask(intId);
+    // Снимаем и удаляем напоминания удалённой задачи.
+    try {
+      final repo = ReminderRepository(appDatabase);
+      final reminders = await repo.loadForOwner('task', intId);
+      for (final r in reminders) {
+        if (r.id != null) {
+          await NotificationService.instance.cancelReminder(r.id!);
+        }
+      }
+      await repo.deleteForOwner('task', intId);
+    } catch (e) {
+      debugPrint('Не удалось удалить напоминания задачи: $e');
+    }
     if (deleted != null) {
       await _deleteLinkedTimelineNotes(deleted);
     }

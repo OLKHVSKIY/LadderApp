@@ -252,16 +252,45 @@ class Events extends Table {
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
 }
 
+/// Напоминания — отдельная сущность (раньше «жили» в timeline-заметках).
+///
+/// Привязываются к задаче/событию/привычке через [ownerType]+[ownerId] либо
+/// существуют сами по себе (ownerType = 'standalone'). Хранят время срабатывания,
+/// правило повтора и время «отложить» (snooze). Планирование уведомлений делает
+/// NotificationService по этим строкам.
+@DataClassName('ReminderRow')
+class Reminders extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get uuid => text().nullable()();
+  IntColumn get userId => integer().references(Users, #id, onDelete: KeyAction.cascade)();
+  // К чему привязано: 'task' | 'event' | 'habit' | 'standalone'.
+  TextColumn get ownerType => text().withDefault(const Constant('standalone'))();
+  // id связанной сущности (task.id / event.id / habit.id). null для standalone.
+  IntColumn get ownerId => integer().nullable()();
+  TextColumn get title => text()();
+  TextColumn get body => text().nullable()();
+  // Когда сработать (местное время).
+  DateTimeColumn get fireAt => dateTime()();
+  // Правило повтора: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'.
+  TextColumn get repeatRule => text().withDefault(const Constant('none'))();
+  // Если отложено («snooze») — фактическое время показа.
+  DateTimeColumn get snoozedUntil => dateTime().nullable()();
+  BoolColumn get isEnabled => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get updatedAt => dateTime().clientDefault(() => DateTime.now())();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+}
+
 // ---------- База ----------
 
 @DriftDatabase(
-  tables: [Users, Tasks, Tags, TaskTags, ChatMessages, Plans, Notes, UserSettings, TaskFiles, NoteFiles, DelegatedTasks, CustomTaskScreens, CustomTasks, CustomScreenUsers, Habits, HabitCompletions, Events],
+  tables: [Users, Tasks, Tags, TaskTags, ChatMessages, Plans, Notes, UserSettings, TaskFiles, NoteFiles, DelegatedTasks, CustomTaskScreens, CustomTasks, CustomScreenUsers, Habits, HabitCompletions, Events, Reminders],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -413,6 +442,12 @@ class AppDatabase extends _$AppDatabase {
               await customStatement('ALTER TABLE tasks ADD COLUMN subtasks TEXT;');
             }
           }
+          if (from < 15) {
+            // Напоминания вынесены в отдельную таблицу reminders.
+            await m.createTable(reminders);
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_reminders_owner ON reminders(owner_type, owner_id);');
+          }
         },
         beforeOpen: (details) async {
           // Дополнительная защита: если колонок нет (старый файл без миграции), добавим.
@@ -456,6 +491,33 @@ class AppDatabase extends _$AppDatabase {
               eventInfo.map((row) => row.data['name'] as String).toSet();
           if (eventCols.isNotEmpty && !eventCols.contains('description')) {
             await customStatement('ALTER TABLE events ADD COLUMN description TEXT;');
+          }
+
+          // Подстраховка: таблица напоминаний (если файл был без миграции до v15).
+          final hasReminders = await customSelect(
+                  "SELECT name FROM sqlite_master WHERE type='table' AND name='reminders';")
+              .get();
+          if (hasReminders.isEmpty) {
+            await customStatement(
+              'CREATE TABLE IF NOT EXISTS reminders ('
+              'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, '
+              'uuid TEXT NULL, '
+              'user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, '
+              "owner_type TEXT NOT NULL DEFAULT 'standalone', "
+              'owner_id INTEGER NULL, '
+              'title TEXT NOT NULL, '
+              'body TEXT NULL, '
+              'fire_at INTEGER NOT NULL, '
+              "repeat_rule TEXT NOT NULL DEFAULT 'none', "
+              'snoozed_until INTEGER NULL, '
+              'is_enabled INTEGER NOT NULL DEFAULT 1, '
+              'created_at INTEGER NOT NULL, '
+              'updated_at INTEGER NOT NULL, '
+              'is_deleted INTEGER NOT NULL DEFAULT 0'
+              ');',
+            );
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);');
+            await customStatement('CREATE INDEX IF NOT EXISTS idx_reminders_owner ON reminders(owner_type, owner_id);');
           }
         },
       );

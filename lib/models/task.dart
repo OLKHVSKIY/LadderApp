@@ -43,6 +43,9 @@ class Task {
   final List<AttachedFile>? attachedFiles;
   final List<SubTask> subtasks; // чек-лист внутри задачи
   final String? creatorName; // Имя создателя задачи (для кастомных экранов)
+  // Абсолютное время напоминания (не хранится в таблице tasks — переносится в
+  // сущность Reminder при сохранении). null = напоминание не задано.
+  final DateTime? reminderAt;
 
   Task({
     required this.id,
@@ -56,9 +59,10 @@ class Task {
     this.attachedFiles,
     this.subtasks = const [],
     this.creatorName,
+    this.reminderAt,
   });
 
-  Task copyWith({List<SubTask>? subtasks, bool? isCompleted}) => Task(
+  Task copyWith({List<SubTask>? subtasks, bool? isCompleted, DateTime? reminderAt}) => Task(
         id: id,
         title: title,
         description: description,
@@ -70,6 +74,7 @@ class Task {
         attachedFiles: attachedFiles,
         subtasks: subtasks ?? this.subtasks,
         creatorName: creatorName,
+        reminderAt: reminderAt ?? this.reminderAt,
       );
 
   // Mock данные для тестирования

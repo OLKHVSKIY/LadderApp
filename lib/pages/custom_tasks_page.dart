@@ -14,6 +14,8 @@ import '../models/habit.dart';
 import '../widgets/events_section.dart';
 import '../data/repositories/event_repository.dart';
 import '../models/event.dart';
+import '../data/repositories/reminder_repository.dart';
+import '../models/reminder_model.dart';
 import '../services/notification_service.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/task_create_modal.dart';
@@ -434,6 +436,27 @@ class _CustomTasksPageState extends State<CustomTasksPage> {
         ),
       );
       debugPrint('Task created with id=$insertedId, creatorId=$userId');
+
+      // Напоминание для задачи кастомного экрана.
+      if (task.reminderAt != null) {
+        try {
+          final repo = ReminderRepository(appDatabase);
+          final reminderId = await repo.addReminder(Reminder(
+            userId: userId,
+            ownerType: 'custom_task',
+            ownerId: insertedId,
+            title: task.title,
+            fireAt: task.reminderAt!,
+          ));
+          await NotificationService.instance.scheduleReminder(
+            id: reminderId,
+            title: task.title,
+            fireAt: task.reminderAt!,
+          );
+        } catch (e) {
+          debugPrint('Не удалось создать напоминание задачи экрана: $e');
+        }
+      }
 
       _loadScreenUsersCount();
       _loadTasksForDate(_selectedDate);
