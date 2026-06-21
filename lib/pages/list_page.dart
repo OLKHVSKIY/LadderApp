@@ -6,7 +6,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 
+import '../widgets/glass.dart';
 import '../widgets/bottom_navigation.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/swipeable_page_route.dart';
@@ -24,6 +26,8 @@ import '../widgets/pomodoro_timer.dart';
 import '../data/repositories/note_repository.dart';
 import '../data/repositories/habit_repository.dart';
 import '../data/repositories/event_repository.dart';
+import '../data/repositories/reminder_repository.dart';
+import '../models/reminder_model.dart';
 import '../models/habit.dart';
 import '../models/event.dart';
 import '../models/note_model.dart';
@@ -113,6 +117,14 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
   double _previousNoteHeight = 0.0; // Для отслеживания изменения размера для вибрации
   Timer? _autoScrollTimer; // Таймер плавного автоскролла у краёв при перетаскивании
   bool _isDraggingNote = false; // Флаг перетаскивания заметки
+  // «Сырая» (несхваченная) экранная Y-позиция под пальцем. Из неё снэпом к
+  // ближайшей строке шкалы получаем _dragNoteScreenY — блок «прилипает» к
+  // отсечкам, без дёрганья на отпускании. Аккумулятор движения пальца.
+  double _dragRawY = 0.0;
+  int _lastDragLineIndex = -1; // Индекс последней отсечки (для вибрации на каждой)
+  // Быстрое перетаскивание уже сохранённого блока по долгому нажатию (без
+  // режима редактирования с X/✓: отпускание пальца ставит блок на новое время).
+  bool _isQuickDragging = false;
   
   // Сохраненные заметки списка
   List<Map<String, dynamic>> _timelineNotes = [];
@@ -260,16 +272,19 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // [allowMove] — показывать ли пункт «Переместить» (перетаскивание по времени).
+  // В недельном виде перетаскивание не поддержано, поэтому false; «Редактировать»
+  // (шторка) доступна всегда.
   void _handleNoteLongPress(BuildContext context, String? noteId,
-      [Offset? pressPosition, bool allowEdit = true]) {
+      [Offset? pressPosition, bool allowMove = true]) {
     if (noteId == null) return;
 
     HapticFeedback.heavyImpact();
-    _showNoteMenuOverlay(context, noteId, pressPosition, allowEdit);
+    _showNoteMenuOverlay(context, noteId, pressPosition, allowMove);
   }
 
   void _showNoteMenuOverlay(BuildContext context, String noteId,
-      [Offset? pressPosition, bool allowEdit = true]) {
+      [Offset? pressPosition, bool allowMove = true]) {
     _removeNoteMenuOverlay();
 
     final overlay = Overlay.of(context);
@@ -277,9 +292,16 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     _noteMenuOverlayEntry = OverlayEntry(
       builder: (context) => _NoteMenuOverlay(
         pressPosition: pressPosition,
-        showEdit: allowEdit,
+        showEdit: true,
+        showMove: allowMove,
         onClose: _removeNoteMenuOverlay,
+        // «Редактировать» → шторка просмотра/правки (текст, цвет, время).
         onEdit: () {
+          _removeNoteMenuOverlay();
+          _showTimelineNoteSheet(noteId);
+        },
+        // «Переместить» → режим перетаскивания блока по времени (с X/✓).
+        onMove: () {
           _removeNoteMenuOverlay();
           _startEditingNote(noteId);
         },
@@ -300,7 +322,7 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           );
           try {
             await noteRepository.deleteNote(intNoteId);
-            await NotificationService.instance.cancelNoteReminder(intNoteId);
+            await _deleteNoteReminder(intNoteId);
             await _deleteLinkedTask(note);
             await _loadTimelineNotes();
           } catch (e) {
@@ -578,18 +600,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       );
 
       await noteRepository.saveNote(updatedNote, userId);
-      // Перепланируем уведомление на (новое) время начала заметки, если
-      // уведомления включены; иначе отменяем ранее запланированное.
-      // Задачи «на весь день» уведомлений не получают.
-      if (_attachingNoteNotify && !_attachingNoteAllDay) {
-        await NotificationService.instance.scheduleNoteReminder(
-          id: intNoteId,
-          title: _attachingNoteTitle!,
-          startTime: _attachingNoteStartTime!,
-        );
-      } else {
-        await NotificationService.instance.cancelNoteReminder(intNoteId);
-      }
+      // Уведомление перепланирует _loadTimelineNotes — единый планировщик,
+      // который синхронизирует напоминания заметок через сущность Reminder.
       await _loadTimelineNotes();
     } catch (e) {
       debugPrint('Ошибка сохранения редактируемой заметки: $e');
@@ -796,72 +808,124 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     return days[weekday - 1];
   }
 
-  Widget _buildWeekDaysHeader() {
+  // Единая шапка таймлайна: слева год+месяц (над столбцом времени),
+  // вертикальный разделитель и строка дней недели. Используется и в дне,
+  // и в неделе. [highlightSelected] — в дне подсвечиваем выбранный день,
+  // в неделе — сегодняшний.
+  Widget _buildTimelineHeader({required bool highlightSelected}) {
     final weekDates = _getWeekDates();
+    final colors = AppColors.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
-    // Ограничиваем смещение, чтобы не было слишком сильного сдвига
-    final clampedSwipeDistance = _weekSwipeDistance.clamp(-screenWidth * 0.3, screenWidth * 0.3);
-    
+    // Горизонтальный сдвиг при свайпе недели (в дне свайп листает контент,
+    // поэтому шапку не двигаем).
+    final clampedSwipeDistance = highlightSelected
+        ? 0.0
+        : _weekSwipeDistance.clamp(-screenWidth * 0.3, screenWidth * 0.3);
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutQuart,
       transform: Matrix4.translationValues(clampedSwipeDistance, 0, 0),
-      child: Container(
-          padding: const EdgeInsets.only(left: 55, right: 16, top: 12, bottom: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: weekDates.map((date) {
-              // Выделяем только текущий день (сегодня), а не выбранный день
-              final isSelected = _isSameDay(date, DateTime.now());
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedDate = date;
-                    });
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // День недели
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.of(context).inverseSurface : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _getDayName(date.weekday),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: isSelected ? AppColors.of(context).onInverseSurface : AppColors.of(context).textSecondary,
-                          ),
-                        ),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Год + месяц над столбцом времени (ширина = столбец времени = 60).
+            SizedBox(
+              width: 60,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${_selectedDate.year}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: colors.textSecondary,
+                        height: 1.1,
                       ),
-                      const SizedBox(height: 4),
-                      // Дата
-                      AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
-                          color: isSelected ? AppColors.of(context).textPrimary : AppColors.of(context).textSecondary,
-                        ),
-                        child: Text(
-                          date.day.toString().padLeft(2, '0'),
-                        ),
+                    ),
+                    Text(
+                      _getMonthShort(_selectedDate.month),
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w500,
+                        color: colors.textPrimary,
+                        height: 1.1,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              );
-            }).toList(),
-          ),
+              ),
+            ),
+            // Вертикальный разделитель (совпадает с разделителем сетки таймлайна).
+            Container(
+              width: 1,
+              height: 36,
+              color: _gridLineColor(colors),
+            ),
+            // Дни недели.
+            Expanded(
+              child: Row(
+                children: weekDates.map((date) {
+                  final isSelected = highlightSelected
+                      ? _isSameDay(date, _selectedDate)
+                      : _isSameDay(date, DateTime.now());
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        setState(() {
+                          _previousSelectedDate = _selectedDate;
+                          _selectedDate = date;
+                          if (_dayContentScrollController.hasClients) {
+                            _dayContentScrollController.jumpTo(0);
+                          }
+                        });
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _getDayName(date.weekday),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: colors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOutCubic,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isSelected ? colors.surfaceVariant : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              date.day.toString().padLeft(2, '0'),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
+      ),
     );
   }
 
@@ -1143,8 +1207,92 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
       _attachingNoteWidth = 0.0;
       _previousNoteHeight = 0.0;
       _dragNoteScreenY = 0.0;
+      _dragRawY = 0.0;
+      _lastDragLineIndex = -1;
+      _isDraggingNote = false;
+      _isQuickDragging = false;
+    });
+  }
+
+  // ---------- Быстрое перетаскивание блока по долгому нажатию ----------
+  // Долгое нажатие на сохранённый блок «подхватывает» его: палец сразу тащит
+  // блок по времени, отпускание ставит на новое время. Без режима с X/✓ —
+  // одна непрерывная жестовая последовательность (как иконка на хоумскрине iOS).
+
+  void _startQuickDragNote(String? noteId) {
+    if (noteId == null) return;
+    final note = _timelineNotes.firstWhere(
+      (n) => n['id']?.toString() == noteId,
+      orElse: () => <String, dynamic>{},
+    );
+    if (note.isEmpty) return;
+    if (note['allDay'] == true) return; // блоки «на весь день» не перетаскиваем
+    final startTime = note['startTime'] as DateTime?;
+    final endTime = note['endTime'] as DateTime?;
+    final title = note['title'] as String?;
+    if (startTime == null || endTime == null || title == null) return;
+    // Перетаскиваем только в дневном виде и только для блока выбранного дня.
+    if (_listViewType != ListViewType.oneDay) return;
+    if (!_isSameDay(_selectedDate, startTime)) return;
+
+    HapticFeedback.heavyImpact();
+
+    final hourHeight = _getHourHeight(context);
+    final linesPerHour = _getTimeLinesCount();
+    final lineHeight = hourHeight / linesPerHour;
+    final minutesPerLine = _getMinutesPerLine();
+    final duration = endTime.difference(startTime);
+
+    setState(() {
+      _editingNoteId = noteId;
+      _isQuickDragging = true;
+      _isDraggingNote = true;
+      _lastDragLineIndex = -1;
+      _attachingNoteTitle = title;
+      _attachingNoteColor = note['color'] as String? ?? '#FFEB3B';
+      _attachingNoteIcon = note['icon'] as String?;
+      _attachingNoteStartTime = startTime;
+      _attachingNoteEndTime = endTime;
+      _attachingNoteNotify = note['notify'] as bool? ?? true;
+      _attachingNoteAllDay = false;
+      _attachingNoteLinkedElementType = note['linkedElementType'] as String?;
+      _attachingNoteLinkedElementId = note['linkedElementId'] as String?;
+      _attachingNoteHeight = (duration.inMinutes / minutesPerLine) * lineHeight;
+      _attachingNoteWidth = MediaQuery.of(context).size.width - 61;
+      _dragRawY = _getTimePositionForDateTime(context, startTime, _selectedDate) -
+          _currentScrollOffset;
+      _dragNoteScreenY = _dragRawY;
+    });
+  }
+
+  void _onQuickDragMove(Offset delta) {
+    if (!_isDraggingNote || !_isQuickDragging) return;
+    setState(() {
+      final viewportHeight = _dayContentScrollController.hasClients
+          ? _dayContentScrollController.position.viewportDimension
+          : MediaQuery.of(context).size.height;
+      final maxTop =
+          (viewportHeight - _attachingNoteHeight).clamp(0.0, double.infinity);
+      _dragRawY = (_dragRawY + delta.dy).clamp(0.0, maxTop);
+      _updateDragNoteTimeFromScreenY(context);
+    });
+    _checkAutoScroll(context);
+  }
+
+  Future<void> _onQuickDragEnd() async {
+    if (!_isQuickDragging) return;
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+    setState(() {
+      _updateDragNoteTimeFromScreenY(context);
+      // Фиксируем превью по времени (стабильная позиция). НО _isQuickDragging и
+      // _editingNoteId НЕ сбрасываем здесь: иначе оригинал на старом месте на
+      // миг вспыхнул бы на полную яркость и прыгнул (моргание) до перезагрузки.
+      // Полный сброс делает _cancelEditingNote уже ПОСЛЕ _loadTimelineNotes,
+      // когда блок уже стоит на новом времени.
       _isDraggingNote = false;
     });
+    await _saveEditingNote();
   }
 
   Future<void> _confirmAttachingNote() async {
@@ -1240,11 +1388,10 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         });
       }
 
-      // На КАЖДУЮ будущую заметку планируем своё системное уведомление (id =
-      // id заметки → у каждой своё). zonedSchedule с тем же id идемпотентен,
-      // поэтому повторная загрузка не плодит дубли. Так уведомления есть и у
-      // ранее созданных заметок, и после перезапуска приложения. Если у заметки
-      // уведомления выключены — отменяем ранее запланированное.
+      // Единый планировщик: на каждую заметку синхронизируем напоминание через
+      // сущность Reminder (ownerType 'note'). Повторная загрузка идемпотентна —
+      // строка reminders переиспользуется, уведомление перепланируется. Так
+      // напоминания есть и у ранее созданных заметок, и после перезапуска.
       for (final note in timelineNotes) {
         final id = note['id'];
         final start = note['startTime'];
@@ -1252,21 +1399,104 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         final notify = note['notify'] as bool? ?? true;
         final allDay = note['allDay'] == true;
         if (id is int && start is DateTime && title is String) {
-          // Задачи «на весь день» уведомлений не получают.
-          if (notify && !allDay) {
-            await NotificationService.instance.scheduleNoteReminder(
-              id: id,
-              title: title,
-              startTime: start,
-            );
-          } else {
-            await NotificationService.instance.cancelNoteReminder(id);
-          }
+          await _syncNoteReminder(
+            noteId: id,
+            userId: userId,
+            title: title,
+            start: start,
+            notify: notify,
+            allDay: allDay,
+          );
         }
       }
     } catch (e) {
       debugPrint('Ошибка загрузки заметок списка: $e');
     }
+  }
+
+  // Синхронизирует напоминание timeline-заметки через сущность Reminder.
+  // Создаёт/обновляет строку reminders (ownerType 'note') и системное
+  // уведомление, либо удаляет их, если уведомления выключены или заметка
+  // «на весь день». Заодно гасит устаревшее уведомление по старой схеме
+  // (когда id уведомления совпадал с id заметки).
+  Future<void> _syncNoteReminder({
+    required int noteId,
+    required int userId,
+    required String title,
+    required DateTime start,
+    required bool notify,
+    required bool allDay,
+  }) async {
+    final repo = ReminderRepository(appDatabase);
+    // Подчищаем уведомление, запланированное прежней реализацией.
+    await NotificationService.instance.cancelNoteReminder(noteId);
+
+    final existing = await repo.loadForOwner('note', noteId);
+    final shouldNotify = notify && !allDay;
+
+    if (!shouldNotify) {
+      for (final r in existing) {
+        if (r.id != null) {
+          await NotificationService.instance.cancelReminder(r.id!);
+        }
+      }
+      await repo.deleteForOwner('note', noteId);
+      return;
+    }
+
+    final hh = start.hour.toString().padLeft(2, '0');
+    final mm = start.minute.toString().padLeft(2, '0');
+    final body = tr('Начинается в {0}', ['$hh:$mm']);
+
+    if (existing.isEmpty) {
+      final reminderId = await repo.addReminder(Reminder(
+        userId: userId,
+        ownerType: 'note',
+        ownerId: noteId,
+        title: title,
+        body: body,
+        fireAt: start,
+      ));
+      await NotificationService.instance.scheduleReminder(
+        id: reminderId,
+        title: title,
+        body: body,
+        fireAt: start,
+      );
+    } else {
+      final r = existing.first;
+      await repo.updateReminder(
+        r.copyWith(title: title, body: body, fireAt: start, clearSnooze: true),
+      );
+      if (r.id != null) {
+        await NotificationService.instance.scheduleReminder(
+          id: r.id!,
+          title: title,
+          body: body,
+          fireAt: start,
+        );
+      }
+      // Чистим возможные дубли строк reminders для этой заметки.
+      for (final extra in existing.skip(1)) {
+        if (extra.id != null) {
+          await NotificationService.instance.cancelReminder(extra.id!);
+        }
+      }
+    }
+  }
+
+  // Удаляет напоминание заметки (строку reminders + системное уведомление)
+  // при удалении самой заметки.
+  Future<void> _deleteNoteReminder(int noteId) async {
+    await NotificationService.instance.cancelNoteReminder(noteId);
+    final repo = ReminderRepository(appDatabase);
+    final existing = await repo.loadForOwner('note', noteId);
+    for (final r in existing) {
+      if (r.id != null) {
+        await NotificationService.instance.cancelReminder(r.id!);
+      }
+    }
+    await repo.deleteForOwner('note', noteId);
   }
 
   IconData? _getIconData(String? iconKey) {
@@ -1318,15 +1548,27 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
 
     final durationMinutes =
         (_attachingNoteHeight / lineHeight * minutesPerLine).round();
-    // Абсолютная позиция верха заметки на шкале (без учёта прокрутки экрана).
-    final absoluteY = _dragNoteScreenY + _currentScrollOffset;
-    // Не даём заметке выйти за пределы суток.
-    final maxStartMinutes = (24 * 60 - durationMinutes).clamp(0, 24 * 60);
-    var totalMinutes = (absoluteY / lineHeight) * minutesPerLine;
-    totalMinutes = totalMinutes.clamp(0.0, maxStartMinutes.toDouble());
+    // «Сырая» абсолютная позиция верха блока под пальцем (с учётом прокрутки).
+    final absoluteRawY = _dragRawY + _currentScrollOffset;
+    // Снэп к ближайшей строке шкалы (отсечке). Блок «прилипает» к сетке —
+    // именно это убирает дёрганье на отпускании (например 18:00 → 18:02):
+    // и время, и экранная позиция берутся ровно с отсечки, а не из-под пальца.
+    final maxLineIndex = ((24 * 60 - durationMinutes) / minutesPerLine).floor();
+    var lineIndex = (absoluteRawY / lineHeight).round();
+    lineIndex = lineIndex.clamp(0, maxLineIndex < 0 ? 0 : maxLineIndex);
 
+    // Экранная позиция блока — ровно на отсечке.
+    _dragNoteScreenY = lineIndex * lineHeight - _currentScrollOffset;
+
+    // Вибрация-отсечка на каждой пройденной строке шкалы.
+    if (lineIndex != _lastDragLineIndex) {
+      if (_lastDragLineIndex != -1) HapticFeedback.selectionClick();
+      _lastDragLineIndex = lineIndex;
+    }
+
+    final totalMinutes = lineIndex * minutesPerLine;
     final hours = totalMinutes ~/ 60;
-    final minutes = (totalMinutes % 60).floor();
+    final minutes = totalMinutes % 60;
     final start = DateTime(
         _selectedDate.year, _selectedDate.month, _selectedDate.day, hours, minutes);
     _attachingNoteStartTime = start;
@@ -1650,6 +1892,50 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
     ];
     return monthNames[month - 1];
   }
+
+  // Короткое имя месяца для шапки таймлайна (под год).
+  String _getMonthShort(int month) {
+    final names = [
+      tr('янв.'), tr('фев.'), tr('мар.'), tr('апр.'), tr('май'), tr('июн.'),
+      tr('июл.'), tr('авг.'), tr('сен.'), tr('окт.'), tr('ноя.'), tr('дек.')
+    ];
+    return names[month - 1];
+  }
+
+  // Открыт ли сейчас «сегодняшний» период (день/неделя/месяц).
+  bool _isViewingToday() {
+    final now = DateTime.now();
+    switch (_listViewType) {
+      case ListViewType.oneDay:
+        return _isSameDay(_selectedDate, now);
+      case ListViewType.week:
+        return _getWeekDates().any((d) => _isSameDay(d, now));
+      case ListViewType.month:
+        return _selectedDate.year == now.year && _selectedDate.month == now.month;
+    }
+  }
+
+  // Возврат к сегодняшнему дню (кнопка «Сегодня»).
+  void _goToToday() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _previousSelectedDate = _selectedDate;
+      _selectedDate = DateTime.now();
+      if (_dayContentScrollController.hasClients) {
+        _dayContentScrollController.jumpTo(0);
+      }
+      if (_weekScrollController.hasClients) {
+        _weekScrollController.jumpTo(0);
+      }
+      if (_listViewType == ListViewType.month) {
+        _loadMonthTasks();
+      }
+    });
+    // После перестроения прокручиваем к текущему времени.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToCurrentTime();
+    });
+  }
     
   // Переход к предыдущему дню/неделе/месяцу (стрелка влево или свайп вправо).
   void _goToPreviousPeriod() {
@@ -1833,8 +2119,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                     behavior: HitTestBehavior.translucent,
                     child: Column(
                       children: [
-                        // Заголовок дней недели (только для недельного вида)
-                        _buildWeekDaysHeader(),
+                        // Шапка: год/месяц + дни недели (подсветка — сегодня)
+                        _buildTimelineHeader(highlightSelected: false),
                         // Основной контент
                         Expanded(
                           child: _buildTimelineView(),
@@ -1870,11 +2156,13 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                     },
                     child: Column(
                     children: [
-                      // Слайдер дней/недели/месяца (скрыт для недельного вида)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: _buildWeekSlider(),
-                      ),
+                      // Месяц — слайдер «Месяц Год»; день — шапка год/месяц + дни.
+                      _listViewType == ListViewType.month
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: _buildWeekSlider(),
+                            )
+                          : _buildTimelineHeader(highlightSelected: true),
                       // Лента «на весь день»: задачи на весь день, привычки и
                       // события выбранного дня — над таймлайном.
                       _buildAllDayStrip(),
@@ -2027,6 +2315,62 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
               ),
             ),
           ),
+          // Кнопка «Сегодня»: видна только когда открыт не сегодняшний период.
+          // Прячется выездом за левый край (а не фейдом — фейд поверх
+          // LiquidGlass даёт поэтапную отрисовку стекла). Всегда в дереве и
+          // полностью отрисована, поэтому появление/исчезновение плавное.
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            left: (_isViewingToday() ||
+                    _isAttachingNote ||
+                    _isEditingNote ||
+                    _isQuickDragging)
+                ? -80
+                : 22,
+            bottom: bottomPosition,
+            child: IgnorePointer(
+              ignoring: _isViewingToday() ||
+                  _isAttachingNote ||
+                  _isEditingNote ||
+                  _isQuickDragging,
+              child: GestureDetector(
+                onTap: _goToToday,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: LiquidGlass.withOwnLayer(
+                    settings: AppGlass.control,
+                    shape: const LiquidOval(),
+                    glassContainsChild: false,
+                    child: SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Icon(
+                            CupertinoIcons.arrow_left,
+                            size: 24,
+                            color: colors.icon,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
           AnimatedPositioned(
             duration: isKeyboardClosing ? Duration.zero : const Duration(milliseconds: 150),
             curve: Curves.easeOutCubic,
@@ -2041,13 +2385,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                 : (_isAttachingNote
                     ? (_isEditingNote ? _saveEditingNote : _confirmAttachingNote)
                     : _openSettings),
-              child: Container(
-                width: 52,
-                height: 52,
+              child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: colors.elevatedSurface,
                   shape: BoxShape.circle,
-                  border: Border.all(color: colors.border, width: 0.5),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.1),
@@ -2056,41 +2396,52 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                     ),
                   ],
                 ),
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  // При раскрытом поиске эта кнопка превращается в крестик закрытия.
-                  child: _isSearchOpen
-                    ? Icon(
-                        CupertinoIcons.xmark,
-                        color: colors.icon,
-                        size: 22,
-                      )
-                    : (_isAttachingNote || _isEditingNote)
-                      ? Icon(
-                          Icons.check,
-                          color: colors.icon,
-                          size: 24,
-                        )
-                      : ClipRect(
-                          child: SvgPicture.asset(
-                            'assets/icon/filters.svg',
-                            width: 24,
-                            height: 24,
-                            fit: BoxFit.contain,
-                            colorFilter: ColorFilter.mode(
-                              colors.icon,
-                              BlendMode.srcIn,
-                            ),
-                          ),
-                        ),
+                child: LiquidGlass.withOwnLayer(
+                  settings: AppGlass.control,
+                  shape: const LiquidOval(),
+                  glassContainsChild: false,
+                  child: SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        // При раскрытом поиске эта кнопка превращается в крестик закрытия.
+                        child: _isSearchOpen
+                            ? Icon(
+                                CupertinoIcons.xmark,
+                                color: colors.icon,
+                                size: 22,
+                              )
+                            : (_isAttachingNote || _isEditingNote)
+                                ? Icon(
+                                    Icons.check,
+                                    color: colors.icon,
+                                    size: 24,
+                                  )
+                                : ClipRect(
+                                    child: SvgPicture.asset(
+                                      'assets/icon/filters.svg',
+                                      width: 24,
+                                      height: 24,
+                                      fit: BoxFit.contain,
+                                      colorFilter: ColorFilter.mode(
+                                        colors.icon,
+                                        BlendMode.srcIn,
+                                      ),
+                                    ),
+                                  ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          // Блок с временем между кнопками в режиме прикрепления
-          if ((_isAttachingNote || _isEditingNote) && _attachingNoteStartTime != null && _attachingNoteEndTime != null)
+          // Блок с временем между кнопками в режиме прикрепления / быстрого drag.
+          // При быстром drag показываем диапазон «начало — конец», как раньше.
+          if ((_isAttachingNote || _isEditingNote || _isQuickDragging) && _attachingNoteStartTime != null && _attachingNoteEndTime != null)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 200),
               left: 0,
@@ -2117,12 +2468,15 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
-                        '•',
+                        _isQuickDragging ? '–' : '•',
                         style: TextStyle(color: colors.onInverseSurface, fontSize: 12),
                       ),
                     ),
                     Text(
-                      _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
+                      // При быстром drag — конечное время, иначе длительность.
+                      _isQuickDragging
+                          ? '${_attachingNoteEndTime!.hour.toString().padLeft(2, '0')}:${_attachingNoteEndTime!.minute.toString().padLeft(2, '0')}'
+                          : _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
                       style: TextStyle(
                         color: colors.onInverseSurface,
                         fontSize: 12,
@@ -2383,8 +2737,8 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
               ),
             // Сохраненные заметки на таймлайне
             ..._buildSavedTimelineNotes(context, lineHeight),
-            // Блок-превью заметки в режиме прикрепления/редактирования
-            if ((_isAttachingNote || _isEditingNote) && _attachingNoteStartTime != null && _listViewType == ListViewType.oneDay && _isSameDay(_selectedDate, _attachingNoteStartTime!))
+            // Блок-превью заметки в режиме прикрепления/редактирования/быстрого drag
+            if ((_isAttachingNote || _isEditingNote || _isQuickDragging) && _attachingNoteStartTime != null && _listViewType == ListViewType.oneDay && _isSameDay(_selectedDate, _attachingNoteStartTime!))
               _buildAttachingNotePreview(context, lineHeight),
             ],
           ),
@@ -2608,9 +2962,15 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
           duration: duration,
           isContinuation: isContinuation,
           clippedBottom: clippedBottom,
-          onLongPress: (noteId, pos) =>
-              _handleNoteLongPress(context, noteId, pos),
-          onTap: () => _showTimelineNoteSheet(noteId),
+          // Пока тащим этот блок — оригинал делаем призрачным (видно, откуда
+          // «подняли»), а движущийся блок рисует _buildAttachingNotePreview.
+          isBeingDragged: _isQuickDragging && noteId == _editingNoteId,
+          // Тап → меню (Редактировать/Переместить/Таймер/Удалить).
+          onTap: (pos) => _handleNoteLongPress(context, noteId, pos),
+          // Долгое нажатие → сразу подхватили и тащим по времени.
+          onPickup: (id) => _startQuickDragNote(id),
+          onDragMove: _onQuickDragMove,
+          onDragEnd: _onQuickDragEnd,
         ),
       );
     }).toList();
@@ -2745,10 +3105,12 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         onPanStart: (details) {
           setState(() {
             _isDraggingNote = true;
+            _lastDragLineIndex = -1;
             // Фиксируем текущую экранную позицию заметки — дальше она едет за пальцем.
-            _dragNoteScreenY = _getTimePositionForDateTime(
+            _dragRawY = _getTimePositionForDateTime(
                     context, _attachingNoteStartTime!, _selectedDate) -
                 _currentScrollOffset;
+            _dragNoteScreenY = _dragRawY;
           });
           HapticFeedback.selectionClick();
         },
@@ -2760,10 +3122,9 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
                 : MediaQuery.of(context).size.height;
             final maxTop =
                 (viewportHeight - _attachingNoteHeight).clamp(0.0, double.infinity);
-            // Заметка следует за пальцем 1:1, оставаясь в пределах видимой шкалы;
-            // дальше «вытягивание» к нужному времени делает автоскролл у краёв.
-            _dragNoteScreenY =
-                (_dragNoteScreenY + details.delta.dy).clamp(0.0, maxTop);
+            // Палец двигает «сырую» позицию 1:1; видимый блок снэпится к отсечкам
+            // в _updateDragNoteTimeFromScreenY. Автоскролл у краёв — для вытягивания.
+            _dragRawY = (_dragRawY + details.delta.dy).clamp(0.0, maxTop);
             _updateDragNoteTimeFromScreenY(context);
           });
           // Автоскролл у краёв (продолжается, даже если палец стоит на месте).
@@ -2786,186 +3147,70 @@ class _ListPageState extends State<ListPage> with TickerProviderStateMixin {
         },
         child: Container(
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.75),
-            borderRadius: BorderRadius.circular(8),
+            color: color.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
           ),
           child: Stack(
             children: [
               LayoutBuilder(
                 builder: (context, constraints) {
-                  // Адаптивные размеры в зависимости от высоты заметки
-                  final availableHeight = constraints.maxHeight;
-                  final maxPadding = 12.0;
-                  final padding = maxPadding; // Одинаковый padding для всех заметок
-                  
-                  // Вычисляем длительность заметки в минутах
-                  final noteDurationMinutes = _attachingNoteStartTime != null && _attachingNoteEndTime != null
-                      ? _attachingNoteEndTime!.difference(_attachingNoteStartTime!).inMinutes
-                      : 0;
-                  
-                  // Для заметок 10 минут и меньше - показываем время в одну строку с названием
-                  final isSmallNote = noteDurationMinutes <= 10;
-                  
-                  // Вычисляем высоту 3.5 полос
-                  final threeAndHalfLinesHeight = lineHeight * 3.5;
-                  // До 3.5 полос по высоте - название и время в одну строку
-                  final shouldShowInOneLine = availableHeight <= threeAndHalfLinesHeight;
-                  
-                  // Размеры подбираем так же, как у отрисованной заметки
-                  // (виджет таймлайна), иначе при входе в режим редактирования
-                  // иконка/название визуально съезжают вправо.
-                  final isSmallByHeight = availableHeight <= 35;
-                  final iconSize = isSmallByHeight
-                      ? (availableHeight * 0.5).clamp(10.0, 16.0)
-                      : (availableHeight * 0.35).clamp(12.0, 24.0);
-                  final titleFontSize = isSmallByHeight
-                      ? (availableHeight * 0.4).clamp(8.0, 12.0)
-                      : (availableHeight * 0.25).clamp(10.0, 14.0);
-                  final durationFontSize = isSmallByHeight
-                      ? (availableHeight * 0.35).clamp(7.0, 10.0)
-                      : (availableHeight * 0.15).clamp(8.0, 12.0);
-                  final spacing =
-                      isSmallByHeight ? 4.0 : (availableHeight * 0.05).clamp(2.0, 6.0);
-                  final durationSpacing = availableHeight > 50 ? 2.0 : (availableHeight <= 35 ? 0.0 : 1.0);
-                  
-                  final horizontalPadding = 8.0; // Одинаковый отступ слева для всех заметок
-                  
-                  // Для самых маленьких заметок не поднимаем текст, чтобы иконка центрировалась
-                  final isVerySmallNote = availableHeight <= 20;
-                  
+                  // Тот же визуал, что у статичного блока (_NoteWidget): иконка,
+                  // название и длительность в одну центрированную строку — чтобы
+                  // при подхвате контент не «прыгал» относительно статичного вида.
+                  final h = constraints.maxHeight;
+                  final bg = Color.alphaBlend(
+                      color.withValues(alpha: 0.85), Colors.white);
+                  final fg =
+                      bg.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
+                  final pad = h < 26 ? 4.0 : 8.0;
+                  final iconSz = (h - pad * 2).clamp(14.0, 30.0);
+                  final fontSz = h < 30 ? 13.0 : 14.0;
+                  final dur = (_attachingNoteStartTime != null &&
+                          _attachingNoteEndTime != null)
+                      ? _attachingNoteEndTime!
+                          .difference(_attachingNoteStartTime!)
+                      : Duration.zero;
+                  final dh = dur.inHours;
+                  final dm = dur.inMinutes % 60;
+                  final durationText =
+                      dh > 0 ? tr('{0}ч {1}м', [dh, dm]) : tr('{0}м', [dm]);
                   return Padding(
-                    padding: EdgeInsets.only(left: horizontalPadding, right: padding, top: padding, bottom: padding),
-                    child: isSmallNote || availableHeight <= 35 || shouldShowInOneLine
-                        ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              if (iconData != null) ...[
-                                Icon(
-                                  iconData,
-                                  size: iconSize,
-                                  color: Color.lerp(color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? color.withValues(alpha: 0.7),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (iconData != null) ...[
+                          Icon(iconData,
+                              size: iconSz, color: fg.withValues(alpha: 0.85)),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(
+                                text: _attachingNoteTitle ?? '',
+                                style: TextStyle(
+                                  fontSize: fontSz,
+                                  fontWeight: FontWeight.w600,
+                                  color: fg,
                                 ),
-                                SizedBox(width: spacing),
-                              ],
-                              if (_attachingNoteTitle != null && _attachingNoteTitle!.isNotEmpty)
-                                Flexible(
-                                  child: isVerySmallNote
-                                      ? Text(
-                                          _attachingNoteTitle!,
-                                          style: TextStyle(
-                                            fontSize: titleFontSize,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.black87,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
-                                        )
-                                      : Transform.translate(
-                                          offset: const Offset(0, -10),
-                                          child: Text(
-                                            _attachingNoteTitle!,
-                                            style: TextStyle(
-                                              fontSize: titleFontSize,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.black87,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 1,
-                                          ),
-                                        ),
+                              ),
+                              TextSpan(
+                                text: '  $durationText',
+                                style: TextStyle(
+                                  fontSize: fontSz - 2,
+                                  fontWeight: FontWeight.w400,
+                                  color: fg.withValues(alpha: 0.6),
                                 ),
-                              if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
-                                SizedBox(width: spacing),
-                                isVerySmallNote
-                                    ? Padding(
-                                        padding: const EdgeInsets.only(top: 2.0),
-                                        child: Text(
-                                          _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
-                                          style: TextStyle(
-                                            fontSize: durationFontSize,
-                                            fontWeight: FontWeight.w400,
-                                            color: Colors.black87.withValues(alpha: 0.7),
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
-                                        ),
-                                      )
-                                    : Transform.translate(
-                                        offset: const Offset(0, -10),
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(top: 2.0),
-                                          child: Text(
-                                            _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
-                                            style: TextStyle(
-                                              fontSize: durationFontSize,
-                                              fontWeight: FontWeight.w400,
-                                              color: Colors.black87.withValues(alpha: 0.7),
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 1,
-                                          ),
-                                        ),
-                                      ),
-                              ],
-                            ],
-                          )
-                        : Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (iconData != null) ...[
-                                SizedBox(
-                                  width: iconSize,
-                                  height: iconSize,
-                                  child: Icon(
-                                    iconData,
-                                    size: iconSize,
-                                    color: Color.lerp(color, Colors.black, 0.5)?.withValues(alpha: 0.7) ?? color.withValues(alpha: 0.7),
-                                  ),
-                                ),
-                                SizedBox(width: spacing),
-                              ],
-                              if (_attachingNoteTitle != null && _attachingNoteTitle!.isNotEmpty)
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Flexible(
-                                        fit: FlexFit.loose,
-                                        child: Text(
-                                          _attachingNoteTitle!,
-                                          style: TextStyle(
-                                            fontSize: titleFontSize,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.black87,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: availableHeight > 50 ? 2 : 1,
-                                        ),
-                                      ),
-                                      if (_attachingNoteStartTime != null && _attachingNoteEndTime != null) ...[
-                                        if (durationSpacing > 0) SizedBox(height: durationSpacing),
-                                        Flexible(
-                                          fit: FlexFit.loose,
-                                          child: Text(
-                                            _formatDuration(_attachingNoteStartTime!, _attachingNoteEndTime!),
-                                            style: TextStyle(
-                                              fontSize: durationFontSize,
-                                              fontWeight: FontWeight.w400,
-                                              color: Colors.black87.withValues(alpha: 0.7),
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 1,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                            ],
+                              ),
+                            ]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
+                        ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -3453,8 +3698,17 @@ class _NoteWidget extends StatefulWidget {
   // прошлых суток) / низ обрезан (продолжается в следующие сутки).
   final bool isContinuation;
   final bool clippedBottom;
-  final Function(String?, Offset) onLongPress;
-  final VoidCallback? onTap;
+  // Тап по блоку → открыть меню (позиция нажатия — для якоря меню).
+  final Function(Offset) onTap;
+  // Долгое нажатие → «подхватили» блок (id), дальше тащим.
+  final Function(String?) onPickup;
+  // Движение пальца во время перетаскивания (дельта кадра).
+  final Function(Offset) onDragMove;
+  // Отпустили палец — ставим блок на новое время.
+  final VoidCallback onDragEnd;
+  // Этот блок сейчас перетаскивают → делаем его призрачным (движущийся
+  // дубликат рисует превью), но жест остаётся на нём.
+  final bool isBeingDragged;
 
   const _NoteWidget({
     required this.noteId,
@@ -3466,8 +3720,11 @@ class _NoteWidget extends StatefulWidget {
     required this.duration,
     this.isContinuation = false,
     this.clippedBottom = false,
-    required this.onLongPress,
-    this.onTap,
+    required this.onTap,
+    required this.onPickup,
+    required this.onDragMove,
+    required this.onDragEnd,
+    this.isBeingDragged = false,
   });
 
   @override
@@ -3475,44 +3732,8 @@ class _NoteWidget extends StatefulWidget {
 }
 
 class _NoteWidgetState extends State<_NoteWidget> {
-  Timer? _longPressTimer;
-  bool _isPressed = false;
-  Offset _pressPosition = Offset.zero;
-
-  @override
-  void dispose() {
-    _longPressTimer?.cancel();
-    super.dispose();
-  }
-
-  void _handleTapDown(TapDownDetails details) {
-    _isPressed = true;
-    _pressPosition = details.globalPosition;
-    _longPressTimer = Timer(const Duration(seconds: 1), () {
-      if (mounted && _isPressed) {
-        widget.onLongPress(widget.noteId, _pressPosition);
-        _isPressed = false;
-      }
-    });
-  }
-
-  void _handleTapUp(TapUpDetails details) {
-    final wasPressed = _isPressed;
-    _isPressed = false;
-    final timerActive = _longPressTimer?.isActive ?? false;
-    _longPressTimer?.cancel();
-    // Быстрый тап (long-press не успел сработать) и палец почти не сместился →
-    // открываем шторку просмотра/редактирования заметки.
-    if (wasPressed && timerActive) {
-      final moved = (details.globalPosition - _pressPosition).distance;
-      if (moved < 12) widget.onTap?.call();
-    }
-  }
-
-  void _handleTapCancel() {
-    _isPressed = false;
-    _longPressTimer?.cancel();
-  }
+  // Кумулятивное смещение от точки старта long-press — для расчёта дельты кадра.
+  Offset _lastDragOffset = Offset.zero;
 
   String _formatDurationWidget(Duration duration) {
     final hours = duration.inHours;
@@ -3525,40 +3746,36 @@ class _NoteWidgetState extends State<_NoteWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
+    // GestureDetector с нативным long-press-drag: тап → меню; долгое нажатие
+    // выигрывает арену жестов (скролл таймлайна не срабатывает) и сразу даёт
+    // непрерывное перетаскивание блока. Быстрый вертикальный свайп НЕ
+    // перехватывается (нет drag-обработчиков) → уходит в ListView как скролл.
+    return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        final renderBox = context.findRenderObject() as RenderBox?;
-        final localPosition = renderBox != null ? renderBox.globalToLocal(event.position) : event.localPosition;
-        _handleTapDown(TapDownDetails(globalPosition: event.position, localPosition: localPosition, kind: PointerDeviceKind.touch));
+      onTapUp: (details) => widget.onTap(details.globalPosition),
+      onLongPressStart: (details) {
+        _lastDragOffset = Offset.zero;
+        widget.onPickup(widget.noteId);
       },
-      onPointerUp: (event) {
-        final renderBox = context.findRenderObject() as RenderBox?;
-        final localPosition = renderBox != null ? renderBox.globalToLocal(event.position) : event.localPosition;
-        _handleTapUp(TapUpDetails(globalPosition: event.position, localPosition: localPosition, kind: PointerDeviceKind.touch));
+      onLongPressMoveUpdate: (details) {
+        final delta = details.offsetFromOrigin - _lastDragOffset;
+        _lastDragOffset = details.offsetFromOrigin;
+        widget.onDragMove(delta);
       },
-      onPointerMove: (event) {
-        // Палец поехал → это скролл таймлайна, а не тап/лонг-пресс.
-        // Снимаем нажатие, чтобы не открыть шторку и не словить лонг-пресс.
-        if (_isPressed && (event.position - _pressPosition).distance > 12) {
-          _handleTapCancel();
-        }
-      },
-      onPointerCancel: (event) {
-        _handleTapCancel();
-      },
-      // Сама заметка НЕ перехватывает вертикальный скролл: визуал в IgnorePointer,
-      // поэтому translucent-Listener не поглощает события и перетаскивание уходит
-      // в ListView под заметкой (таймлайн скроллится сквозь блок).
-      child: IgnorePointer(
+      onLongPressEnd: (details) => widget.onDragEnd(),
+      onLongPressCancel: () => widget.onDragEnd(),
+      // Визуал в IgnorePointer; пока тащим этот блок — делаем его призрачным.
+      child: Opacity(
+        opacity: widget.isBeingDragged ? 0.28 : 1.0,
+        child: IgnorePointer(
         child: Container(
         decoration: BoxDecoration(
           color: widget.color.withValues(alpha: 0.85),
           // У перенесённых через полночь сегментов скругляем только «целый»
           // край: верх обрезан → верхние углы прямые, низ обрезан → нижние.
           borderRadius: BorderRadius.vertical(
-            top: Radius.circular(widget.isContinuation ? 0 : 8),
-            bottom: Radius.circular(widget.clippedBottom ? 0 : 8),
+            top: Radius.circular(widget.isContinuation ? 0 : 12),
+            bottom: Radius.circular(widget.clippedBottom ? 0 : 12),
           ),
           border: Border.all(color: widget.color.withValues(alpha: 0.5), width: 1),
         ),
@@ -3613,6 +3830,7 @@ class _NoteWidgetState extends State<_NoteWidget> {
             );
           },
         ),
+      ),
       ),
       ),
     );
@@ -4132,7 +4350,7 @@ class _WeekNoteWidgetState extends State<_WeekNoteWidget> {
       child: Container(
         decoration: BoxDecoration(
           color: widget.color.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: widget.color.withValues(alpha: 0.5), width: 1),
         ),
         child: LayoutBuilder(
@@ -4198,16 +4416,20 @@ class _WeekNoteWidgetState extends State<_WeekNoteWidget> {
 class _NoteMenuOverlay extends StatefulWidget {
   final Offset? pressPosition;
   final bool showEdit;
+  final bool showMove;
   final VoidCallback onClose;
   final VoidCallback onEdit;
+  final VoidCallback onMove;
   final VoidCallback onPomodoro;
   final VoidCallback onDelete;
 
   const _NoteMenuOverlay({
     this.pressPosition,
     this.showEdit = true,
+    this.showMove = true,
     required this.onClose,
     required this.onEdit,
+    required this.onMove,
     required this.onPomodoro,
     required this.onDelete,
   });
@@ -4218,8 +4440,8 @@ class _NoteMenuOverlay extends StatefulWidget {
 
 class _NoteMenuOverlayState extends State<_NoteMenuOverlay> with SingleTickerProviderStateMixin {
   static const double _menuWidth = 200;
-  // Примерная высота меню (3 пункта + 2 разделителя) для клампа в экран.
-  static const double _menuHeight = 150;
+  // Примерная высота меню (4 пункта + разделители) для клампа в экран.
+  static const double _menuHeight = 200;
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -4345,6 +4567,14 @@ class _NoteMenuOverlayState extends State<_NoteMenuOverlay> with SingleTickerPro
                                   CupertinoIcons.pencil,
                                   tr('Редактировать'),
                                   () => _close(widget.onEdit),
+                                ),
+                                _buildMenuDivider(),
+                              ],
+                              if (widget.showMove) ...[
+                                _buildMenuItem(
+                                  CupertinoIcons.arrow_up_arrow_down,
+                                  tr('Переместить'),
+                                  () => _close(widget.onMove),
                                 ),
                                 _buildMenuDivider(),
                               ],

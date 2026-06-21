@@ -274,6 +274,15 @@ class _CustomTasksPageState extends State<CustomTasksPage> {
           updatedAt: dr.Value(DateTime.now()),
         ),
       );
+      // Снимаем напоминание задачи экрана (строка reminders + уведомление).
+      final repo = ReminderRepository(appDatabase);
+      final reminders = await repo.loadForOwner('custom_task', taskIdInt);
+      for (final r in reminders) {
+        if (r.id != null) {
+          await NotificationService.instance.cancelReminder(r.id!);
+        }
+      }
+      await repo.deleteForOwner('custom_task', taskIdInt);
       _loadTasksForDate(_selectedDate);
       _loadWeekTasks();
     } catch (e) {
@@ -440,17 +449,20 @@ class _CustomTasksPageState extends State<CustomTasksPage> {
       // Напоминание для задачи кастомного экрана.
       if (task.reminderAt != null) {
         try {
+          final body = _reminderBody(task.reminderAt!, task.date);
           final repo = ReminderRepository(appDatabase);
           final reminderId = await repo.addReminder(Reminder(
             userId: userId,
             ownerType: 'custom_task',
             ownerId: insertedId,
             title: task.title,
+            body: body,
             fireAt: task.reminderAt!,
           ));
           await NotificationService.instance.scheduleReminder(
             id: reminderId,
             title: task.title,
+            body: body,
             fireAt: task.reminderAt!,
           );
         } catch (e) {
@@ -465,6 +477,18 @@ class _CustomTasksPageState extends State<CustomTasksPage> {
     } catch (e) {
       debugPrint('Ошибка добавления задачи: $e');
     }
+  }
+
+  // Текст (описание) уведомления-напоминания с временем начала задачи.
+  String _reminderBody(DateTime fireAt, DateTime? startTime) {
+    if (startTime == null) return tr('Скоро начало');
+    final hh = startTime.hour.toString().padLeft(2, '0');
+    final mm = startTime.minute.toString().padLeft(2, '0');
+    final lead = startTime.difference(fireAt);
+    if (lead.inMinutes <= 0) return tr('Начинается в {0}', ['$hh:$mm']);
+    if (lead.inMinutes >= 1440) return tr('Завтра в {0}', ['$hh:$mm']);
+    if (lead.inMinutes >= 60) return tr('Через час, в {0}', ['$hh:$mm']);
+    return tr('Через {0} мин, в {1}', ['${lead.inMinutes}', '$hh:$mm']);
   }
 
   void _toggleSidebar() {

@@ -142,7 +142,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
   // от времени начала задачи. 'Без напоминания' = выключено.
   String _reminderOffset = 'Без напоминания';
   final GlobalKey _reminderChipKey = GlobalKey();
-  OverlayEntry? _reminderMenuOverlay;
   // Кастомное правило повтора (показывается inline-панелью под чипами).
   bool _customRepeatExpanded = false;
   String _customFreq = 'Неделя'; // 'День' / 'Неделя' / 'Месяц' / 'Год'
@@ -515,8 +514,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     _speech.stop();
     _repeatMenuOverlay?.remove();
     _repeatMenuOverlay = null;
-    _reminderMenuOverlay?.remove();
-    _reminderMenuOverlay = null;
     _scheduleMenuOverlay?.remove();
     _scheduleMenuOverlay = null;
     _periodMenuOverlay?.remove();
@@ -813,7 +810,9 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
         'description': task.description ?? '',
         'linkedElementType': 'task',
         'linkedElementId': task.id,
-        'notify': true,
+        // Блок на таймлайне НЕ шлёт своё уведомление — единственный источник
+        // напоминания задачи — её сущность Reminder (чтобы не было дублей).
+        'notify': false,
         'allDay': _allDay,
       };
       final note = NoteModel(
@@ -3608,7 +3607,6 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
       'Не повторять',
       'Каждый день',
       'По будням',
-      'Каждую неделю',
       'Свой вариант'
     ];
     _repeatMenuOverlay = OverlayEntry(
@@ -3668,13 +3666,13 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     if (label != null) setState(() => _reminderOffset = label!);
   }
 
-  // Овал «Напоминание»: открывает меню выбора смещения (стекло, как у повтора).
+  // Овал «Напоминание»: тап перебирает смещения по кругу (без выпадающего меню).
   Widget _buildReminderChip() {
     final colors = AppColors.of(context);
     final active = _reminderOffset != 'Без напоминания';
     return GestureDetector(
       key: _reminderChipKey,
-      onTap: _showReminderMenu,
+      onTap: _cycleReminder,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -3694,7 +3692,7 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
             ),
             const SizedBox(width: 8),
             Text(
-              active ? tr(_reminderOffset) : tr('Напоминание'),
+              tr(_reminderOffset),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -3707,44 +3705,14 @@ class _TaskCreateModalState extends State<TaskCreateModal> with TickerProviderSt
     );
   }
 
-  void _removeReminderMenu() {
-    _reminderMenuOverlay?.remove();
-    _reminderMenuOverlay = null;
-  }
-
-  void _showReminderMenu() {
+  // Перебор вариантов напоминания по кругу: Без напоминания → В момент начала →
+  // … → За день → снова Без напоминания.
+  void _cycleReminder() {
     HapticFeedback.lightImpact();
-    _removeReminderMenu();
-    final overlay = Overlay.of(context);
-    final renderBox =
-        _reminderChipKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    final anchorPosition = renderBox.localToGlobal(Offset.zero);
-    const menuWidth = 200.0;
-    final screenSize = MediaQuery.of(context).size;
-    double left = anchorPosition.dx;
-    if (left + menuWidth > screenSize.width - 12) {
-      left = screenSize.width - 12 - menuWidth;
-    }
-    if (left < 12) left = 12;
-    final bottom = screenSize.height - (anchorPosition.dy - 6);
-
-    final options = ['Без напоминания', ..._reminderOptions.keys];
-    _reminderMenuOverlay = OverlayEntry(
-      builder: (context) => _RepeatGlassMenu(
-        left: left,
-        bottom: bottom,
-        width: menuWidth,
-        options: options,
-        currentValue: _reminderOffset,
-        onSelected: (v) {
-          _removeReminderMenu();
-          setState(() => _reminderOffset = v);
-        },
-        onClose: _removeReminderMenu,
-      ),
-    );
-    overlay.insert(_reminderMenuOverlay!);
+    final order = ['Без напоминания', ..._reminderOptions.keys];
+    final idx = order.indexOf(_reminderOffset);
+    final next = order[(idx + 1) % order.length];
+    setState(() => _reminderOffset = next);
   }
 
   // ===== Режим привычки =====

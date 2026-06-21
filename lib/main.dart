@@ -6,6 +6,8 @@ import 'pages/login_page.dart';
 import 'pages/tasks_page.dart';
 import 'data/database_instance.dart';
 import 'data/repositories/auth_repository.dart';
+import 'data/repositories/reminder_repository.dart';
+import 'data/user_session.dart';
 import 'services/deep_link_handler.dart';
 import 'services/notification_service.dart';
 import 'theme/theme_controller.dart';
@@ -43,6 +45,20 @@ void main() async {
 
   // Автологин: если есть сохранённая сессия — пускаем сразу в приложение.
   final isLoggedIn = await AuthRepository(appDatabase).restoreSession();
+
+  // Пересобираем локальные уведомления из актуальных напоминаний: чистим
+  // «осиротевшие»/устаревшие (поставленные прежней версией) и планируем заново.
+  if (isLoggedIn) {
+    final userId = UserSession.currentUserId;
+    if (userId != null) {
+      try {
+        final reminders = await ReminderRepository(appDatabase).loadAll(userId);
+        await NotificationService.instance.resyncReminders(reminders);
+      } catch (e) {
+        debugPrint('Не удалось пересобрать напоминания: $e');
+      }
+    }
+  }
 
   runApp(MyApp(isLoggedIn: isLoggedIn));
 }

@@ -371,8 +371,11 @@ class _TasksPageState extends State<TasksPage> {
           // Напоминание для задачи кастомного экрана (ownerType 'custom_task').
           if (task.reminderAt != null) {
             final shifted = task.reminderAt!.add(day.difference(start));
+            final dayStart = DateTime(
+                day.year, day.month, day.day, task.date.hour, task.date.minute);
             await _createReminder(
-                'custom_task', customId, userId, task.title, shifted);
+                'custom_task', customId, userId, task.title, shifted,
+                startTime: dayStart);
           }
           day = day.add(const Duration(days: 1));
         }
@@ -413,7 +416,10 @@ class _TasksPageState extends State<TasksPage> {
         // же день, что и копия задачи (для периода/повтора по дням).
         if (task.reminderAt != null) {
           final shifted = task.reminderAt!.add(day.difference(start));
-          await _createReminder('task', newId, userId, task.title, shifted);
+          final dayStart = DateTime(
+              day.year, day.month, day.day, task.date.hour, task.date.minute);
+          await _createReminder('task', newId, userId, task.title, shifted,
+              startTime: dayStart);
         }
         counter++;
         day = day.add(const Duration(days: 1));
@@ -444,7 +450,8 @@ class _TasksPageState extends State<TasksPage> {
       await repo.deleteForOwner('task', taskId);
       if (newTask.reminderAt != null) {
         await _createReminder(
-            'task', taskId, userId, newTask.title, newTask.reminderAt!);
+            'task', taskId, userId, newTask.title, newTask.reminderAt!,
+            startTime: newTask.date);
       }
     } catch (e) {
       debugPrint('Не удалось обновить напоминание задачи: $e');
@@ -452,25 +459,47 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   // Создаёт запись напоминания и планирует системное уведомление.
+  // [startTime] — время начала задачи (для красивого текста уведомления).
   Future<void> _createReminder(String ownerType, int ownerId, int userId,
-      String title, DateTime fireAt) async {
+      String title, DateTime fireAt,
+      {DateTime? startTime}) async {
     try {
+      final body = _reminderBody(fireAt, startTime);
       final repo = ReminderRepository(appDatabase);
       final id = await repo.addReminder(Reminder(
         userId: userId,
         ownerType: ownerType,
         ownerId: ownerId,
         title: title,
+        body: body,
         fireAt: fireAt,
       ));
       await NotificationService.instance.scheduleReminder(
         id: id,
         title: title,
+        body: body,
         fireAt: fireAt,
       );
     } catch (e) {
       debugPrint('Не удалось создать напоминание: $e');
     }
+  }
+
+  // Текст (описание) уведомления-напоминания. Если известно время начала —
+  // показываем его и насколько заранее напоминаем; иначе общий текст.
+  String _reminderBody(DateTime fireAt, DateTime? startTime) {
+    if (startTime == null) return tr('Скоро начало');
+    final hh = startTime.hour.toString().padLeft(2, '0');
+    final mm = startTime.minute.toString().padLeft(2, '0');
+    final lead = startTime.difference(fireAt);
+    if (lead.inMinutes <= 0) return tr('Начинается в {0}', ['$hh:$mm']);
+    if (lead.inMinutes >= 1440) {
+      return tr('Завтра в {0}', ['$hh:$mm']);
+    }
+    if (lead.inMinutes >= 60) {
+      return tr('Через час, в {0}', ['$hh:$mm']);
+    }
+    return tr('Через {0} мин, в {1}', ['${lead.inMinutes}', '$hh:$mm']);
   }
 
   void _updateTaskCompletion(String taskId, bool isCompleted) {

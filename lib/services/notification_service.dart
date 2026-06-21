@@ -5,6 +5,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../l10n/app_translations.dart';
+import '../models/reminder_model.dart';
 
 /// Локальные уведомления о начале заметок таймлайна.
 ///
@@ -61,51 +62,9 @@ class NotificationService {
     await android?.requestNotificationsPermission();
   }
 
-  static const NotificationDetails _details = NotificationDetails(
-    android: AndroidNotificationDetails(
-      'timeline_notes',
-      'Заметки таймлайна',
-      channelDescription: 'Напоминания о начале заметок на шкале времени',
-      importance: Importance.max,
-      priority: Priority.high,
-    ),
-    iOS: DarwinNotificationDetails(),
-  );
-
-  /// Планирует уведомление на начало заметки.
-  ///
-  /// [id] — стабильный идентификатор (id заметки), чтобы при изменении/удалении
-  /// можно было перепланировать или отменить именно это уведомление.
-  Future<void> scheduleNoteReminder({
-    required int id,
-    required String title,
-    required DateTime startTime,
-  }) async {
-    await init();
-    // На прошедшее время уведомление не имеет смысла.
-    if (!startTime.isAfter(DateTime.now())) return;
-
-    final when = tz.TZDateTime.from(startTime, tz.local);
-    final hh = startTime.hour.toString().padLeft(2, '0');
-    final mm = startTime.minute.toString().padLeft(2, '0');
-
-    try {
-      await _plugin.zonedSchedule(
-        id,
-        tr('Заметка на {0}', ['$hh:$mm']),
-        title,
-        when,
-        _details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-      );
-    } catch (e) {
-      debugPrint('Не удалось запланировать уведомление: $e');
-    }
-  }
-
-  /// Отменяет ранее запланированное уведомление заметки.
+  /// Отменяет уведомление заметки, запланированное прежней реализацией
+  /// (когда id уведомления совпадал с id заметки). Нужно для подчистки легаси —
+  /// новые напоминания идут через сущность Reminder / [scheduleReminder].
   Future<void> cancelNoteReminder(int id) async {
     await init();
     await _plugin.cancel(id);
@@ -312,5 +271,32 @@ class NotificationService {
   Future<void> cancelReminder(int id) async {
     await init();
     await _plugin.cancel(_reminderNotifId(id));
+  }
+
+  /// Полная пересборка локальных напоминаний при запуске приложения.
+  ///
+  /// Снимает ВСЕ ранее запланированные уведомления напоминаний (диапазон
+  /// 700000000+) и легаси-уведомления заметок (мелкие id) — в т.ч.
+  /// «осиротевшие» от удалённых/старых записей, чтобы не приходили дубли. Затем
+  /// планирует заново из актуальных строк reminders. Уведомления событий
+  /// (id 800000000+/900000000+) НЕ трогаем.
+  Future<void> resyncReminders(List<Reminder> reminders) async {
+    await init();
+    final pending = await _plugin.pendingNotificationRequests();
+    for (final p in pending) {
+      if (p.id < 800000000) {
+        await _plugin.cancel(p.id);
+      }
+    }
+    for (final r in reminders) {
+      if (r.id == null || !r.isEnabled) continue;
+      await scheduleReminder(
+        id: r.id!,
+        title: r.title,
+        body: r.body,
+        fireAt: r.effectiveTime,
+        repeatRule: r.repeatRule,
+      );
+    }
   }
 }
